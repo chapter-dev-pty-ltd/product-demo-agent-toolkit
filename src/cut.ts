@@ -1,8 +1,7 @@
-import { spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { chromium } from 'playwright-core'
 import { VIEWPORT, type Footage } from './record.ts'
+import { findFfmpeg, launchBrowser, run } from './tools.ts'
 
 const CANVAS = { width: 1920, height: 1080 }
 const AT = { x: (CANVAS.width - VIEWPORT.width) / 2, y: (CANVAS.height - VIEWPORT.height) / 2 }
@@ -29,7 +28,9 @@ export async function cut(footageDir: string, out: string): Promise<void> {
   // The backdrop and mask loop forever, so the video's length has to be said.
   const length = footage.end + hold - (footage.frames[0]?.at ?? 0)
 
-  await ffmpeg([
+  await run(await findFfmpeg(), [
+    '-loglevel',
+    'error',
     '-y',
     '-f',
     'concat',
@@ -68,7 +69,7 @@ export async function cut(footageDir: string, out: string): Promise<void> {
 
 /** The still layers, drawn once: the backdrop with the app's shadow on it, and the rounded mask. */
 async function drawLayers(dir: string): Promise<void> {
-  const browser = await chromium.launch()
+  const browser = await launchBrowser()
   try {
     const page = await browser.newPage({ viewport: CANVAS })
     const box = `position:absolute;left:${AT.x}px;top:${AT.y}px;width:${VIEWPORT.width}px;height:${VIEWPORT.height}px;border-radius:${RADIUS}px`
@@ -84,18 +85,4 @@ async function drawLayers(dir: string): Promise<void> {
   } finally {
     await browser.close()
   }
-}
-
-function ffmpeg(args: string[]): Promise<void> {
-  return new Promise((done, fail) => {
-    const child = spawn('ffmpeg', ['-loglevel', 'error', ...args], {
-      stdio: ['ignore', 'inherit', 'inherit'],
-    })
-    child.on('error', () =>
-      fail(new Error('ffmpeg was not found. Install it (macOS: brew install ffmpeg).')),
-    )
-    child.on('exit', (code) =>
-      code === 0 ? done() : fail(new Error(`ffmpeg failed with code ${code}.`)),
-    )
-  })
 }

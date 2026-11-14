@@ -1,7 +1,8 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { chromium, type Locator, type Page } from 'playwright-core'
+import type { Locator, Page } from 'playwright-core'
 import type { Film, Step, Target } from './film.ts'
+import { launchBrowser } from './tools.ts'
 
 export const VIEWPORT = { width: 1440, height: 900 }
 
@@ -18,11 +19,7 @@ export async function record(film: Film, out: string): Promise<Footage> {
   await rm(out, { recursive: true, force: true })
   await mkdir(join(out, 'frames'), { recursive: true })
 
-  const browser = await chromium.launch().catch((error: unknown) => {
-    throw new Error(
-      `Could not start Chromium. Run: npx playwright-core install chromium-headless-shell\n${String(error)}`,
-    )
-  })
+  const browser = await launchBrowser()
   try {
     const page = await browser.newPage({ viewport: VIEWPORT })
     await page.addInitScript(drawCursor, CURSOR)
