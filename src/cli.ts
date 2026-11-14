@@ -24,7 +24,9 @@ try {
   } else if (command === 'record' && input) {
     const out = values.out ?? 'footage'
     const footage = await record(await readFilm(input), out)
-    console.log(`Recorded ${footage.frames.length} frames, ${footage.end.toFixed(1)}s, into ${out}/`)
+    console.log(
+      `Recorded ${footage.frames.length} frames, ${footage.end.toFixed(1)}s, into ${out}/`,
+    )
   } else if (command === 'cut' && input) {
     const out = values.out ?? 'demo.mp4'
     await cut(input, out)

@@ -19,7 +19,9 @@ export async function record(film: Film, out: string): Promise<Footage> {
   await mkdir(join(out, 'frames'), { recursive: true })
 
   const browser = await chromium.launch().catch((error: unknown) => {
-    throw new Error(`Could not start Chromium. Run: npx playwright-core install chromium-headless-shell\n${String(error)}`)
+    throw new Error(
+      `Could not start Chromium. Run: npx playwright-core install chromium-headless-shell\n${String(error)}`,
+    )
   })
   try {
     const page = await browser.newPage({ viewport: VIEWPORT })
@@ -52,7 +54,9 @@ export async function record(film: Film, out: string): Promise<Footage> {
         await perform(page, hand, film.app, step)
       } catch (error) {
         await page.screenshot({ path: join(out, 'failed.png') })
-        throw new Error(`Step ${index + 1} failed: ${JSON.stringify(step)}\n${String(error)}\nThe screen is in ${join(out, 'failed.png')}`)
+        throw new Error(
+          `Step ${index + 1} failed: ${JSON.stringify(step)}\n${String(error)}\nThe screen is in ${join(out, 'failed.png')}`,
+        )
       }
       await settle(page)
     }
@@ -163,7 +167,11 @@ function drawCursor(svg: string): void {
     cursor.style.cssText =
       'position:fixed;left:0;top:0;pointer-events:none;z-index:2147483647;transform:translate(-100px,-100px)'
     document.documentElement.append(cursor)
-    addEventListener('mousemove', (e) => (cursor.style.transform = `translate(${e.clientX - 3}px,${e.clientY - 2}px)`), true)
+    addEventListener(
+      'mousemove',
+      (e) => (cursor.style.transform = `translate(${e.clientX - 3}px,${e.clientY - 2}px)`),
+      true,
+    )
   }
   if (document.documentElement) draw()
   else addEventListener('DOMContentLoaded', draw)

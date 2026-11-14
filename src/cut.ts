@@ -31,14 +31,37 @@ export async function cut(footageDir: string, out: string): Promise<void> {
 
   await ffmpeg([
     '-y',
-    '-f', 'concat', '-safe', '0', '-i', join(work, 'frames.txt'),
-    '-framerate', '60', '-loop', '1', '-i', join(work, 'backdrop.png'),
-    '-framerate', '60', '-loop', '1', '-i', join(work, 'mask.png'),
+    '-f',
+    'concat',
+    '-safe',
+    '0',
+    '-i',
+    join(work, 'frames.txt'),
+    '-framerate',
+    '60',
+    '-loop',
+    '1',
+    '-i',
+    join(work, 'backdrop.png'),
+    '-framerate',
+    '60',
+    '-loop',
+    '1',
+    '-i',
+    join(work, 'mask.png'),
     '-filter_complex',
     `[0:v]fps=60,format=rgba[app];[2:v]format=gray[mask];[app][mask]alphamerge[framed];` +
       `[1:v][framed]overlay=${AT.x}:${AT.y}:shortest=1,format=yuv420p`,
-    '-t', length.toFixed(3),
-    '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', '-movflags', '+faststart',
+    '-t',
+    length.toFixed(3),
+    '-c:v',
+    'libx264',
+    '-crf',
+    '18',
+    '-preset',
+    'medium',
+    '-movflags',
+    '+faststart',
     out,
   ])
 }
@@ -65,8 +88,14 @@ async function drawLayers(dir: string): Promise<void> {
 
 function ffmpeg(args: string[]): Promise<void> {
   return new Promise((done, fail) => {
-    const child = spawn('ffmpeg', ['-loglevel', 'error', ...args], { stdio: ['ignore', 'inherit', 'inherit'] })
-    child.on('error', () => fail(new Error('ffmpeg was not found. Install it (macOS: brew install ffmpeg).')))
-    child.on('exit', (code) => (code === 0 ? done() : fail(new Error(`ffmpeg failed with code ${code}.`))))
+    const child = spawn('ffmpeg', ['-loglevel', 'error', ...args], {
+      stdio: ['ignore', 'inherit', 'inherit'],
+    })
+    child.on('error', () =>
+      fail(new Error('ffmpeg was not found. Install it (macOS: brew install ffmpeg).')),
+    )
+    child.on('exit', (code) =>
+      code === 0 ? done() : fail(new Error(`ffmpeg failed with code ${code}.`)),
+    )
   })
 }

@@ -42,6 +42,7 @@ const film: z.ZodType<Film> = z.strictObject({
 
 export async function readFilm(path: string): Promise<Film> {
   const parsed = film.safeParse(JSON.parse(await readFile(path, 'utf8')))
-  if (!parsed.success) throw new Error(`${path} is not a valid film:\n${z.prettifyError(parsed.error)}`)
+  if (!parsed.success)
+    throw new Error(`${path} is not a valid film:\n${z.prettifyError(parsed.error)}`)
   return parsed.data
 }
