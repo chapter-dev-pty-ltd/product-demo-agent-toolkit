@@ -2,11 +2,27 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 
+/** The backdrops in library/backdrops, by name. */
+export const BACKDROPS = ['halo', 'sky', 'violet'] as const
+
 export interface Config {
   mode: 'ask' | 'just_do_it'
+  backdrop: (typeof BACKDROPS)[number]
+  footage: { keep: number }
 }
 
 const config: z.ZodType<Config> = z.strictObject({
+  backdrop: z.enum(BACKDROPS).default('halo').describe('What the app is framed on in the video.'),
+  footage: z
+    .strictObject({
+      keep: z
+        .number()
+        .int()
+        .min(1)
+        .default(10)
+        .describe('How many recordings of each film to keep. Older ones are deleted.'),
+    })
+    .default({ keep: 10 }),
   mode: z
     .enum(['ask', 'just_do_it'])
     .default('ask')

@@ -2,8 +2,9 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
 import type { Config } from './config.ts'
-import { checkEffect, settle } from './effect.ts'
 import { describeStep, type Film, type Step, type Target } from './film.ts'
+import { checkOutcome } from './outcome.ts'
+import { watch } from './settle.ts'
 import { decide, fingerprint, rank } from './similo.ts'
 import { launchBrowser } from './tools.ts'
 
@@ -27,11 +28,12 @@ export async function record(film: Film, out: string, config: Config): Promise<F
   const browser = await launchBrowser()
   try {
     const page = await browser.newPage({ viewport: VIEWPORT })
+    const settler = watch(page)
     await page.addInitScript(drawCursor, CURSOR)
     await page.goto(film.app)
     const hand = new Hand(page)
     await hand.rest(VIEWPORT.width / 2, VIEWPORT.height / 2)
-    await settle(page, 400)
+    await settler.settled({ beat: 400 })
 
     const frames: Footage['frames'] = []
     const writes: Promise<void>[] = []
@@ -57,9 +59,13 @@ export async function record(film: Film, out: string, config: Config): Promise<F
       const finder: Finder = (target) =>
         find(page, target, config, (note) => notes.push(`${label}: ${note}`))
       try {
+        await settler.mark()
         await perform(page, hand, film.app, step, finder)
-        await settle(page, 400)
-        if (step.effect) await checkEffect(page, step.effect)
+        const settled = await settler.settled({ beat: 400 })
+        if (!settled.settled) {
+          notes.push(`${label}: filmed before the page settled (${settled.waitingOn.join(', ')}).`)
+        }
+        if (step.outcome) await checkOutcome(page, step.outcome)
       } catch (error) {
         await page.screenshot({ path: join(out, 'failed.png') })
         const why = error instanceof Error ? error.message : String(error)
@@ -232,6 +238,7 @@ const ease = (k: number) => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2)
 function drawCursor(svg: string): void {
   const draw = () => {
     const cursor = document.createElement('div')
+    cursor.dataset.productDemo = 'pointer'
     cursor.innerHTML = svg
     cursor.style.cssText =
       'position:fixed;left:0;top:0;pointer-events:none;z-index:2147483647;transform:translate(-100px,-100px)'

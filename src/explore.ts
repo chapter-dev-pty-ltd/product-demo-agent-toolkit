@@ -5,9 +5,10 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
-import { before, effectSince, settle } from './effect.ts'
 import type { Film, Step, Target } from './film.ts'
+import { before, outcomeSince } from './outcome.ts'
 import { VIEWPORT } from './record.ts'
+import { watch } from './settle.ts'
 import { fingerprint } from './similo.ts'
 import { launchBrowser } from './tools.ts'
 
@@ -73,8 +74,9 @@ export async function send(command: string, args: string[]): Promise<string> {
 export async function serve(url: string): Promise<void> {
   const browser = await launchBrowser()
   const page = await browser.newPage({ viewport: VIEWPORT })
+  const settler = watch(page)
   await page.goto(url)
-  await settle(page, 0)
+  await settler.settled()
   const film: Film = { app: url, steps: [] }
   let looks = 0
   let idle = setTimeout(() => void stop(), IDLE_MS)
@@ -93,11 +95,15 @@ export async function serve(url: string): Promise<void> {
   /** Runs an action, then adds it to the draft with what it did. */
   const act = async (step: Step, run: () => Promise<void>, said: string) => {
     const was = await before(page)
+    await settler.mark()
     await run()
-    await settle(page, 0)
-    const effect = await effectSince(page, was)
-    await add(effect ? { ...step, effect } : step)
-    return `${said}${effect?.url ? ` Now at ${effect.url}.` : ''}`
+    const settled = await settler.settled()
+    const outcome = await outcomeSince(page, was)
+    await add(outcome ? { ...step, outcome } : step)
+    const still = settled.settled
+      ? ''
+      : ` The page hadn't settled after 10s: ${settled.waitingOn.join(', ')}.`
+    return `${said}${outcome?.url ? ` Now at ${outcome.url}.` : ''}${still}`
   }
 
   const commands: Record<string, (args: string[]) => Promise<string>> = {
@@ -223,6 +229,7 @@ async function screenshotWithRefs(page: Page, snapshot: string, path: string): P
   await page.evaluate((all) => {
     const layer = document.createElement('div')
     layer.id = '__product_demo_refs'
+    layer.dataset.productDemo = 'refs'
     layer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647'
     for (const { ref, x, y, width, height } of all) {
       const box = document.createElement('div')

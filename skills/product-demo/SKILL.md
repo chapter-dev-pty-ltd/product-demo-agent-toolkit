@@ -37,15 +37,17 @@ A step you add by hand names its element as `{ "role": "button", "name": "Save" 
 ## 3. Record and cut
 
 ```bash
-product-demo record film.json --out footage
-product-demo cut footage --out demo.mp4
+product-demo record film.json   # prints where the footage went
+product-demo cut                # cuts the latest footage; prints where the video went
 ```
 
-If `record` fails, it says which step and why, and saves the screen as `footage/failed.png`. Look at it, fix the step (or explore that part again), and record again.
+Each recording gets its own folder under `.product-demo/footage/`, and the video is cut into it as `video.mp4`. Give it to the user from there, or pass `--out` to `cut`.
+
+If `record` fails, it says which step and why, and saves the screen as `failed.png` in that folder. Look at it, fix the step (or explore that part again), and record again. If it prints notes, read them: a note means it chose or waited on something you should check.
 
 ## When something is unclear, ask
 
-If the request could mean two things, or `record` says several elements match a step, ask the user which they meant before going on. Don't guess. (A project can set `"mode": "just_do_it"` in `.product-demo/config.json` to make the best choice instead; `record` then prints what it chose.)
+If the request could mean two things, or `record` says several elements match a step, ask the user which they meant before going on. Don't guess. (A project can set `"mode": "just_do_it"` in `.product-demo/config.json` to make the best choice instead; `record` then prints what it chose. The same file sets the `backdrop`, `halo`, `sky` or `violet`, and how many recordings to keep per film, `footage.keep`.)
 
 ## What makes a good film
 

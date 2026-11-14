@@ -13,8 +13,8 @@ export type Target =
   | { css: string }
   | { locator: string; selector: string; fingerprint: Fingerprint }
 
-/** What a step did when it was explored, so `record` can check it does the same. */
-export interface Effect {
+/** What a step changed when it was explored, so `record` can check it changes the same. */
+export interface Outcome {
   /** The address it went to: path, query and hash. */
   url?: string | undefined
   /** A line of text it made appear. */
@@ -28,7 +28,7 @@ export type Step = (
   | { press: string }
   | { scroll: 'up' | 'down' }
   | { wait: { text: string } | number }
-) & { effect?: Effect | undefined }
+) & { outcome?: Outcome | undefined }
 
 /** A demo to perform: the app to open, the steps to take on it, and how long to hold the ending. */
 export interface Film {
@@ -39,12 +39,16 @@ export interface Film {
 
 const fingerprint: z.ZodType<Fingerprint> = z.strictObject({
   tag: z.string(),
+  role: z.string(),
   id: z.string(),
+  testId: z.string(),
   name: z.string(),
+  type: z.string(),
   className: z.string(),
   href: z.string(),
   alt: z.string(),
   text: z.string(),
+  label: z.string(),
   neighbours: z.string(),
   xpath: z.string(),
   idXpath: z.string(),
@@ -62,19 +66,19 @@ const target: z.ZodType<Target> = z.union([
   z.strictObject({ locator: z.string(), selector: z.string(), fingerprint }),
 ])
 
-const effect = z
+const outcome = z
   .strictObject({ url: z.string().optional(), appeared: z.string().optional() })
   .optional()
 
 const step: z.ZodType<Step> = z.union([
-  z.strictObject({ visit: z.string(), effect }),
-  z.strictObject({ click: target, effect }),
-  z.strictObject({ fill: target, text: z.string(), effect }),
-  z.strictObject({ press: z.string(), effect }),
-  z.strictObject({ scroll: z.enum(['up', 'down']), effect }),
+  z.strictObject({ visit: z.string(), outcome }),
+  z.strictObject({ click: target, outcome }),
+  z.strictObject({ fill: target, text: z.string(), outcome }),
+  z.strictObject({ press: z.string(), outcome }),
+  z.strictObject({ scroll: z.enum(['up', 'down']), outcome }),
   z.strictObject({
     wait: z.union([z.strictObject({ text: z.string() }), z.number().positive()]),
-    effect,
+    outcome,
   }),
 ])
 

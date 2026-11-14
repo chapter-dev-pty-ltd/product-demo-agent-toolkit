@@ -1,21 +1,21 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import type { Config } from './config.ts'
 import { VIEWPORT, type Footage } from './record.ts'
 import { findFfmpeg, launchBrowser, run } from './tools.ts'
 
 const CANVAS = { width: 1920, height: 1080 }
 const AT = { x: (CANVAS.width - VIEWPORT.width) / 2, y: (CANVAS.height - VIEWPORT.height) / 2 }
 const RADIUS = 14
-const BACKDROP = 'linear-gradient(135deg, #8ec5fc 0%, #c9b6f2 50%, #f6c1d9 100%)'
 
 /** Cuts footage into an mp4: the app framed on a backdrop, the ending held. */
-export async function cut(footageDir: string, out: string): Promise<void> {
+export async function cut(footageDir: string, out: string, config: Config): Promise<void> {
   const footage: Footage = JSON.parse(await readFile(join(footageDir, 'footage.json'), 'utf8'))
   if (footage.frames.length === 0) throw new Error(`${footageDir} has no frames.`)
 
   const work = join(footageDir, 'cut')
   await mkdir(work, { recursive: true })
-  await drawLayers(work)
+  await drawLayers(work, config.backdrop)
 
   const hold = footage.film.ending?.hold ?? 2
   const lines = footage.frames.map((frame, i) => {
@@ -68,13 +68,15 @@ export async function cut(footageDir: string, out: string): Promise<void> {
 }
 
 /** The still layers, drawn once: the backdrop with the app's shadow on it, and the rounded mask. */
-async function drawLayers(dir: string): Promise<void> {
+async function drawLayers(dir: string, backdrop: Config['backdrop']): Promise<void> {
+  const picture = await readFile(new URL(`../library/backdrops/${backdrop}.jpg`, import.meta.url))
+  const background = `url(data:image/jpeg;base64,${picture.toString('base64')}) center / cover`
   const browser = await launchBrowser()
   try {
     const page = await browser.newPage({ viewport: CANVAS })
     const box = `position:absolute;left:${AT.x}px;top:${AT.y}px;width:${VIEWPORT.width}px;height:${VIEWPORT.height}px;border-radius:${RADIUS}px`
     await page.setContent(
-      `<body style="margin:0;background:${BACKDROP}"><div style="${box};background:#fff;box-shadow:0 30px 80px rgb(20 20 60 / 0.28),0 6px 18px rgb(20 20 60 / 0.16)"></div></body>`,
+      `<body style="margin:0;background:${background}"><div style="${box};background:#fff;box-shadow:0 30px 80px rgb(20 20 60 / 0.28),0 6px 18px rgb(20 20 60 / 0.16)"></div></body>`,
     )
     await page.screenshot({ path: join(dir, 'backdrop.png') })
     await page.setViewportSize(VIEWPORT)

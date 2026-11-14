@@ -1,6 +1,18 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util'
-import { cut, explore, readConfig, readFilm, record, send, serve, version } from './index.ts'
+import { join } from 'node:path'
+import {
+  cut,
+  explore,
+  latestFootage,
+  newFootage,
+  readConfig,
+  readFilm,
+  record,
+  send,
+  serve,
+  version,
+} from './index.ts'
 
 const USAGE = `product-demo ${version}
 
@@ -16,8 +28,11 @@ Explore an app, off camera. Each action is added, pinned, to a draft film:
   product-demo end [--out film.json]  Close the browser and write the film
 
 Film it:
-  product-demo record <film.json> [--out footage]   Perform the film on camera
-  product-demo cut <footage> [--out demo.mp4]       Cut the footage into a video`
+  product-demo record <film.json>                  Perform the film on camera; prints where the footage went
+  product-demo cut [footage] [--out video.mp4]     Cut footage (the latest, by default) into a video
+
+Settings live in .product-demo/config.json: mode (ask | just_do_it), backdrop (halo | sky | violet),
+footage.keep (recordings kept per film, default 10).`
 
 const EXPLORE = new Set(['look', 'click', 'fill', 'press', 'scroll', 'visit', 'wait', 'end'])
 
@@ -42,15 +57,15 @@ try {
   } else if (command && EXPLORE.has(command)) {
     console.log(await send(command, command === 'end' && values.out ? [values.out] : args))
   } else if (command === 'record' && input) {
-    const out = values.out ?? 'footage'
-    const footage = await record(await readFilm(input), out, await readConfig())
+    const config = await readConfig()
+    const out = values.out ?? (await newFootage(input, config.footage.keep))
+    const footage = await record(await readFilm(input), out, config)
     for (const note of footage.notes) console.log(`Note: ${note}`)
-    console.log(
-      `Recorded ${footage.frames.length} frames, ${footage.end.toFixed(1)}s, into ${out}/`,
-    )
-  } else if (command === 'cut' && input) {
-    const out = values.out ?? 'demo.mp4'
-    await cut(input, out)
+    console.log(`Recorded ${footage.frames.length} frames, ${footage.end.toFixed(1)}s, into ${out}`)
+  } else if (command === 'cut') {
+    const from = input ?? (await latestFootage())
+    const out = values.out ?? join(from, 'video.mp4')
+    await cut(from, out, await readConfig())
     console.log(`Cut ${out}`)
   } else {
     console.log(USAGE)
