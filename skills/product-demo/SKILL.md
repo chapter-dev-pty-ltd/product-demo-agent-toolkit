@@ -6,44 +6,46 @@ allowed-tools: Bash(product-demo:*)
 
 # product-demo
 
-You write a film, `product-demo record` performs it in a real browser, and `product-demo cut` turns the footage into an mp4.
+You explore the app to write a film, `product-demo record` performs it on camera, and `product-demo cut` turns the footage into an mp4.
 
-## 1. Write film.json
+## 1. Explore, off camera
 
-```json
-{
-  "app": "http://localhost:3000",
-  "steps": [
-    { "click": { "role": "button", "name": "New invoice" } },
-    { "fill": { "role": "textbox", "name": "Customer" }, "text": "Acme Corp" },
-    { "press": "Enter" },
-    { "wait": { "text": "Invoice created" } }
-  ],
-  "ending": { "hold": 2 }
-}
+```bash
+product-demo explore http://localhost:3000   # opens the app in a background browser and shows the screen
+product-demo look                            # the screen again: an accessibility tree with refs, and a screenshot
+product-demo click @e12
+product-demo fill @e7 "Acme Corp"
+product-demo press Enter
+product-demo scroll down
+product-demo visit /settings
+product-demo wait "Invoice created"          # or: product-demo wait 1.5
+product-demo end                             # closes the browser and writes film.json
 ```
 
-Steps:
+Every action you take is added to the film, with the element pinned so `record` presses the same one, and with what it did (where the page went, what appeared) so `record` can check it does it again.
 
-- `{ "visit": "/path" }` opens a page of the app.
-- `{ "click": target }` moves the pointer to the element and clicks it.
-- `{ "fill": target, "text": "..." }` clicks a field and types into it.
-- `{ "press": "Enter" }` presses a key.
-- `{ "scroll": "down" }` or `"up"` scrolls a screen's worth.
-- `{ "wait": { "text": "..." } }` waits for text to appear; `{ "wait": 1.5 }` waits seconds.
+- Name elements by the ref `look` gives them (`@e12`, `@f1e340`).
+- Look at the screenshot `look` saves whenever the tree doesn't explain the screen: icon buttons, canvases, anything that seems wrong. Refs are drawn on it.
+- Explore only the path the demo should show. If you take a wrong turn, finish exploring and delete those steps from film.json.
 
-A target is `{ "role": "button", "name": "Save" }` (preferred: the element's accessible role and name), `{ "text": "Save" }`, or `{ "css": "#save" }`.
+## 2. Edit film.json
 
-`ending.hold` is how many seconds the last screen stays up. Default 2.
+Remove detours and set how long the last screen holds: `"ending": { "hold": 2 }`. Leave each step's `locator`, `selector`, `fingerprint` and `effect` as they are.
 
-## 2. Record and cut
+A step you add by hand names its element as `{ "role": "button", "name": "Save" }`, `{ "text": "Save" }` or `{ "css": "#save" }`. Steps: `visit`, `click`, `fill` (with `text`), `press`, `scroll` (`up` or `down`), `wait` (`{ "text": "..." }` or seconds).
+
+## 3. Record and cut
 
 ```bash
 product-demo record film.json --out footage
 product-demo cut footage --out demo.mp4
 ```
 
-If `record` fails, it names the step and saves the screen as `footage/failed.png`. Look at it, fix that step, and record again.
+If `record` fails, it says which step and why, and saves the screen as `footage/failed.png`. Look at it, fix the step (or explore that part again), and record again.
+
+## When something is unclear, ask
+
+If the request could mean two things, or `record` says several elements match a step, ask the user which they meant before going on. Don't guess. (A project can set `"mode": "just_do_it"` in `.product-demo/config.json` to make the best choice instead; `record` then prints what it chose.)
 
 ## What makes a good film
 

@@ -1,16 +1,34 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
+import type { Fingerprint } from './similo.ts'
 
-/** An element, by its accessible role and name, its visible text, or a CSS selector. */
-export type Target = { role: string; name: string } | { text: string } | { css: string }
+/**
+ * An element. Written by hand: its accessible role and name, its visible text, or a CSS
+ * selector. Pinned by `explore`: the locator Playwright's codegen would write for it, and
+ * its Similo fingerprint for when that locator finds nothing or more than one.
+ */
+export type Target =
+  | { role: string; name: string }
+  | { text: string }
+  | { css: string }
+  | { locator: string; selector: string; fingerprint: Fingerprint }
 
-export type Step =
+/** What a step did when it was explored, so `record` can check it does the same. */
+export interface Effect {
+  /** The address it went to: path, query and hash. */
+  url?: string | undefined
+  /** A line of text it made appear. */
+  appeared?: string | undefined
+}
+
+export type Step = (
   | { visit: string }
   | { click: Target }
   | { fill: Target; text: string }
   | { press: string }
   | { scroll: 'up' | 'down' }
   | { wait: { text: string } | number }
+) & { effect?: Effect | undefined }
 
 /** A demo to perform: the app to open, the steps to take on it, and how long to hold the ending. */
 export interface Film {
@@ -19,19 +37,45 @@ export interface Film {
   ending?: { hold: number } | undefined
 }
 
+const fingerprint: z.ZodType<Fingerprint> = z.strictObject({
+  tag: z.string(),
+  id: z.string(),
+  name: z.string(),
+  className: z.string(),
+  href: z.string(),
+  alt: z.string(),
+  text: z.string(),
+  neighbours: z.string(),
+  xpath: z.string(),
+  idXpath: z.string(),
+  isButton: z.boolean(),
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+})
+
 const target: z.ZodType<Target> = z.union([
   z.strictObject({ role: z.string(), name: z.string() }),
   z.strictObject({ text: z.string() }),
   z.strictObject({ css: z.string() }),
+  z.strictObject({ locator: z.string(), selector: z.string(), fingerprint }),
 ])
 
+const effect = z
+  .strictObject({ url: z.string().optional(), appeared: z.string().optional() })
+  .optional()
+
 const step: z.ZodType<Step> = z.union([
-  z.strictObject({ visit: z.string() }),
-  z.strictObject({ click: target }),
-  z.strictObject({ fill: target, text: z.string() }),
-  z.strictObject({ press: z.string() }),
-  z.strictObject({ scroll: z.enum(['up', 'down']) }),
-  z.strictObject({ wait: z.union([z.strictObject({ text: z.string() }), z.number().positive()]) }),
+  z.strictObject({ visit: z.string(), effect }),
+  z.strictObject({ click: target, effect }),
+  z.strictObject({ fill: target, text: z.string(), effect }),
+  z.strictObject({ press: z.string(), effect }),
+  z.strictObject({ scroll: z.enum(['up', 'down']), effect }),
+  z.strictObject({
+    wait: z.union([z.strictObject({ text: z.string() }), z.number().positive()]),
+    effect,
+  }),
 ])
 
 const film: z.ZodType<Film> = z.strictObject({
@@ -42,7 +86,26 @@ const film: z.ZodType<Film> = z.strictObject({
 
 export async function readFilm(path: string): Promise<Film> {
   const parsed = film.safeParse(JSON.parse(await readFile(path, 'utf8')))
-  if (!parsed.success)
+  if (!parsed.success) {
     throw new Error(`${path} is not a valid film:\n${z.prettifyError(parsed.error)}`)
+  }
   return parsed.data
+}
+
+/** A step in a sentence, for messages: `click link "COBOL"`. */
+export function describeStep(step: Step): string {
+  const of = (t: Target) =>
+    'locator' in t
+      ? t.locator
+      : 'role' in t
+        ? `${t.role} "${t.name}"`
+        : 'text' in t
+          ? `"${t.text}"`
+          : t.css
+  if ('visit' in step) return `visit ${step.visit}`
+  if ('click' in step) return `click ${of(step.click)}`
+  if ('fill' in step) return `fill ${of(step.fill)} with "${step.text}"`
+  if ('press' in step) return `press ${step.press}`
+  if ('scroll' in step) return `scroll ${step.scroll}`
+  return typeof step.wait === 'number' ? `wait ${step.wait}s` : `wait for "${step.wait.text}"`
 }
