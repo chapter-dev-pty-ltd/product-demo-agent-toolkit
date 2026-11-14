@@ -30,7 +30,7 @@ Every action you take is added to the film, with the element pinned so `record` 
 
 ## 2. Edit film.json
 
-Remove detours and set how long the last screen holds: `"ending": { "hold": 2 }`. Leave each step's `locator`, `selector`, `fingerprint` and `effect` as they are.
+Remove detours and set how long the last screen holds: `"ending": { "hold": 2 }`. Leave each step's `locator`, `selector`, `fingerprint` and `outcome` as they are.
 
 A step you add by hand names its element as `{ "role": "button", "name": "Save" }`, `{ "text": "Save" }` or `{ "css": "#save" }`. Steps: `visit`, `click`, `fill` (with `text`), `press`, `scroll` (`up` or `down`), `wait` (`{ "text": "..." }` or seconds).
 
