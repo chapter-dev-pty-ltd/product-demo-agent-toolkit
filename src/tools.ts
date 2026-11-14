@@ -34,10 +34,8 @@ const FFMPEG_BUILDS: Record<string, string> = {
   'win32-x64': '8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77',
 }
 
-/** An ffmpeg that can write H.264: $PRODUCT_DEMO_FFMPEG, the one on PATH, or our own, downloaded once. */
+/** An ffmpeg that can write H.264: the one on PATH, or our own, downloaded once. */
 export async function findFfmpeg(): Promise<string> {
-  const chosen = process.env.PRODUCT_DEMO_FFMPEG
-  if (chosen) return chosen
   if (await writesH264('ffmpeg')) return 'ffmpeg'
 
   const build = `${process.platform}-${process.arch}`
@@ -52,7 +50,7 @@ export async function findFfmpeg(): Promise<string> {
   const sha256 = FFMPEG_BUILDS[build]
   if (!sha256) {
     throw new Error(
-      `No ffmpeg download for ${build}. Install ffmpeg, or set PRODUCT_DEMO_FFMPEG to one.`,
+      `No ffmpeg download for ${build}. Install ffmpeg with H.264 (libx264) and put it on PATH.`,
     )
   }
   console.error('Downloading ffmpeg (once)…')
