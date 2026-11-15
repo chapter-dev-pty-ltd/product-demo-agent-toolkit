@@ -13,12 +13,18 @@ Explore the app to learn how to do what was asked, write the film from what you 
 ```bash
 product-demo explore http://localhost:3000   # opens the app in a background browser and shows the screen
 product-demo look                            # what's on screen: an accessibility tree with refs, and a screenshot
-product-demo click @e12
-product-demo fill @e7 "Acme Corp"
-product-demo press Enter
-product-demo scroll down
+product-demo click @e12                      # also --double, --right, --with Shift (or Meta, Alt, Control), --at 0.9,0.5
+product-demo fill @e7 "Acme Corp"            # clicks into the field and types, replacing what's there
+product-demo select @e9 "Pro"                # an option in a native <select>
+product-demo type "@Sam"                     # types where the caret is: a mention, a slash command
+product-demo press Enter                     # a key or a combination, like Meta+K
+product-demo hover @e4 --for 2               # rests the pointer on it: to show it, or open what hovering reveals
+product-demo drag @e20 @e31                  # carries one onto the other
+product-demo scroll down --in @e27 --by 800  # without --in, the page
+product-demo upload invoice.pdf @e15         # through the control that opens the file picker
 product-demo visit /settings
-product-demo wait "Invoice created"          # or: product-demo wait 1.5
+product-demo wait "Invoice created"          # or: wait "Generating…" --gone, or: wait 1.5
+product-demo handles                         # the small grab handles on screen (resize, rotate, sliders) and where they are
 product-demo back                            # marks the last step undone and returns to the screen before it
 product-demo end                             # closes the browser
 ```
@@ -26,6 +32,8 @@ product-demo end                             # closes the browser
 This is where you work out what to do, so mistakes are fine. Wander, take wrong turns, try things. Every action is logged in `.product-demo/explore/log.json`, numbered, with its element pinned (so a later run presses the same one) and its outcome (where the page went, what appeared, so a later run can check it does the same). Nothing is ever removed from the log.
 
 - Name elements by the ref `look` gives them (`@e12`). Refs change when the page navigates (`e12` becomes `f1e12`), so always use refs from the latest `look`.
+- Anything without a ref (a spot on a canvas, a handle, a gap between shapes) is named by a point on the latest `look` screenshot, in its pixels: `click 640,320`, `drag 500,350 800,550`. The element there is pinned, with where on it the point falls, so a later run finds the same spot even if the layout moves. Run `handles` before guessing a handle from the screenshot.
+- `upload` takes a file on disk. Make one that looks real for the demo (a short PDF, a CSV of plausible rows), not an empty or "test" file.
 - `look` shows only what's on screen, and says how much is above and below. Scroll to see more, or use `look --all` for the whole page.
 - Actions (`click`, `fill` and the rest) print their step number but not the screen. Run `look` after them to see what happened.
 - Look at the screenshot `look` saves whenever the tree doesn't explain the screen: icon buttons, canvases, anything that seems wrong. Refs are drawn on it.
@@ -51,7 +59,7 @@ Then:
 - Set how long the last screen holds, in seconds: `"ending": { "hold": 2 }` (2 if you leave it out).
 - Leave each step's `locator`, `selector`, `fingerprint` and `outcome` as they are.
 
-A step you add by hand names its element as `{ "role": "button", "name": "Save" }`, `{ "text": "Save" }` or `{ "css": "#save" }`. Steps: `visit`, `click`, `fill` (with `text`), `press`, `scroll` (`up` or `down`), `wait` (`{ "text": "..." }` or seconds). A step written by hand has no pin and no outcome, so rehearse and shoot can't check it pressed the right thing: prefer exploring it and copying it from the log.
+A step you add by hand names its element as `{ "role": "button", "name": "Save" }`, `{ "text": "Save" }` or `{ "css": "#save" }`. Steps: `visit`, `click` (with `double`, `right`, `modifiers`, `at`), `fill` (with `text`), `select` (with `option`), `type`, `press`, `hover` (with `seconds`), `drag` (with `to`), `scroll` (`up` or `down`, with `in` and `pixels`), `upload` (a file path, with `into`), `wait` (`{ "text": "..." }`, `{ "text": "...", "gone": true }` or seconds). `at` is where on the element, as fractions of its box: `{ "x": 0.9, "y": 0.5 }`. A step written by hand has no pin and no outcome, so rehearse and shoot can't check it pressed the right thing: prefer exploring it and copying it from the log.
 
 ## 3. Rehearse until it's acceptable
 

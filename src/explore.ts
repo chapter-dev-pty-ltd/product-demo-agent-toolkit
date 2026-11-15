@@ -4,12 +4,13 @@ import { existsSync, openSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
+import { parseArgs } from 'node:util'
 import type { Locator, Page } from 'playwright-core'
 import { readConfig } from './config.ts'
-import { describeStep, type Step, type Target } from './film.ts'
+import { describeStep, KEYS, type Key, type Point, type Step, type Target } from './film.ts'
 import { LOG, readLog, startLog, writeLog } from './log.ts'
 import { before, outcomeSince } from './outcome.ts'
-import { find, VIEWPORT } from './perform.ts'
+import { act, find, Hand, VIEWPORT, type Finder } from './perform.ts'
 import { watch } from './settle.ts'
 import { fingerprint } from './similo.ts'
 import { launchBrowser } from './tools.ts'
@@ -78,6 +79,7 @@ export async function serve(url: string): Promise<void> {
   const browser = await launchBrowser()
   let page = await browser.newPage({ viewport: VIEWPORT })
   let settler = watch(page)
+  let hand = new Hand(page, true)
   await page.goto(url)
   await settler.settled()
   let looks = 0
@@ -98,26 +100,39 @@ export async function serve(url: string): Promise<void> {
     return `${now.pathname}${now.search}${now.hash}`
   }
 
-  /** Runs an action, then logs it with what it changed. */
-  const act = async (step: Step, run: () => Promise<void>, said: string) => {
+  /**
+   * Performs a step the way a shoot will, at once, then logs it with what it changed. The
+   * elements it names were just pinned, so they're used as they are, not found again.
+   */
+  const logged = async (step: Step, said: string, aimed: Aimed[] = []) => {
     const log = await readLog()
     const was = await before(page)
-    await settler.mark()
-    await run()
-    const settled = await settler.settled()
-    const outcome = await outcomeSince(page, was)
-    const n = log.entries.length + 1
-    const warning = settled.settled
-      ? undefined
-      : `The page hadn't settled after 10s: ${settled.waitingOn.join(', ')}.`
-    log.entries.push({
-      n,
-      step: outcome ? { ...step, outcome } : step,
-      at: address(),
-      ...(warning ? { warning } : {}),
-    })
-    await writeLog(log)
-    return `${n}. ${said}${outcome?.url ? ` Now at ${outcome.url}.` : ''}${warning ? ` ${warning}` : ''}`
+    const finder: Finder = async (target) => {
+      const known = aimed.find((a) => a.target === target)
+      if (!known) return find(page, target, config, () => {})
+      await known.element.scrollIntoViewIfNeeded()
+      return known.element
+    }
+    try {
+      await settler.mark()
+      await act(page, hand, url, step, finder)
+      const settled = await settler.settled()
+      const outcome = await outcomeSince(page, was)
+      const n = log.entries.length + 1
+      const warning = settled.settled
+        ? undefined
+        : `The page hadn't settled after 10s: ${settled.waitingOn.join(', ')}.`
+      log.entries.push({
+        n,
+        step: outcome ? { ...step, outcome } : step,
+        at: address(),
+        ...(warning ? { warning } : {}),
+      })
+      await writeLog(log)
+      return `${n}. ${said}${outcome?.url ? ` Now at ${outcome.url}.` : ''}${warning ? ` ${warning}` : ''}`
+    } finally {
+      for (const a of aimed) await a.release()
+    }
   }
 
   const commands: Record<string, (args: string[]) => Promise<string>> = {
@@ -137,53 +152,121 @@ export async function serve(url: string): Promise<void> {
           : ''
       return `${page.url()} — "${await page.title()}"\n${trimmed}${off}\n\nScreenshot with refs: ${shot}`
     },
-    click: async ([ref]) => {
-      const element = byRef(page, ref)
-      const target = await pin(element)
-      return act({ click: target }, () => element.click(), `Clicked ${target.locator}.`)
+    handles: async () => handles(page),
+    click: async (args) => {
+      const { values, positionals } = parseArgs({
+        args,
+        allowPositionals: true,
+        options: {
+          at: { type: 'string' },
+          double: { type: 'boolean' },
+          right: { type: 'boolean' },
+          with: { type: 'string' },
+        },
+      })
+      const aimed = await aim(page, positionals[0], values.at)
+      const modifiers = keys(values.with)
+      const step: Step = {
+        click: aimed.target,
+        ...(aimed.at ? { at: aimed.at } : {}),
+        ...(values.double ? { double: true } : {}),
+        ...(values.right ? { right: true } : {}),
+        ...(modifiers.length ? { modifiers } : {}),
+      }
+      return logged(step, `${describeStep(step)}.`, [aimed])
     },
     fill: async ([ref, text]) => {
       if (text === undefined) throw new Error('Usage: product-demo fill <ref> "text"')
-      const element = byRef(page, ref)
-      const target = await pin(element)
-      return act({ fill: target, text }, () => element.fill(text), `Filled ${target.locator}.`)
+      const aimed = await aim(page, ref)
+      return logged({ fill: aimed.target, text }, `Filled ${aimed.target.locator}.`, [aimed])
+    },
+    select: async ([ref, option]) => {
+      if (option === undefined) throw new Error('Usage: product-demo select <ref> "option"')
+      const aimed = await aim(page, ref)
+      return logged({ select: aimed.target, option }, `Chose "${option}".`, [aimed])
+    },
+    type: async ([text]) => {
+      if (text === undefined) throw new Error('Usage: product-demo type "text"')
+      return logged({ type: text }, `Typed "${text}".`)
     },
     press: async ([key]) => {
       if (!key) throw new Error('Usage: product-demo press <key>')
-      return act({ press: key }, () => page.keyboard.press(key), `Pressed ${key}.`)
+      return logged({ press: key }, `Pressed ${key}.`)
     },
-    scroll: async ([direction]) => {
+    hover: async (args) => {
+      const { values, positionals } = parseArgs({
+        args,
+        allowPositionals: true,
+        options: { at: { type: 'string' }, for: { type: 'string' } },
+      })
+      const aimed = await aim(page, positionals[0], values.at)
+      const seconds = values.for === undefined ? undefined : Number(values.for)
+      const step: Step = {
+        hover: aimed.target,
+        ...(aimed.at ? { at: aimed.at } : {}),
+        ...(seconds ? { seconds } : {}),
+      }
+      return logged(step, `Hovered over ${aimed.target.locator}.`, [aimed])
+    },
+    drag: async (args) => {
+      const { values, positionals } = parseArgs({
+        args,
+        allowPositionals: true,
+        options: { at: { type: 'string' }, 'to-at': { type: 'string' } },
+      })
+      if (positionals.length !== 2) throw new Error('Usage: product-demo drag <from> <to>')
+      const from = await aim(page, positionals[0], values.at)
+      const to = await aim(page, positionals[1], values['to-at']).catch(async (error: unknown) => {
+        await from.release()
+        throw error
+      })
+      const step: Step = {
+        drag: from.target,
+        ...(from.at ? { at: from.at } : {}),
+        to: to.target,
+        ...(to.at ? { toAt: to.at } : {}),
+      }
+      return logged(step, `${describeStep(step)}.`, [from, to])
+    },
+    scroll: async (args) => {
+      const { values, positionals } = parseArgs({
+        args,
+        allowPositionals: true,
+        options: { in: { type: 'string' }, by: { type: 'string' } },
+      })
+      const [direction] = positionals
       if (direction !== 'up' && direction !== 'down')
-        throw new Error('Usage: product-demo scroll up|down')
-      return act(
-        { scroll: direction },
-        () => page.mouse.wheel(0, direction === 'down' ? 600 : -600),
-        `Scrolled ${direction}.`,
-      )
+        throw new Error('Usage: product-demo scroll up|down [--in <ref>] [--by <pixels>]')
+      const pane = values.in === undefined ? undefined : await aim(page, values.in)
+      const step: Step = {
+        scroll: direction,
+        ...(pane ? { in: pane.target } : {}),
+        ...(values.by ? { pixels: Number(values.by) } : {}),
+      }
+      return logged(step, `${describeStep(step)}.`, pane ? [pane] : [])
+    },
+    upload: async ([file, ref]) => {
+      if (!file) throw new Error('Usage: product-demo upload <file> [<ref of the upload control>]')
+      const control = ref === undefined ? undefined : await aim(page, ref)
+      const step: Step = { upload: file, ...(control ? { into: control.target } : {}) }
+      return logged(step, `Uploaded ${file}.`, control ? [control] : [])
     },
     visit: async ([path]) => {
       if (!path) throw new Error('Usage: product-demo visit <path>')
-      return act(
-        { visit: path },
-        async () => void (await page.goto(new URL(path, url).href)),
-        `Opened ${path}.`,
-      )
+      return logged({ visit: path }, `Opened ${path}.`)
     },
-    wait: async ([what]) => {
-      if (!what) throw new Error('Usage: product-demo wait "text" | <seconds>')
+    wait: async (args) => {
+      const { values, positionals } = parseArgs({
+        args,
+        allowPositionals: true,
+        options: { gone: { type: 'boolean' } },
+      })
+      const [what] = positionals
+      if (!what) throw new Error('Usage: product-demo wait "text" [--gone] | <seconds>')
       const seconds = Number(what)
-      if (Number.isFinite(seconds)) {
-        return act(
-          { wait: seconds },
-          () => page.waitForTimeout(seconds * 1000),
-          `Waited ${seconds}s.`,
-        )
-      }
-      return act(
-        { wait: { text: what } },
-        () => page.getByText(what).first().waitFor({ timeout: 30_000 }),
-        `"${what}" is on screen.`,
-      )
+      if (Number.isFinite(seconds)) return logged({ wait: seconds }, `Waited ${seconds}s.`)
+      const step: Step = { wait: { text: what, ...(values.gone ? { gone: true } : {}) } }
+      return logged(step, values.gone ? `"${what}" has gone.` : `"${what}" is on screen.`)
     },
     back: async () => {
       // A browser can't undo a click, so going back marks the last step undone and replays
@@ -196,18 +279,19 @@ export async function serve(url: string): Promise<void> {
       await page.close()
       page = await browser.newPage({ viewport: VIEWPORT })
       settler = watch(page)
+      hand = new Hand(page, true)
       await page.goto(url)
       await settler.settled()
       const path = log.entries.filter((e) => !e.undone)
       for (const entry of path) {
         await settler.mark()
-        await replay(page, url, entry.step, (target) => find(page, target, config, () => {})).catch(
-          (error: unknown) => {
-            throw new Error(
-              `Marked step ${last.n} undone, but couldn't replay step ${entry.n} (${describeStep(entry.step)}): ${error instanceof Error ? error.message : String(error)}`,
-            )
-          },
-        )
+        await act(page, hand, url, entry.step, (target) =>
+          find(page, target, config, () => {}),
+        ).catch((error: unknown) => {
+          throw new Error(
+            `Marked step ${last.n} undone, but couldn't replay step ${entry.n} (${describeStep(entry.step)}): ${error instanceof Error ? error.message : String(error)}`,
+          )
+        })
         await settler.settled()
       }
       return `Marked step ${last.n} (${describeStep(last.step)}) undone and replayed the ${path.length} steps before it. The screen is as it was before it; run look.`
@@ -247,27 +331,132 @@ export async function serve(url: string): Promise<void> {
   })
 }
 
-/** Performs a step at once, with no pointer or typing to watch: for replaying, not filming. */
-async function replay(
-  page: Page,
-  app: string,
-  step: Step,
-  find: (target: Target) => Promise<Locator>,
-): Promise<void> {
-  if ('visit' in step) await page.goto(new URL(step.visit, app).href)
-  else if ('click' in step) await (await find(step.click)).click()
-  else if ('fill' in step) await (await find(step.fill)).fill(step.text)
-  else if ('press' in step) await page.keyboard.press(step.press)
-  else if ('scroll' in step) await page.mouse.wheel(0, step.scroll === 'down' ? 600 : -600)
-  else if (typeof step.wait !== 'number') {
-    await page.getByText(step.wait.text).first().waitFor({ timeout: 30_000 })
+/** An element named by a ref from `look` or by a point on the screen, pinned. */
+interface Aimed {
+  element: Locator
+  target: Target & { locator: string }
+  /** Where on it, for a point or `--at`. */
+  at?: Point
+  /** Takes off the mark a point leaves on its element while the step uses it. */
+  release: () => Promise<void>
+}
+
+async function aim(page: Page, name: string | undefined, at?: string): Promise<Aimed> {
+  const xy = /^(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)$/.exec(name ?? '')
+  if (!xy) {
+    if (!name || !/^@?\w*e\d+$/.test(name))
+      throw new Error(
+        'Name an element by its ref from `look`, like @e12, or a point on its screenshot, like 640,320.',
+      )
+    const element = page.getByRef(name.replace('@', ''))
+    const where = at === undefined ? undefined : fractions(at)
+    return {
+      element,
+      target: await pin(element),
+      ...(where ? { at: where } : {}),
+      release: async () => {},
+    }
+  }
+  // A point: the element drawn there (inside open shadow roots too), pinned like any other,
+  // and where on it the point falls, so a layout that shifts doesn't move the step.
+  const x = Number(xy[1])
+  const y = Number(xy[2])
+  const mark = randomBytes(4).toString('hex')
+  const box = await page.evaluate(
+    ({ x, y, mark }) => {
+      let element = document.elementFromPoint(x, y)
+      while (element?.shadowRoot) {
+        const inner = element.shadowRoot.elementFromPoint(x, y)
+        if (!inner || inner === element) break
+        element = inner
+      }
+      if (!element) return null
+      const marks = element.getAttribute('data-product-demo-at') ?? ''
+      element.setAttribute('data-product-demo-at', `${marks} ${mark}`.trim())
+      const { left, top, width, height } = element.getBoundingClientRect()
+      return { left, top, width, height }
+    },
+    { x, y, mark },
+  )
+  if (!box || !box.width || !box.height) throw new Error(`Nothing is drawn at ${x},${y}.`)
+  const element = page.locator(`[data-product-demo-at~="${mark}"]`)
+  const release = () =>
+    element.evaluate((el) => el.removeAttribute('data-product-demo-at')).catch(() => {})
+  const round = (n: number) => Math.round(n * 1000) / 1000
+  try {
+    return {
+      element,
+      target: await pin(element),
+      at: { x: round((x - box.left) / box.width), y: round((y - box.top) / box.height) },
+      release,
+    }
+  } catch (error) {
+    await release()
+    throw error
   }
 }
 
-function byRef(page: Page, ref: string | undefined): Locator {
-  if (!ref || !/^@?\w*e\d+$/.test(ref))
-    throw new Error('Name an element by its ref from `look`, like @e12.')
-  return page.getByRef(ref.replace('@', ''))
+/** `0.9,0.5`: where on an element, as fractions of its box. */
+function fractions(at: string): Point {
+  const [x, y] = at.split(',').map(Number)
+  if (x === undefined || y === undefined || !Number.isFinite(x) || !Number.isFinite(y))
+    throw new Error('--at takes fractions of the element, like 0.9,0.5 for near its right edge.')
+  return { x, y }
+}
+
+/** `Shift+Meta`: the keys held through a click. */
+function keys(held: string | undefined): Key[] {
+  if (!held) return []
+  return held.split('+').map((name) => {
+    const key = KEYS.find((k) => k.toLowerCase() === name.toLowerCase())
+    if (!key) throw new Error(`--with takes ${KEYS.join(', ')}, joined by +.`)
+    return key
+  })
+}
+
+/**
+ * The small grab handles on screen (resize, rotate, slider knobs, drag grips) and where
+ * each one's middle is. Editors draw them as tiny elements named or classed for what they
+ * do, often with no accessible name, so the snapshot doesn't list them.
+ */
+async function handles(page: Page): Promise<string> {
+  const found = await page.evaluate(() => {
+    const words = /handle|resize|rotat|knob|grip|thumb|anchor|corner|gap|spacing/i
+    const out: string[] = []
+    for (const element of document.querySelectorAll('body *')) {
+      const box = element.getBoundingClientRect()
+      if (box.width < 3 || box.height < 3 || box.width > 48 || box.height > 48) continue
+      if (box.bottom < 0 || box.top > innerHeight) continue
+      const style = getComputedStyle(element)
+      // Some are marked only by a data attribute, with a see-through hit area.
+      const marks = [...element.attributes]
+        .filter((a) => a.name.startsWith('data-') && words.test(`${a.name} ${a.value}`))
+        .map((a) => `${a.name}=${a.value}`)
+        .join(' ')
+      if (style.visibility === 'hidden' || style.display === 'none') continue
+      if (Number(style.opacity) === 0 && !marks) continue
+      const className = typeof element.className === 'string' ? element.className : ''
+      const name = [
+        element.getAttribute('aria-label'),
+        element.getAttribute('title'),
+        className,
+        marks,
+      ]
+        .filter(Boolean)
+        .join(' ')
+      if (!words.test(name) && !/resize|move|grab|crosshair/.test(style.cursor)) continue
+      const x = Math.round(box.x + box.width / 2)
+      const y = Math.round(box.y + box.height / 2)
+      out.push(
+        `${x},${y}  ${Math.round(box.width)}x${Math.round(box.height)}, cursor ${style.cursor}: ${name.slice(0, 100)}`,
+      )
+      if (out.length >= 40) break
+    }
+    return out
+  })
+  return found.length
+    ? `Handles on screen, at their middles:\n${found.join('\n')}`
+    : 'No small handles on screen. Select the thing first, or look at the screenshot.'
 }
 
 /** The locator Playwright's codegen would write for the element, and its fingerprint. */

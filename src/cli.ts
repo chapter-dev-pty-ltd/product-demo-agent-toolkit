@@ -22,15 +22,22 @@ import {
 
 const USAGE = `product-demo ${version}
 
-1. Explore the app, off camera, to learn it and find the path. Every action is logged, pinned:
+1. Explore the app, off camera, to learn it and find the path. Every action is logged, pinned.
+   Name an element by its ref from look (@e12), or by a point on look's screenshot (640,320):
   product-demo explore <url>          Open the app in a background browser and show the screen
   product-demo look [--all]           What's on screen as an accessibility tree with refs, and a screenshot
-  product-demo click <ref>            Click an element by its ref from look, like @e12
-  product-demo fill <ref> "text"      Type into a field
-  product-demo press <key>            Press a key, like Enter
-  product-demo scroll up|down
+  product-demo handles                The small grab handles on screen (resize, rotate, sliders) and where they are
+  product-demo click <el> [--double] [--right] [--with Shift+Meta] [--at 0.9,0.5]
+  product-demo fill <el> "text"       Click into a field and type, replacing what's there
+  product-demo select <el> "option"   Choose an option in a native <select>
+  product-demo type "text"            Type where the caret is, like "@Sam" to open a mention menu
+  product-demo press <key>            Press a key, like Enter or Meta+K
+  product-demo hover <el> [--for 2]   Rest the pointer on an element, to show it or open what it reveals
+  product-demo drag <el> <el> [--at x,y] [--to-at x,y]
+  product-demo scroll up|down [--in <el>] [--by 600]
+  product-demo upload <file> [<el>]   Upload a file through the control that opens the picker
   product-demo visit <path>
-  product-demo wait "text"|<seconds>  Wait for text to appear, or add a pause
+  product-demo wait "text" [--gone] | <seconds>
   product-demo back                   Mark the last step undone and return to the screen before it
   product-demo end                    Close the browser
 
@@ -47,26 +54,35 @@ keep (rehearsals and shoots kept per film, default 10), review (cut also makes t
 
 const EXPLORE = new Set([
   'look',
+  'handles',
   'click',
   'fill',
+  'select',
+  'type',
   'press',
+  'hover',
+  'drag',
   'scroll',
+  'upload',
   'visit',
   'wait',
   'back',
   'end',
 ])
 
+// Explore commands take their own options, read by the browser process.
+const raw = process.argv.slice(2)
+const exploring = EXPLORE.has(raw[0] ?? '')
 const { values, positionals } = parseArgs({
+  args: exploring ? [] : raw,
   allowPositionals: true,
   options: {
     out: { type: 'string', short: 'o' },
-    all: { type: 'boolean' },
     version: { type: 'boolean', short: 'v' },
     help: { type: 'boolean', short: 'h' },
   },
 })
-const [command, ...args] = positionals
+const [command, ...args] = exploring ? raw : positionals
 const [input] = args
 
 const warn = (warnings: string[]) => {
@@ -81,7 +97,7 @@ try {
   } else if (command === 'explore' && input) {
     console.log(await explore(input))
   } else if (command && EXPLORE.has(command)) {
-    console.log(await send(command, values.all ? ['--all'] : args))
+    console.log(await send(command, args))
   } else if (command === 'rehearse' && input) {
     const config = await readConfig()
     const dir = await newRun('rehearsals', input, config.keep)
