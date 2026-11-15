@@ -270,9 +270,8 @@ const PRESSABLE =
 async function screenshotWithRefs(page: Page, snapshot: string, path: string): Promise<void> {
   const labels: { ref: string; x: number; y: number; width: number; height: number }[] = []
   for (const line of snapshot.split('\n')) {
-    const match = /- (\w+)\b.*\[ref=(\w*e\d+)\].*\[box=([\d.-]+),([\d.-]+),([\d.-]+),([\d.-]+)\]/.exec(
-      line,
-    )
+    const match =
+      /- (\w+)\b.*\[ref=(\w*e\d+)\].*\[box=([\d.-]+),([\d.-]+),([\d.-]+),([\d.-]+)\]/.exec(line)
     if (!match || !PRESSABLE.test(match[1] ?? '')) continue
     const [x, y, width, height] = match.slice(3, 7).map(Number)
     if (x === undefined || y === undefined || !width || !height) continue

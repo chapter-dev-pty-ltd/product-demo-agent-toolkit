@@ -13,7 +13,8 @@ import type { Page, Request } from 'playwright-core'
 //    "do this in a moment" (a debounce, a delayed navigation, a staged render) is waited
 //    for. A clock that ticks forever, or polling started long before, isn't.
 //  - The DOM hasn't changed for 300ms since the action, ignoring our own pointer.
-//  - No finite animation or transition is running. Endless ones (a pulsing dot) don't count.
+//  - No finite animation or transition is running. Endless ones (a pulsing dot) and scroll-
+//    driven ones (a fade tied to how far a list is scrolled) don't count.
 //  - Fonts are loaded and the images on screen have loaded or failed.
 //  - Nothing on screen says it is busy: aria-busy, a progressbar, a spinner or skeleton.
 //  - A Showroom that reports its own status says it isn't loading.
@@ -176,31 +177,67 @@ function lookAtScreen(quietMs: number): string[] {
   )
   if (scheduled.length > 0) going.push(`${scheduled.length} timers`)
 
+  // Only what a viewer could see holds the page up: on screen, big enough to notice, and
+  // not hidden by visibility or opacity anywhere up its tree. GitHub keeps its spinners in
+  // the page after loading, out of sight; they mustn't count.
   const onScreen = (el: Element) => {
     const box = el.getBoundingClientRect()
     return (
-      box.width > 0 &&
-      box.height > 0 &&
+      box.width >= 4 &&
+      box.height >= 4 &&
       box.bottom > 0 &&
       box.top < innerHeight &&
-      getComputedStyle(el).visibility !== 'hidden'
+      box.right > 0 &&
+      box.left < innerWidth &&
+      el.checkVisibility({ opacityProperty: true, visibilityProperty: true })
     )
+  }
+  const named = (el: Element) => {
+    const label = el.getAttribute('aria-label') ?? el.getAttribute('class') ?? ''
+    return `${el.tagName.toLowerCase()}${label ? ` "${label.slice(0, 40)}"` : ''}`
   }
   const images = Array.from(document.images).filter((img) => !img.complete && onScreen(img))
   if (images.length > 0) going.push(`${images.length} images`)
 
+  // Only animations on the page's clock that will end. A scroll-driven one (a fade tied to
+  // a scroll position) reports "running" forever, and an endless one never finishes.
   const running = document.getAnimations().filter((animation) => {
-    const iterations = animation.effect?.getComputedTiming().iterations
-    return animation.playState === 'running' && iterations !== Infinity
+    const timing = animation.effect?.getComputedTiming()
+    const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null
+    return (
+      animation.playState === 'running' &&
+      animation.timeline === document.timeline &&
+      typeof timing?.duration === 'number' &&
+      timing.iterations !== Infinity &&
+      (!target || onScreen(target))
+    )
   })
-  if (running.length > 0) going.push(`${running.length} animations`)
+  if (running.length > 0) {
+    const names = running.map((a) =>
+      a instanceof CSSAnimation
+        ? a.animationName
+        : a instanceof CSSTransition
+          ? a.transitionProperty
+          : 'script',
+    )
+    going.push(`animations (${[...new Set(names)].slice(0, 3).join(', ')})`)
+  }
 
-  const busy = Array.from(
-    document.querySelectorAll(
-      '[aria-busy="true"],[role="progressbar"]:not([aria-valuenow]),[class*="spinner" i],[class*="skeleton" i],[class*="shimmer" i]',
-    ),
+  // The app saying it's busy: aria-busy, or a progress bar with no value. A class like
+  // "spinner" or "skeleton" only counts when something in it is visibly moving: GitHub keeps
+  // a SpinnerVisible container on screen whose spinner is long gone.
+  const moving = document
+    .getAnimations()
+    .map((a) => (a.effect instanceof KeyframeEffect ? a.effect.target : null))
+    .filter((target): target is Element => target !== null && onScreen(target))
+  const declared = Array.from(
+    document.querySelectorAll('[aria-busy="true"],[role="progressbar"]:not([aria-valuenow])'),
   ).filter(onScreen)
-  if (busy.length > 0) going.push('something on screen saying it is busy')
+  const looksBusy = Array.from(
+    document.querySelectorAll('[class*="spinner" i],[class*="skeleton" i],[class*="shimmer" i]'),
+  ).filter((el) => onScreen(el) && moving.some((target) => el === target || el.contains(target)))
+  const busy = declared[0] ?? looksBusy[0]
+  if (busy) going.push(`something on screen saying it is busy (${named(busy)})`)
 
   const showroom: unknown = Reflect.get(window, '__SHOWROOM__')
   if (

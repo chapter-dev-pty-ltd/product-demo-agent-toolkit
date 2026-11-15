@@ -10,7 +10,8 @@ const PAGES: Record<string, string> = {
   '/late-navigation': `<button onclick="setTimeout(() => location.href = '/slow-page', 400)">Go</button>`,
   '/slow-page': `<h1>Arrived</h1>`,
   '/fetch': `<button onclick="fetch('/slow-data').then(r => r.text()).then(t => document.body.append(t))">Load</button>`,
-  '/spinner': `<button onclick="
+  '/spinner': `<style>@keyframes spin{to{transform:rotate(1turn)}} .Spinner_x1{animation:spin 1s infinite;width:20px;height:20px}</style>
+    <button onclick="
       const s = document.createElement('div'); s.className = 'Spinner_x1'; s.textContent = '...';
       document.body.append(s); setTimeout(() => { s.remove(); document.body.append('Done') }, 1200)">Save</button>`,
   '/transition': `<style>#panel{width:100px;height:100px;background:red;transition:transform 800ms}
@@ -18,6 +19,15 @@ const PAGES: Record<string, string> = {
       <div id="panel"></div><button onclick="panel.classList.add('open')">Open</button>`,
   '/endless': `<style>@keyframes pulse{to{opacity:.2}} i{animation:pulse 1s infinite}</style>
       <i>live</i><button onclick="document.body.append('Clicked')">Press</button>`,
+  '/scroll-fade': `<style>@keyframes fade{from{opacity:1}to{opacity:.3}}
+      .list{height:120px;overflow:auto;animation:fade linear both;animation-timeline:scroll()}</style>
+      <div class="list"><div style="height:600px">Items</div></div>
+      <button onclick="document.body.append('Clicked')">Press</button>`,
+  '/hidden-spinner': `<style>@keyframes spin{to{transform:rotate(1turn)}} svg{animation:spin 1s infinite}</style>
+      <div class="Spinner" style="opacity:0"><svg width="20" height="20"></svg></div>
+      <div class="spinner-box" style="visibility:hidden">...</div>
+      <div class="SpinnerVisible" style="height:40px">Labels<svg width="20" height="20" style="display:none"></svg></div>
+      <button onclick="document.body.append('Done')">Go</button>`,
   '/stuck': `<button onclick="
       const s = document.createElement('div'); s.setAttribute('aria-busy', 'true'); s.textContent = 'Loading';
       document.body.append(s)">Start</button>`,
@@ -98,8 +108,20 @@ test('is not held up by an animation that never ends', async () => {
   expect(performance.now() - start).toBeLessThan(3000)
 })
 
+test('is not held up by an animation tied to scrolling', async () => {
+  const start = performance.now()
+  const { result } = await pressAndSettle('/scroll-fade')
+  expect(result.settled).toBe(true)
+  expect(performance.now() - start).toBeLessThan(3000)
+})
+
+test('is not held up by a spinner kept in the page out of sight', async () => {
+  const { result } = await pressAndSettle('/hidden-spinner')
+  expect(result.settled).toBe(true)
+})
+
 test('gives up on something busy forever, and says what', async () => {
   const { result } = await pressAndSettle('/stuck', 1500)
   expect(result.settled).toBe(false)
-  expect(result.waitingOn).toContain('something on screen saying it is busy')
+  expect(result.waitingOn.join()).toContain('something on screen saying it is busy')
 })
