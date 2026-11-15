@@ -14,7 +14,6 @@
   "files": [
     "dist",
     "skills",
-    "skill-data",
     "library"
   ],
   "engines": {
@@ -31,7 +30,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "lint": "oxlint",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm build"

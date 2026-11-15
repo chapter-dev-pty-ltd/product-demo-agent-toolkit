@@ -32,7 +32,7 @@ const config: z.ZodType<Config> = z.strictObject({
     ),
 })
 
-export const CONFIG_FILE: string = join('.product-demo', 'config.json')
+const CONFIG_FILE: string = join('.product-demo', 'config.json')
 
 /** The project's config, with defaults for anything it doesn't set. */
 export async function readConfig(): Promise<Config> {

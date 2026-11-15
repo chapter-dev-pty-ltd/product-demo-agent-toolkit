@@ -12,7 +12,7 @@ export async function readFootage(footageDir: string): Promise<Footage> {
   return JSON.parse(await readFile(join(footageDir, 'footage.json'), 'utf8'))
 }
 
-/** How long the cut of this footage runs, in seconds: the take plus the ending's hold. */
+/** How long the cut of this footage runs, in seconds: the footage plus the ending's hold. */
 export function videoLength(footage: Footage): number {
   return footage.end + (footage.film.ending?.hold ?? 2) - (footage.frames[0]?.at ?? 0)
 }
