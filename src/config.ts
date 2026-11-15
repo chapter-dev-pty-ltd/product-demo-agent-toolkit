@@ -8,21 +8,17 @@ export const BACKDROPS = ['halo', 'sky', 'violet'] as const
 export interface Config {
   mode: 'ask' | 'just_do_it'
   backdrop: (typeof BACKDROPS)[number]
-  footage: { keep: number }
+  keep: number
 }
 
 const config: z.ZodType<Config> = z.strictObject({
   backdrop: z.enum(BACKDROPS).default('halo').describe('What the app is framed on in the video.'),
-  footage: z
-    .strictObject({
-      keep: z
-        .number()
-        .int()
-        .min(1)
-        .default(10)
-        .describe('How many recordings of each film to keep. Older ones are deleted.'),
-    })
-    .default({ keep: 10 }),
+  keep: z
+    .number()
+    .int()
+    .min(1)
+    .default(10)
+    .describe('How many rehearsals and shoots of each film to keep. Older ones are deleted.'),
   mode: z
     .enum(['ask', 'just_do_it'])
     .default('ask')

@@ -5,16 +5,17 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
-import type { Film, Step, Target } from './film.ts'
+import { readConfig } from './config.ts'
+import { describeStep, readFilm, type Film, type Step, type Target } from './film.ts'
 import { before, outcomeSince } from './outcome.ts'
-import { VIEWPORT } from './record.ts'
+import { find, VIEWPORT } from './perform.ts'
 import { watch } from './settle.ts'
 import { fingerprint } from './similo.ts'
 import { launchBrowser } from './tools.ts'
 
-// Exploring: the agent drives a browser one command at a time, off camera. A small
-// process in the background holds the browser between commands, and every action the
-// agent takes is pinned into a draft film it can edit and then record.
+// Exploring: the agent drives a browser one command at a time, off camera, to learn the
+// app and find the path. A small process of ours holds the browser between commands, and
+// every action the agent takes is pinned into a draft film it can edit, rehearse and shoot.
 
 const DIR = join('.product-demo', 'explore')
 const SESSION = join(DIR, 'session.json')
@@ -72,12 +73,12 @@ export async function send(command: string, args: string[]): Promise<string> {
 
 /** The background process: holds the browser and answers commands until `end`. */
 export async function serve(url: string): Promise<void> {
+  const config = await readConfig()
   const browser = await launchBrowser()
-  const page = await browser.newPage({ viewport: VIEWPORT })
-  const settler = watch(page)
+  let page = await browser.newPage({ viewport: VIEWPORT })
+  let settler = watch(page)
   await page.goto(url)
   await settler.settled()
-  const film: Film = { app: url, steps: [] }
   let looks = 0
   let idle = setTimeout(() => void stop(), IDLE_MS)
 
@@ -87,19 +88,23 @@ export async function serve(url: string): Promise<void> {
     process.exit(0)
   }
 
-  const add = async (step: Step) => {
-    film.steps.push(step)
-    await writeFile(DRAFT, JSON.stringify(film, null, 2))
-  }
+  // The draft lives in the file, not here: the agent may edit it between commands (notes,
+  // a deleted wrong turn), so it is read back before every change and never overwritten
+  // from memory. A draft that doesn't parse stops the action before it happens.
+  await writeFile(DRAFT, JSON.stringify({ app: url, steps: [] }, null, 2))
+  const draft = () => readFilm(DRAFT, { draft: true })
+  const save = (film: Film) => writeFile(DRAFT, JSON.stringify(film, null, 2))
 
-  /** Runs an action, then adds it to the draft with what it did. */
+  /** Runs an action, then adds it to the draft with what it changed. */
   const act = async (step: Step, run: () => Promise<void>, said: string) => {
+    const film = await draft()
     const was = await before(page)
     await settler.mark()
     await run()
     const settled = await settler.settled()
     const outcome = await outcomeSince(page, was)
-    await add(outcome ? { ...step, outcome } : step)
+    film.steps.push(outcome ? { ...step, outcome } : step)
+    await save(film)
     const still = settled.settled
       ? ''
       : ` The page hadn't settled after 10s: ${settled.waitingOn.join(', ')}.`
@@ -115,7 +120,7 @@ export async function serve(url: string): Promise<void> {
       const text = snapshot.replace(/ \[box=[\d.,-]+\]/g, '')
       const trimmed =
         text.length > 40_000 ? `${text.slice(0, 40_000)}\n… (cut at 40,000 characters)` : text
-      return `${page.url()} — "${await page.title()}"\n${trimmed}\n\nScreenshot with refs: ${shot}`
+      return `${page.url()} — "${await page.title()}"\n${trimmed}\n\nScreenshot with refs: ${shot}\nDraft film: ${DRAFT}`
     },
     click: async ([ref]) => {
       const element = byRef(page, ref)
@@ -151,21 +156,50 @@ export async function serve(url: string): Promise<void> {
     },
     wait: async ([what]) => {
       if (!what) throw new Error('Usage: product-demo wait "text" | <seconds>')
+      const film = await draft()
       const seconds = Number(what)
       if (Number.isFinite(seconds)) {
-        await add({ wait: seconds })
+        film.steps.push({ wait: seconds })
+        await save(film)
         return `Added a ${seconds}s wait.`
       }
       await page.getByText(what).first().waitFor({ timeout: 30_000 })
-      await add({ wait: { text: what } })
+      film.steps.push({ wait: { text: what } })
+      await save(film)
       return `"${what}" is on screen.`
     },
+    back: async () => {
+      // A browser can't undo a click, so going back is a fresh browser that replays the
+      // draft without its last step, quickly and off camera.
+      const film = await draft()
+      const dropped = film.steps.pop()
+      if (!dropped) throw new Error('There are no steps to go back from.')
+      await save(film)
+      await page.close()
+      page = await browser.newPage({ viewport: VIEWPORT })
+      settler = watch(page)
+      await page.goto(url)
+      await settler.settled()
+      for (const [index, step] of film.steps.entries()) {
+        await settler.mark()
+        await replay(page, url, step, (target) => find(page, target, config, () => {})).catch(
+          (error: unknown) => {
+            throw new Error(
+              `Dropped ${describeStep(dropped)}, but couldn't replay step ${index + 1} (${describeStep(step)}): ${error instanceof Error ? error.message : String(error)}`,
+            )
+          },
+        )
+        await settler.settled()
+      }
+      return `Dropped ${describeStep(dropped)} and replayed the ${film.steps.length} steps before it. The screen is as it was before that step; run look.`
+    },
     end: async ([out = 'film.json']) => {
+      const film = await draft()
       if (film.steps.length === 0)
         throw new Error('Nothing was done, so there is no film to write.')
       await writeFile(out, JSON.stringify(film, null, 2))
       setTimeout(() => void stop(), 100)
-      return `Wrote ${out} with ${film.steps.length} steps. Edit it, then: product-demo record ${out}`
+      return `Wrote ${out} with ${film.steps.length} steps. Clean it up, add notes, then: product-demo rehearse ${out}`
     },
   }
 
@@ -183,7 +217,9 @@ export async function serve(url: string): Promise<void> {
       const { command, args }: { command: string; args: string[] } = JSON.parse(body)
       const run = commands[command]
       if (!run) throw new Error(`No explore command named ${command}.`)
-      response.writeHead(200).end(await run(args))
+      // Run first: a header sent before the command fails can't be taken back.
+      const answer = await run(args)
+      response.writeHead(200).end(answer)
     } catch (error) {
       response.writeHead(400).end(error instanceof Error ? error.message : String(error))
     }
@@ -193,6 +229,23 @@ export async function serve(url: string): Promise<void> {
     const port = typeof address === 'object' && address ? address.port : 0
     await writeFile(SESSION, JSON.stringify({ port, token } satisfies Session))
   })
+}
+
+/** Performs a step at once, with no pointer or typing to watch: for replaying, not filming. */
+async function replay(
+  page: Page,
+  app: string,
+  step: Step,
+  find: (target: Target) => Promise<Locator>,
+): Promise<void> {
+  if ('visit' in step) await page.goto(new URL(step.visit, app).href)
+  else if ('click' in step) await (await find(step.click)).click()
+  else if ('fill' in step) await (await find(step.fill)).fill(step.text)
+  else if ('press' in step) await page.keyboard.press(step.press)
+  else if ('scroll' in step) await page.mouse.wheel(0, step.scroll === 'down' ? 600 : -600)
+  else if (typeof step.wait !== 'number') {
+    await page.getByText(step.wait.text).first().waitFor({ timeout: 30_000 })
+  }
 }
 
 function byRef(page: Page, ref: string | undefined): Locator {

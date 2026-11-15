@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
 import type { Config } from './config.ts'
@@ -10,21 +10,97 @@ import { launchBrowser } from './tools.ts'
 
 export const VIEWPORT = { width: 1440, height: 900 }
 
-/** What `record` leaves for `cut`: the film it performed and every frame, timed from the start. */
+// Rehearse and shoot are the same run: a fresh browser, every step performed at a
+// person's pace with a hand-moved pointer, settling and checking each step's outcome.
+// Shooting films it; rehearsing leaves a still after every step to judge it by instead.
+
+/** What a rehearsal leaves: a still of the opening screen and after every step. */
+export interface Rehearsal {
+  film: Film
+  stills: { step: string; file: string }[]
+  /** Choices made without asking (`just_do_it`), recoveries, and steps that never settled. */
+  warnings: string[]
+}
+
+/** What a shoot leaves for `cut`: every frame, timed from the start. */
 export interface Footage {
   film: Film
   frames: { file: string; at: number }[]
   end: number
-  /** Choices made without asking (`just_do_it`), and recoveries, step by step. */
-  notes: string[]
+  /** Choices made without asking (`just_do_it`), recoveries, and steps that never settled. */
+  warnings: string[]
 }
+
+/** A step that can't go on until someone decides something. Trying again won't help. */
+export class NeedsDecision extends Error {}
 
 const CURSOR = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26"><path d="M3 2l17 11.5-7.4 1.4 4.3 8.2-3.2 1.6-4.3-8.3L3 21z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>`
 
-export async function record(film: Film, out: string, config: Config): Promise<Footage> {
-  await rm(out, { recursive: true, force: true })
-  await mkdir(join(out, 'frames'), { recursive: true })
+/** Performs the film without a camera, keeping a still after each step. */
+export async function rehearse(film: Film, dir: string, config: Config): Promise<Rehearsal> {
+  const stills: Rehearsal['stills'] = []
+  const warnings = await perform(film, dir, config, {
+    still: async (page, step, index) => {
+      const file = join(dir, `${String(index).padStart(2, '0')}.png`)
+      await page.screenshot({ path: file })
+      stills.push({ step, file })
+    },
+  })
+  const rehearsal: Rehearsal = { film, stills, warnings }
+  await writeFile(join(dir, 'rehearsal.json'), JSON.stringify(rehearsal, null, 2))
+  return rehearsal
+}
 
+/** Performs the film on camera, keeping every frame. */
+export async function shoot(film: Film, dir: string, config: Config): Promise<Footage> {
+  await mkdir(join(dir, 'frames'), { recursive: true })
+  const frames: Footage['frames'] = []
+  const writes: Promise<void>[] = []
+  let started = 0
+  let end = 0
+  const warnings = await perform(film, dir, config, {
+    camera: async (page) => {
+      started = performance.now()
+      const session = await page.context().newCDPSession(page)
+      session.on('Page.screencastFrame', (event) => {
+        void session.send('Page.screencastFrameAck', { sessionId: event.sessionId }).catch(() => {})
+        const file = join('frames', `${String(frames.length).padStart(6, '0')}.jpg`)
+        frames.push({ file, at: (performance.now() - started) / 1000 })
+        writes.push(writeFile(join(dir, file), Buffer.from(event.data, 'base64')))
+      })
+      await session.send('Page.startScreencast', {
+        format: 'jpeg',
+        quality: 90,
+        maxWidth: VIEWPORT.width,
+        maxHeight: VIEWPORT.height,
+      })
+      return async () => {
+        end = (performance.now() - started) / 1000
+        await session.send('Page.stopScreencast')
+      }
+    },
+  })
+  await Promise.all(writes)
+  const footage: Footage = { film, frames, end, warnings }
+  await writeFile(join(dir, 'footage.json'), JSON.stringify(footage, null, 2))
+  return footage
+}
+
+interface Watchers {
+  /** Starts filming once the opening screen has settled; returns how to stop, before the browser closes. */
+  camera?: (page: Page) => Promise<() => Promise<void>>
+  /** Keeps a still of the screen: the opening one (index 0), then after each step. */
+  still?: (page: Page, step: string, index: number) => Promise<void>
+}
+
+/** One run of the film in a fresh browser. Returns its warnings; throws at the first step that fails. */
+async function perform(
+  film: Film,
+  dir: string,
+  config: Config,
+  watchers: Watchers,
+): Promise<string[]> {
+  await mkdir(dir, { recursive: true })
   const browser = await launchBrowser()
   try {
     const page = await browser.newPage({ viewport: VIEWPORT })
@@ -34,51 +110,36 @@ export async function record(film: Film, out: string, config: Config): Promise<F
     const hand = new Hand(page)
     await hand.rest(VIEWPORT.width / 2, VIEWPORT.height / 2)
     await settler.settled({ beat: 400 })
+    const stopCamera = await watchers.camera?.(page)
+    await watchers.still?.(page, 'the opening screen', 0)
 
-    const frames: Footage['frames'] = []
-    const writes: Promise<void>[] = []
-    const start = performance.now()
-    const now = () => (performance.now() - start) / 1000
-    const session = await page.context().newCDPSession(page)
-    session.on('Page.screencastFrame', (event) => {
-      void session.send('Page.screencastFrameAck', { sessionId: event.sessionId }).catch(() => {})
-      const file = join('frames', `${String(frames.length).padStart(6, '0')}.jpg`)
-      frames.push({ file, at: now() })
-      writes.push(writeFile(join(out, file), Buffer.from(event.data, 'base64')))
-    })
-    await session.send('Page.startScreencast', {
-      format: 'jpeg',
-      quality: 90,
-      maxWidth: VIEWPORT.width,
-      maxHeight: VIEWPORT.height,
-    })
-
-    const notes: string[] = []
+    const warnings: string[] = []
     for (const [index, step] of film.steps.entries()) {
       const label = `Step ${index + 1} (${describeStep(step)})`
       const finder: Finder = (target) =>
-        find(page, target, config, (note) => notes.push(`${label}: ${note}`))
+        find(page, target, config, (warning) => warnings.push(`${label}: ${warning}`))
       try {
         await settler.mark()
-        await perform(page, hand, film.app, step, finder)
+        await act(page, hand, film.app, step, finder)
         const settled = await settler.settled({ beat: 400 })
         if (!settled.settled) {
-          notes.push(`${label}: filmed before the page settled (${settled.waitingOn.join(', ')}).`)
+          warnings.push(
+            `${label}: went on before the page settled (${settled.waitingOn.join(', ')}).`,
+          )
         }
-        if (step.outcome) await checkOutcome(page, step.outcome)
+        const unseen = step.outcome ? await checkOutcome(page, step.outcome) : undefined
+        if (unseen) warnings.push(`${label}: ${unseen}`)
+        await watchers.still?.(page, label, index + 1)
       } catch (error) {
-        await page.screenshot({ path: join(out, 'failed.png') })
+        const failed = join(dir, 'failed.png')
+        await page.screenshot({ path: failed }).catch(() => {})
         const why = error instanceof Error ? error.message : String(error)
-        throw new Error(`${label} failed: ${why}\nThe screen is in ${join(out, 'failed.png')}`)
+        const Failure = error instanceof NeedsDecision ? NeedsDecision : Error
+        throw new Failure(`${label} failed: ${why}\nThe screen is in ${failed}`)
       }
     }
-
-    const end = now()
-    await session.send('Page.stopScreencast')
-    await Promise.all(writes)
-    const footage: Footage = { film, frames, end, notes }
-    await writeFile(join(out, 'footage.json'), JSON.stringify(footage, null, 2))
-    return footage
+    await stopCamera?.()
+    return warnings
   } finally {
     await browser.close()
   }
@@ -86,13 +147,7 @@ export async function record(film: Film, out: string, config: Config): Promise<F
 
 type Finder = (target: Target) => Promise<Locator>
 
-async function perform(
-  page: Page,
-  hand: Hand,
-  app: string,
-  step: Step,
-  find: Finder,
-): Promise<void> {
+async function act(page: Page, hand: Hand, app: string, step: Step, find: Finder): Promise<void> {
   if ('visit' in step) {
     await page.goto(new URL(step.visit, app).href)
     await hand.rest(hand.x, hand.y)
@@ -121,11 +176,11 @@ async function perform(
  * more than one, its Similo fingerprint. When two elements are equally likely, `ask` stops
  * so the agent can ask the user, and `just_do_it` takes the best and notes it.
  */
-async function find(
+export async function find(
   page: Page,
   target: Target,
   config: Config,
-  note: (note: string) => void,
+  note: (warning: string) => void,
 ): Promise<Locator> {
   const locator =
     'selector' in target
@@ -171,9 +226,9 @@ async function find(
     note(`${candidates.length} elements matched; took the first, ${listed[0]}.`)
     return ready(first)
   }
-  throw new Error(
+  throw new NeedsDecision(
     `${candidates.length} elements match it:\n${listed.map((l, i) => `  ${i + 1}. ${l}`).join('\n')}\n` +
-      'Ask the user which one they meant, then pin it with `product-demo explore`.',
+      'Ask the user which one they meant, then explore that step again to pin it.',
   )
 }
 

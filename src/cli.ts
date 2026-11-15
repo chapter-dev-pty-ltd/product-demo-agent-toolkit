@@ -1,22 +1,25 @@
 #!/usr/bin/env node
-import { parseArgs } from 'node:util'
 import { join } from 'node:path'
+import { parseArgs } from 'node:util'
 import {
   cut,
   explore,
-  latestFootage,
-  newFootage,
+  latestRun,
+  NeedsDecision,
+  newRun,
   readConfig,
   readFilm,
-  record,
+  rehearse,
   send,
   serve,
+  shoot,
   version,
+  type Footage,
 } from './index.ts'
 
 const USAGE = `product-demo ${version}
 
-Explore an app, off camera. Each action is added, pinned, to a draft film:
+1. Explore the app, off camera. Each action is added, pinned, to a draft film:
   product-demo explore <url>          Open the app in a background browser and show the screen
   product-demo look                   The screen as an accessibility tree with refs, and a screenshot
   product-demo click <ref>            Click an element by its ref from look, like @e12
@@ -25,16 +28,30 @@ Explore an app, off camera. Each action is added, pinned, to a draft film:
   product-demo scroll up|down
   product-demo visit <path>
   product-demo wait "text"|<seconds>  Wait for text to appear, or add a pause
+  product-demo back                   Drop the last step and return to the screen before it
   product-demo end [--out film.json]  Close the browser and write the film
 
-Film it:
-  product-demo record <film.json>                  Perform the film on camera; prints where the footage went
-  product-demo cut [footage] [--out video.mp4]     Cut footage (the latest, by default) into a video
+2. Rehearse the cleaned-up film: a full run without the camera, with a still after each step:
+  product-demo rehearse <film.json>
+
+3. Shoot it, and cut the footage into a video:
+  product-demo shoot <film.json>
+  product-demo cut [footage] [--out video.mp4]
 
 Settings live in .product-demo/config.json: mode (ask | just_do_it), backdrop (halo | sky | violet),
-footage.keep (recordings kept per film, default 10).`
+keep (rehearsals and shoots kept per film, default 10).`
 
-const EXPLORE = new Set(['look', 'click', 'fill', 'press', 'scroll', 'visit', 'wait', 'end'])
+const EXPLORE = new Set([
+  'look',
+  'click',
+  'fill',
+  'press',
+  'scroll',
+  'visit',
+  'wait',
+  'back',
+  'end',
+])
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -47,6 +64,10 @@ const { values, positionals } = parseArgs({
 const [command, ...args] = positionals
 const [input] = args
 
+const warn = (warnings: string[]) => {
+  for (const warning of warnings) console.log(`Check: ${warning}`)
+}
+
 try {
   if (values.version) {
     console.log(version)
@@ -56,14 +77,36 @@ try {
     console.log(await explore(input))
   } else if (command && EXPLORE.has(command)) {
     console.log(await send(command, command === 'end' && values.out ? [values.out] : args))
-  } else if (command === 'record' && input) {
+  } else if (command === 'rehearse' && input) {
     const config = await readConfig()
-    const out = values.out ?? (await newFootage(input, config.footage.keep))
-    const footage = await record(await readFilm(input), out, config)
-    for (const note of footage.notes) console.log(`Note: ${note}`)
-    console.log(`Recorded ${footage.frames.length} frames, ${footage.end.toFixed(1)}s, into ${out}`)
+    const dir = await newRun('rehearsals', input, config.keep)
+    const rehearsal = await rehearse(await readFilm(input), dir, config)
+    warn(rehearsal.warnings)
+    console.log(
+      `Rehearsed ${rehearsal.film.steps.length} steps. Look at each still before shooting:`,
+    )
+    for (const still of rehearsal.stills) console.log(`  ${still.file}  ${still.step}`)
+  } else if (command === 'shoot' && input) {
+    const config = await readConfig()
+    const film = await readFilm(input)
+    let footage: Footage | undefined
+    let dir = ''
+    for (let attempt = 1; !footage; attempt++) {
+      dir = await newRun('footage', input, config.keep)
+      try {
+        footage = await shoot(film, dir, config)
+      } catch (error) {
+        // A rehearsed film that fails on camera usually flaked (a slow request): one more
+        // try. A decision someone has to make won't change on a second try.
+        if (attempt > 1 || error instanceof NeedsDecision) throw error
+        const why = error instanceof Error ? error.message : String(error)
+        console.log(`The shoot failed, trying once more. ${why}`)
+      }
+    }
+    warn(footage.warnings)
+    console.log(`Shot ${footage.end.toFixed(1)}s into ${dir}. Next: product-demo cut ${dir}`)
   } else if (command === 'cut') {
-    const from = input ?? (await latestFootage())
+    const from = input ?? (await latestRun('footage', 'footage.json'))
     const out = values.out ?? join(from, 'video.mp4')
     await cut(from, out, await readConfig())
     console.log(`Cut ${out}`)

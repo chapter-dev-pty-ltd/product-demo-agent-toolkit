@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { Config } from './config.ts'
-import { VIEWPORT, type Footage } from './record.ts'
+import { VIEWPORT, type Footage } from './perform.ts'
 import { findFfmpeg, launchBrowser, run } from './tools.ts'
 
 const CANVAS = { width: 1920, height: 1080 }

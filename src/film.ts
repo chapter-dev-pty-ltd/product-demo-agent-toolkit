@@ -13,7 +13,7 @@ export type Target =
   | { css: string }
   | { locator: string; selector: string; fingerprint: Fingerprint }
 
-/** What a step changed when it was explored, so `record` can check it changes the same. */
+/** What a step changed when it was explored, so rehearse and shoot can check it changes the same. */
 export interface Outcome {
   /** The address it went to: path, query and hash. */
   url?: string | undefined
@@ -28,11 +28,17 @@ export type Step = (
   | { press: string }
   | { scroll: 'up' | 'down' }
   | { wait: { text: string } | number }
-) & { outcome?: Outcome | undefined }
+) & {
+  outcome?: Outcome | undefined
+  /** Why the step is there, or anything odd about it. Read by people and agents, never run. */
+  note?: string | undefined
+}
 
 /** A demo to perform: the app to open, the steps to take on it, and how long to hold the ending. */
 export interface Film {
   app: string
+  /** What the film is for and what it has to show. Read by people and agents, never run. */
+  notes?: string | undefined
   steps: Step[]
   ending?: { hold: number } | undefined
 }
@@ -70,33 +76,51 @@ const outcome = z
   .strictObject({ url: z.string().optional(), appeared: z.string().optional() })
   .optional()
 
+const note = z.string().optional()
+
 const step: z.ZodType<Step> = z.union([
-  z.strictObject({ visit: z.string(), outcome }),
-  z.strictObject({ click: target, outcome }),
-  z.strictObject({ fill: target, text: z.string(), outcome }),
-  z.strictObject({ press: z.string(), outcome }),
-  z.strictObject({ scroll: z.enum(['up', 'down']), outcome }),
+  z.strictObject({ visit: z.string(), outcome, note }),
+  z.strictObject({ click: target, outcome, note }),
+  z.strictObject({ fill: target, text: z.string(), outcome, note }),
+  z.strictObject({ press: z.string(), outcome, note }),
+  z.strictObject({ scroll: z.enum(['up', 'down']), outcome, note }),
   z.strictObject({
     wait: z.union([z.strictObject({ text: z.string() }), z.number().positive()]),
     outcome,
+    note,
   }),
 ])
 
 const film: z.ZodType<Film> = z.strictObject({
   app: z.url(),
-  steps: z.array(step).min(1),
+  notes: z.string().optional(),
+  steps: z.array(step),
   ending: z.strictObject({ hold: z.number().nonnegative() }).optional(),
 })
 
-export async function readFilm(path: string): Promise<Film> {
-  const parsed = film.safeParse(JSON.parse(await readFile(path, 'utf8')))
+/** Reads a film. A draft (one still being explored) may have no steps yet. */
+export async function readFilm(
+  path: string,
+  { draft = false }: { draft?: boolean } = {},
+): Promise<Film> {
+  let raw: unknown
+  try {
+    raw = JSON.parse(await readFile(path, 'utf8'))
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(`${path} isn't valid JSON (${error.message}). Fix it, then try again.`)
+    }
+    throw error
+  }
+  const parsed = film.safeParse(raw)
   if (!parsed.success) {
     throw new Error(`${path} is not a valid film:\n${z.prettifyError(parsed.error)}`)
   }
+  if (!draft && parsed.data.steps.length === 0) throw new Error(`${path} has no steps.`)
   return parsed.data
 }
 
-/** A step in a sentence, for messages: `click link "COBOL"`. */
+/** A step in a sentence, for messages: `click link "COBOL"`, with its note if it has one. */
 export function describeStep(step: Step): string {
   const of = (t: Target) =>
     'locator' in t
@@ -106,10 +130,19 @@ export function describeStep(step: Step): string {
         : 'text' in t
           ? `"${t.text}"`
           : t.css
-  if ('visit' in step) return `visit ${step.visit}`
-  if ('click' in step) return `click ${of(step.click)}`
-  if ('fill' in step) return `fill ${of(step.fill)} with "${step.text}"`
-  if ('press' in step) return `press ${step.press}`
-  if ('scroll' in step) return `scroll ${step.scroll}`
-  return typeof step.wait === 'number' ? `wait ${step.wait}s` : `wait for "${step.wait.text}"`
+  const said =
+    'visit' in step
+      ? `visit ${step.visit}`
+      : 'click' in step
+        ? `click ${of(step.click)}`
+        : 'fill' in step
+          ? `fill ${of(step.fill)} with "${step.text}"`
+          : 'press' in step
+            ? `press ${step.press}`
+            : 'scroll' in step
+              ? `scroll ${step.scroll}`
+              : typeof step.wait === 'number'
+                ? `wait ${step.wait}s`
+                : `wait for "${step.wait.text}"`
+  return step.note ? `${said}, noted: "${step.note}"` : said
 }
