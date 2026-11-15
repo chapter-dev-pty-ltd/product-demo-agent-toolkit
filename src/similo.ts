@@ -230,13 +230,15 @@ function describe(root: Element, options: { mark: string; tag?: string }): Finge
     return home instanceof ShadowRoot ? home.host : null
   }
   // checkVisibility looks up the tree too: a button in a faded-out dialog isn't visible.
+  // But a form control at opacity 0 of its own is the usual styled checkbox or radio: the
+  // real input, hidden under the label that draws it, and still what a person clicks.
   const visible = (el: Element) => {
     const box = el.getBoundingClientRect()
-    return (
-      box.width > 0 &&
-      box.height > 0 &&
-      el.checkVisibility({ opacityProperty: true, visibilityProperty: true })
-    )
+    if (box.width <= 0 || box.height <= 0) return false
+    if (!el.checkVisibility({ visibilityProperty: true })) return false
+    const parent = parentOf(el)
+    if (parent && !parent.checkVisibility({ opacityProperty: true })) return false
+    return el instanceof HTMLInputElement || getComputedStyle(el).opacity !== '0'
   }
   const pressable = (el: Element) =>
     el.matches('a,button,input,select,textarea,summary,label,[role],[onclick],[tabindex]')

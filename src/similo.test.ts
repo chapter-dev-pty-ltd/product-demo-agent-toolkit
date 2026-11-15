@@ -245,6 +245,18 @@ describe('rank', () => {
     expect(await found(decision).evaluate((el) => el.parentElement?.style.opacity)).toBe('')
   })
 
+  test('finds a styled checkbox whose real input is hidden under its label', async () => {
+    const list = (items: string[]) =>
+      `<style>input{opacity:0;position:absolute;width:20px;height:20px}label{padding-left:28px}</style>
+      <ul>${items.map((i) => `<li><input type="checkbox" id="${i}"><label for="${i}">${i}</label></li>`).join('')}</ul>`
+    const { decision } = await refind(
+      list(['Milk', 'Eggs', 'Bread']),
+      list(['Eggs', 'Bread', 'Milk']),
+      (p) => p.getByRole('checkbox', { name: 'Bread' }),
+    )
+    expect(await found(decision).getAttribute('id')).toBe('Bread')
+  })
+
   test('tells the header link from the footer link after a banner pushed both down', async () => {
     const site = (banner: string) => `${banner}
       <header><a href="/">Acme</a> <a href="/pricing">Pricing</a> <a href="/docs">Docs</a></header>
