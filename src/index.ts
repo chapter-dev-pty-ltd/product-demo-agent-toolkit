@@ -6,6 +6,7 @@ export { cut, readFootage, videoLength } from './cut.ts'
 export { review } from './review.ts'
 export { latestRun, newRun, type Kind } from './footage.ts'
 export { explore, send, serve } from './explore.ts'
+export { readLog, listLog, compose, LOG, type Log, type LogEntry } from './log.ts'
 export { readFilm, type Outcome, type Film, type Step, type Target } from './film.ts'
 export {
   NeedsDecision,

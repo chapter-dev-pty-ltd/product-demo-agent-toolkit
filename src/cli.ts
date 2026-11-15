@@ -1,9 +1,14 @@
 #!/usr/bin/env node
+import { existsSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import {
+  compose,
   cut,
   explore,
+  listLog,
+  readLog,
   readFootage,
   review,
   videoLength,
@@ -22,7 +27,7 @@ import {
 
 const USAGE = `product-demo ${version}
 
-1. Explore the app, off camera. Each action is added, pinned, to a draft film:
+1. Explore the app, off camera, to learn it and find the path. Every action is logged, pinned:
   product-demo explore <url>          Open the app in a background browser and show the screen
   product-demo look [--all]           What's on screen as an accessibility tree with refs, and a screenshot
   product-demo click <ref>            Click an element by its ref from look, like @e12
@@ -31,11 +36,13 @@ const USAGE = `product-demo ${version}
   product-demo scroll up|down
   product-demo visit <path>
   product-demo wait "text"|<seconds>  Wait for text to appear, or add a pause
-  product-demo back                   Drop the last step and return to the screen before it
-  product-demo end [--out film.json]  Close the browser and write the film
+  product-demo back                   Mark the last step undone and return to the screen before it
+  product-demo end                    Close the browser
 
-2. Rehearse the cleaned-up film: a full run without the camera, with a still after each step:
-  product-demo rehearse <film.json>
+2. Write the film from the log, then rehearse it until it's right:
+  product-demo log                    The log's steps, numbered
+  product-demo compose <n> <n> ...    Start film.json from those log steps, in that order [--out]
+  product-demo rehearse <film.json>   A full run without the camera, with a still after each step
 
 3. Shoot it, and cut the footage into a video:
   product-demo shoot <film.json>
@@ -81,8 +88,17 @@ try {
   } else if (command === 'explore' && input) {
     console.log(await explore(input))
   } else if (command && EXPLORE.has(command)) {
-    const extra = command === 'end' && values.out ? [values.out] : values.all ? ['--all'] : args
-    console.log(await send(command, extra))
+    console.log(await send(command, values.all ? ['--all'] : args))
+  } else if (command === 'log') {
+    console.log(listLog(await readLog()))
+  } else if (command === 'compose') {
+    const out = values.out ?? 'film.json'
+    if (existsSync(out)) throw new Error(`${out} already exists. Delete it first, or pass --out.`)
+    const film = compose(await readLog(), args.map(Number))
+    await writeFile(out, `${JSON.stringify(film, null, 2)}\n`)
+    console.log(
+      `Wrote ${out} with ${film.steps.length} steps. Add its notes and ending, then: product-demo rehearse ${out}`,
+    )
   } else if (command === 'rehearse' && input) {
     const config = await readConfig()
     const dir = await newRun('rehearsals', input, config.keep)

@@ -78,7 +78,7 @@ const outcome = z
 
 const note = z.string().optional()
 
-const step: z.ZodType<Step> = z.union([
+export const stepSchema: z.ZodType<Step> = z.union([
   z.strictObject({ visit: z.string(), outcome, note }),
   z.strictObject({ click: target, outcome, note }),
   z.strictObject({ fill: target, text: z.string(), outcome, note }),
@@ -94,29 +94,28 @@ const step: z.ZodType<Step> = z.union([
 const film: z.ZodType<Film> = z.strictObject({
   app: z.url(),
   notes: z.string().optional(),
-  steps: z.array(step),
+  steps: z.array(stepSchema),
   ending: z.strictObject({ hold: z.number().nonnegative() }).optional(),
 })
 
-/** Reads a film. A draft (one still being explored) may have no steps yet. */
-export async function readFilm(
-  path: string,
-  { draft = false }: { draft?: boolean } = {},
-): Promise<Film> {
-  let raw: unknown
+/** Reads a JSON file, saying plainly when it doesn't parse. */
+export async function readJson(path: string): Promise<unknown> {
   try {
-    raw = JSON.parse(await readFile(path, 'utf8'))
+    return JSON.parse(await readFile(path, 'utf8'))
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(`${path} isn't valid JSON (${error.message}). Fix it, then try again.`)
     }
     throw error
   }
-  const parsed = film.safeParse(raw)
+}
+
+export async function readFilm(path: string): Promise<Film> {
+  const parsed = film.safeParse(await readJson(path))
   if (!parsed.success) {
     throw new Error(`${path} is not a valid film:\n${z.prettifyError(parsed.error)}`)
   }
-  if (!draft && parsed.data.steps.length === 0) throw new Error(`${path} has no steps.`)
+  if (parsed.data.steps.length === 0) throw new Error(`${path} has no steps.`)
   return parsed.data
 }
 

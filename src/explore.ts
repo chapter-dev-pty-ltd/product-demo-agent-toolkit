@@ -6,7 +6,8 @@ import { createServer } from 'node:http'
 import { join } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
 import { readConfig } from './config.ts'
-import { describeStep, readFilm, type Film, type Step, type Target } from './film.ts'
+import { describeStep, type Step, type Target } from './film.ts'
+import { readLog, startLog, writeLog } from './log.ts'
 import { before, outcomeSince } from './outcome.ts'
 import { find, VIEWPORT } from './perform.ts'
 import { watch } from './settle.ts'
@@ -15,11 +16,11 @@ import { launchBrowser } from './tools.ts'
 
 // Exploring: the agent drives a browser one command at a time, off camera, to learn the
 // app and find the path. A small process of ours holds the browser between commands, and
-// every action the agent takes is pinned into a draft film it can edit, rehearse and shoot.
+// every action the agent takes is logged, pinned and with its outcome, for it to write
+// the film from afterwards (log.ts).
 
 const DIR = join('.product-demo', 'explore')
 const SESSION = join(DIR, 'session.json')
-const DRAFT = join(DIR, 'film.json')
 const IDLE_MS = 30 * 60_000
 
 interface Session {
@@ -88,27 +89,35 @@ export async function serve(url: string): Promise<void> {
     process.exit(0)
   }
 
-  // The draft lives in the file, not here: the agent may edit it between commands (notes,
-  // a deleted wrong turn), so it is read back before every change and never overwritten
-  // from memory. A draft that doesn't parse stops the action before it happens.
-  await writeFile(DRAFT, JSON.stringify({ app: url, steps: [] }, null, 2))
-  const draft = () => readFilm(DRAFT, { draft: true })
-  const save = (film: Film) => writeFile(DRAFT, JSON.stringify(film, null, 2))
+  // The log lives in the file, not here: the agent may add notes to it between commands, so
+  // it is read back before every change and never overwritten from memory. A log that
+  // doesn't parse stops the action before it happens.
+  await startLog(url)
+  const address = () => {
+    const now = new URL(page.url())
+    return `${now.pathname}${now.search}${now.hash}`
+  }
 
-  /** Runs an action, then adds it to the draft with what it changed. */
+  /** Runs an action, then logs it with what it changed. */
   const act = async (step: Step, run: () => Promise<void>, said: string) => {
-    const film = await draft()
+    const log = await readLog()
     const was = await before(page)
     await settler.mark()
     await run()
     const settled = await settler.settled()
     const outcome = await outcomeSince(page, was)
-    film.steps.push(outcome ? { ...step, outcome } : step)
-    await save(film)
-    const still = settled.settled
-      ? ''
-      : ` The page hadn't settled after 10s: ${settled.waitingOn.join(', ')}.`
-    return `${said}${outcome?.url ? ` Now at ${outcome.url}.` : ''}${still}`
+    const n = log.entries.length + 1
+    const warning = settled.settled
+      ? undefined
+      : `The page hadn't settled after 10s: ${settled.waitingOn.join(', ')}.`
+    log.entries.push({
+      n,
+      step: outcome ? { ...step, outcome } : step,
+      at: address(),
+      ...(warning ? { warning } : {}),
+    })
+    await writeLog(log)
+    return `${n}. ${said}${outcome?.url ? ` Now at ${outcome.url}.` : ''}${warning ? ` ${warning}` : ''}`
   }
 
   const commands: Record<string, (args: string[]) => Promise<string>> = {
@@ -162,50 +171,51 @@ export async function serve(url: string): Promise<void> {
     },
     wait: async ([what]) => {
       if (!what) throw new Error('Usage: product-demo wait "text" | <seconds>')
-      const film = await draft()
       const seconds = Number(what)
       if (Number.isFinite(seconds)) {
-        film.steps.push({ wait: seconds })
-        await save(film)
-        return `Added a ${seconds}s wait.`
+        return act(
+          { wait: seconds },
+          () => page.waitForTimeout(seconds * 1000),
+          `Waited ${seconds}s.`,
+        )
       }
-      await page.getByText(what).first().waitFor({ timeout: 30_000 })
-      film.steps.push({ wait: { text: what } })
-      await save(film)
-      return `"${what}" is on screen.`
+      return act(
+        { wait: { text: what } },
+        () => page.getByText(what).first().waitFor({ timeout: 30_000 }),
+        `"${what}" is on screen.`,
+      )
     },
     back: async () => {
-      // A browser can't undo a click, so going back is a fresh browser that replays the
-      // draft without its last step, quickly and off camera.
-      const film = await draft()
-      const dropped = film.steps.pop()
-      if (!dropped) throw new Error('There are no steps to go back from.')
-      await save(film)
+      // A browser can't undo a click, so going back marks the last step undone and replays
+      // the rest in a fresh browser, quickly and off camera. The log keeps every step.
+      const log = await readLog()
+      const last = log.entries.filter((e) => !e.undone).at(-1)
+      if (!last) throw new Error('There are no steps to go back from.')
+      last.undone = true
+      await writeLog(log)
       await page.close()
       page = await browser.newPage({ viewport: VIEWPORT })
       settler = watch(page)
       await page.goto(url)
       await settler.settled()
-      for (const [index, step] of film.steps.entries()) {
+      const path = log.entries.filter((e) => !e.undone)
+      for (const entry of path) {
         await settler.mark()
-        await replay(page, url, step, (target) => find(page, target, config, () => {})).catch(
+        await replay(page, url, entry.step, (target) => find(page, target, config, () => {})).catch(
           (error: unknown) => {
             throw new Error(
-              `Dropped ${describeStep(dropped)}, but couldn't replay step ${index + 1} (${describeStep(step)}): ${error instanceof Error ? error.message : String(error)}`,
+              `Marked step ${last.n} undone, but couldn't replay step ${entry.n} (${describeStep(entry.step)}): ${error instanceof Error ? error.message : String(error)}`,
             )
           },
         )
         await settler.settled()
       }
-      return `Dropped ${describeStep(dropped)} and replayed the ${film.steps.length} steps before it. The screen is as it was before that step; run look.`
+      return `Marked step ${last.n} (${describeStep(last.step)}) undone and replayed the ${path.length} steps before it. The screen is as it was before it; run look.`
     },
-    end: async ([out = 'film.json']) => {
-      const film = await draft()
-      if (film.steps.length === 0)
-        throw new Error('Nothing was done, so there is no film to write.')
-      await writeFile(out, JSON.stringify(film, null, 2))
+    end: async () => {
+      const log = await readLog()
       setTimeout(() => void stop(), 100)
-      return `Wrote ${out} with ${film.steps.length} steps. Clean it up, add notes, then: product-demo rehearse ${out}`
+      return `Closed the browser. The log has ${log.entries.length} steps: run \`product-demo log\` to list them, then \`product-demo compose <numbers>\` to start film.json from the ones the demo needs.`
     },
   }
 
