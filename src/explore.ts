@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
 import { readConfig } from './config.ts'
 import { describeStep, type Step, type Target } from './film.ts'
-import { readLog, startLog, writeLog } from './log.ts'
+import { LOG, readLog, startLog, writeLog } from './log.ts'
 import { before, outcomeSince } from './outcome.ts'
 import { find, VIEWPORT } from './perform.ts'
 import { watch } from './settle.ts'
@@ -215,7 +215,7 @@ export async function serve(url: string): Promise<void> {
     end: async () => {
       const log = await readLog()
       setTimeout(() => void stop(), 100)
-      return `Closed the browser. The log has ${log.entries.length} steps: run \`product-demo log\` to list them, then \`product-demo compose <numbers>\` to start film.json from the ones the demo needs.`
+      return `Closed the browser. The log, with ${log.entries.length} steps, is ${LOG}: write film.json from it.`
     },
   }
 

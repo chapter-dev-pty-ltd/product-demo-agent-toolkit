@@ -33,19 +33,25 @@ This is where you work out what to do, so mistakes are fine. Wander, take wrong 
 
 ## 2. Write the film from the log
 
-```bash
-product-demo log                    # the log's steps, numbered
-product-demo compose 2 3 7          # starts film.json from those steps, in that order
+Read `.product-demo/explore/log.json` and write `film.json` yourself. Each log entry's `step` is already a film step, with its element pinned, its outcome and any note, so copy in the steps that make the demo, in the order the demo needs them. Leave out the wrong turns, the pauses you took to look around, and steps marked `"undone"`.
+
+```json
+{
+  "app": "<the log's app>",
+  "notes": "What the film is for and what it has to show.",
+  "steps": [ <the chosen entries' "step" objects> ],
+  "ending": { "hold": 2 }
+}
 ```
 
-Choose the steps that make the demo, and only those: none of the wrong turns, pauses you took to look around, or steps marked undone. `compose` copies them with their pins, outcomes and notes. Then edit `film.json`:
+Then:
 
 - Add `"notes"` to the film: what it's for, who it's for, what it has to prove.
 - Add a `"note"` to any step whose purpose isn't obvious, or that is fragile or odd. Notes are never run; they're for whoever reads the film next, you included.
 - Set how long the last screen holds, in seconds: `"ending": { "hold": 2 }` (2 if you leave it out).
 - Leave each step's `locator`, `selector`, `fingerprint` and `outcome` as they are.
 
-A step you add by hand names its element as `{ "role": "button", "name": "Save" }`, `{ "text": "Save" }` or `{ "css": "#save" }`. Steps: `visit`, `click`, `fill` (with `text`), `press`, `scroll` (`up` or `down`), `wait` (`{ "text": "..." }` or seconds). A step written by hand has no pin and no outcome, so rehearse and shoot can't check it pressed the right thing: prefer exploring it and composing it from the log.
+A step you add by hand names its element as `{ "role": "button", "name": "Save" }`, `{ "text": "Save" }` or `{ "css": "#save" }`. Steps: `visit`, `click`, `fill` (with `text`), `press`, `scroll` (`up` or `down`), `wait` (`{ "text": "..." }` or seconds). A step written by hand has no pin and no outcome, so rehearse and shoot can't check it pressed the right thing: prefer exploring it and copying it from the log.
 
 ## 3. Rehearse until it's acceptable
 
@@ -55,7 +61,7 @@ product-demo rehearse film.json
 
 A full run in a fresh browser, at the pace it will be shot, without the camera. It saves a still of the opening screen and after every step, and prints where they are. **Look at every still.** Is this the flow the user asked for? Does it end on the result, the screen that proves it worked?
 
-If a step fails, it says which and why and saves `failed.png`. Fix the film, or explore that part again and compose it in, and rehearse again. Keep going until the stills are right.
+If a step fails, it says which and why and saves `failed.png`. Fix the film, or explore that part again and copy it in from the log, and rehearse again. Keep going until the stills are right.
 
 ## 4. Shoot and cut
 

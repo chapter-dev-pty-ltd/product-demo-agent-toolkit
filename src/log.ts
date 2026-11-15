@@ -2,12 +2,12 @@ import { rename, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { describeStep, readJson, stepSchema, type Film, type Step } from './film.ts'
+import { readJson, stepSchema, type Step } from './film.ts'
 
 // What exploring leaves: a log of everything the agent did, each step already pinned and with
 // its outcome, numbered, plus the agent's notes. Nothing in it is ever deleted (going back
-// marks steps undone), and it isn't a film: the agent writes the film from it afterwards,
-// choosing the steps that make the demo.
+// marks steps undone), and it isn't a film: the agent reads it and writes the film itself,
+// copying in the steps that make the demo. Each step is already in the film's format.
 
 export const LOG: string = join('.product-demo', 'explore', 'log.json')
 
@@ -63,26 +63,4 @@ export async function startLog(app: string): Promise<void> {
     await rename(LOG, join('.product-demo', 'explore', `log-${stamp}.json`))
   }
   await writeLog({ app, entries: [] })
-}
-
-/** The log as numbered lines, for choosing steps from. */
-export function listLog(log: Log): string {
-  if (log.entries.length === 0) return 'The log is empty.'
-  const lines = log.entries.map(
-    (e) =>
-      `${String(e.n).padStart(3)}. ${describeStep(e.step)} → ${e.at}${e.undone ? ' (undone)' : ''}${e.warning ? ` [${e.warning}]` : ''}`,
-  )
-  return [`Explored ${log.app}`, ...(log.notes ? [`Notes: ${log.notes}`] : []), ...lines].join('\n')
-}
-
-/** A film made from the log's steps, in the order given. */
-export function compose(log: Log, numbers: number[]): Film {
-  const steps = numbers.map((n) => {
-    const entry = log.entries.find((e) => e.n === n)
-    if (!entry) throw new Error(`The log has no step ${n}. Run \`product-demo log\` to see them.`)
-    return entry.step
-  })
-  if (steps.length === 0)
-    throw new Error('Name the log steps to use, like: product-demo compose 2 3 5')
-  return { app: log.app, steps }
 }

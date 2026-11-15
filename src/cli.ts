@@ -1,14 +1,9 @@
 #!/usr/bin/env node
-import { existsSync } from 'node:fs'
-import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import {
-  compose,
   cut,
   explore,
-  listLog,
-  readLog,
   readFootage,
   review,
   videoLength,
@@ -39,9 +34,7 @@ const USAGE = `product-demo ${version}
   product-demo back                   Mark the last step undone and return to the screen before it
   product-demo end                    Close the browser
 
-2. Write the film from the log, then rehearse it until it's right:
-  product-demo log                    The log's steps, numbered
-  product-demo compose <n> <n> ...    Start film.json from those log steps, in that order [--out]
+2. Write film.json from the log (.product-demo/explore/log.json), then rehearse it until it's right:
   product-demo rehearse <film.json>   A full run without the camera, with a still after each step
 
 3. Shoot it, and cut the footage into a video:
@@ -89,16 +82,6 @@ try {
     console.log(await explore(input))
   } else if (command && EXPLORE.has(command)) {
     console.log(await send(command, values.all ? ['--all'] : args))
-  } else if (command === 'log') {
-    console.log(listLog(await readLog()))
-  } else if (command === 'compose') {
-    const out = values.out ?? 'film.json'
-    if (existsSync(out)) throw new Error(`${out} already exists. Delete it first, or pass --out.`)
-    const film = compose(await readLog(), args.map(Number))
-    await writeFile(out, `${JSON.stringify(film, null, 2)}\n`)
-    console.log(
-      `Wrote ${out} with ${film.steps.length} steps. Add its notes and ending, then: product-demo rehearse ${out}`,
-    )
   } else if (command === 'rehearse' && input) {
     const config = await readConfig()
     const dir = await newRun('rehearsals', input, config.keep)
