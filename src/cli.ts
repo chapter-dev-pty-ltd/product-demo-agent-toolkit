@@ -4,6 +4,9 @@ import { parseArgs } from 'node:util'
 import {
   cut,
   explore,
+  readFootage,
+  review,
+  videoLength,
   latestRun,
   NeedsDecision,
   newRun,
@@ -21,7 +24,7 @@ const USAGE = `product-demo ${version}
 
 1. Explore the app, off camera. Each action is added, pinned, to a draft film:
   product-demo explore <url>          Open the app in a background browser and show the screen
-  product-demo look                   The screen as an accessibility tree with refs, and a screenshot
+  product-demo look [--all]           What's on screen as an accessibility tree with refs, and a screenshot
   product-demo click <ref>            Click an element by its ref from look, like @e12
   product-demo fill <ref> "text"      Type into a field
   product-demo press <key>            Press a key, like Enter
@@ -37,9 +40,10 @@ const USAGE = `product-demo ${version}
 3. Shoot it, and cut the footage into a video:
   product-demo shoot <film.json>
   product-demo cut [footage] [--out video.mp4]
+  product-demo review [footage]      An image of frames from across the video, to check it by
 
 Settings live in .product-demo/config.json: mode (ask | just_do_it), backdrop (halo | sky | violet),
-keep (rehearsals and shoots kept per film, default 10).`
+keep (rehearsals and shoots kept per film, default 10), review (cut also makes the review image, default false).`
 
 const EXPLORE = new Set([
   'look',
@@ -57,6 +61,7 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     out: { type: 'string', short: 'o' },
+    all: { type: 'boolean' },
     version: { type: 'boolean', short: 'v' },
     help: { type: 'boolean', short: 'h' },
   },
@@ -76,7 +81,8 @@ try {
   } else if (command === 'explore' && input) {
     console.log(await explore(input))
   } else if (command && EXPLORE.has(command)) {
-    console.log(await send(command, command === 'end' && values.out ? [values.out] : args))
+    const extra = command === 'end' && values.out ? [values.out] : values.all ? ['--all'] : args
+    console.log(await send(command, extra))
   } else if (command === 'rehearse' && input) {
     const config = await readConfig()
     const dir = await newRun('rehearsals', input, config.keep)
@@ -106,10 +112,16 @@ try {
     warn(footage.warnings)
     console.log(`Shot ${footage.end.toFixed(1)}s into ${dir}. Next: product-demo cut ${dir}`)
   } else if (command === 'cut') {
+    const config = await readConfig()
     const from = input ?? (await latestRun('footage', 'footage.json'))
     const out = values.out ?? join(from, 'video.mp4')
-    await cut(from, out, await readConfig())
-    console.log(`Cut ${out}`)
+    const seconds = await cut(from, out, config)
+    console.log(`Cut ${out} (${seconds.toFixed(1)}s)`)
+    if (config.review) console.log(`Review it: ${await review(out, seconds)}`)
+  } else if (command === 'review') {
+    const from = input ?? (await latestRun('footage', 'footage.json'))
+    const video = join(from, 'video.mp4')
+    console.log(await review(video, videoLength(await readFootage(from))))
   } else {
     console.log(USAGE)
     if (command) process.exitCode = 1

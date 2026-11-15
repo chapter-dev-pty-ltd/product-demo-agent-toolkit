@@ -9,6 +9,7 @@ export interface Config {
   mode: 'ask' | 'just_do_it'
   backdrop: (typeof BACKDROPS)[number]
   keep: number
+  review: boolean
 }
 
 const config: z.ZodType<Config> = z.strictObject({
@@ -19,6 +20,10 @@ const config: z.ZodType<Config> = z.strictObject({
     .min(1)
     .default(10)
     .describe('How many rehearsals and shoots of each film to keep. Older ones are deleted.'),
+  review: z
+    .boolean()
+    .default(false)
+    .describe('Whether cut also makes a review image of the video, for the agent to check it.'),
   mode: z
     .enum(['ask', 'just_do_it'])
     .default('ask')

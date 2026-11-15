@@ -112,15 +112,21 @@ export async function serve(url: string): Promise<void> {
   }
 
   const commands: Record<string, (args: string[]) => Promise<string>> = {
-    look: async () => {
+    look: async ([flag]) => {
       looks++
       const shot = join(DIR, `look-${looks}.png`)
       const snapshot = await page.ariaSnapshot({ mode: 'ai', boxes: true })
       await screenshotWithRefs(page, snapshot, shot)
-      const text = snapshot.replace(/ \[box=[\d.,-]+\]/g, '')
+      const { text, above, below } =
+        flag === '--all' ? { text: snapshot, above: 0, below: 0 } : onScreen(snapshot)
+      const bare = text.replace(/ \[box=[\d.,-]+\]/g, '')
       const trimmed =
-        text.length > 40_000 ? `${text.slice(0, 40_000)}\n… (cut at 40,000 characters)` : text
-      return `${page.url()} — "${await page.title()}"\n${trimmed}\n\nScreenshot with refs: ${shot}\nDraft film: ${DRAFT}`
+        bare.length > 40_000 ? `${bare.slice(0, 40_000)}\n… (cut at 40,000 characters)` : bare
+      const off =
+        above || below
+          ? `\n\nOff screen: ${above} elements above, ${below} below. Scroll to them, or run \`look --all\` for the whole page.`
+          : ''
+      return `${page.url()} — "${await page.title()}"\n${trimmed}${off}\n\nScreenshot with refs: ${shot}`
     },
     click: async ([ref]) => {
       const element = byRef(page, ref)
@@ -261,6 +267,36 @@ async function pin(element: Locator): Promise<Target & { locator: string }> {
   const selector: unknown = Reflect.get(best, '_selector')
   if (typeof selector !== 'string') throw new Error('Could not read the locator Playwright chose.')
   return { locator: best.toString(), selector, fingerprint: await fingerprint(element) }
+}
+
+/**
+ * The snapshot cut down to what's on screen. A line with a box is kept when its box is in
+ * the viewport; a line without one (its text, its link) goes with the line it belongs to.
+ * Off-screen elements with refs are counted above and below instead.
+ */
+function onScreen(snapshot: string): { text: string; above: number; below: number } {
+  const kept: string[] = []
+  const parents: { indent: number; kept: boolean }[] = []
+  let above = 0
+  let below = 0
+  for (const line of snapshot.split('\n')) {
+    const indent = line.length - line.trimStart().length
+    while (parents.length && (parents.at(-1)?.indent ?? 0) >= indent) parents.pop()
+    const box = /\[box=([\d.-]+),([\d.-]+),([\d.-]+),([\d.-]+)\]/.exec(line)
+    let keep = parents.at(-1)?.kept ?? true
+    if (box) {
+      const top = Number(box[2])
+      const bottom = top + Number(box[4])
+      keep = bottom > 0 && top < VIEWPORT.height
+      if (!keep && line.includes('[ref=')) {
+        if (bottom <= 0) above++
+        else below++
+      }
+    }
+    parents.push({ indent, kept: keep })
+    if (keep) kept.push(line)
+  }
+  return { text: kept.join('\n'), above, below }
 }
 
 const PRESSABLE =

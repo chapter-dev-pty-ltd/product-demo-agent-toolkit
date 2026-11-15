@@ -12,7 +12,7 @@ Three stages, each one you can repeat until it's right: **explore** the app to f
 
 ```bash
 product-demo explore http://localhost:3000   # opens the app in a background browser and shows the screen
-product-demo look                            # the screen: an accessibility tree with refs, and a screenshot
+product-demo look                            # what's on screen: an accessibility tree with refs, and a screenshot
 product-demo click @e12
 product-demo fill @e7 "Acme Corp"
 product-demo press Enter
@@ -20,15 +20,17 @@ product-demo scroll down
 product-demo visit /settings
 product-demo wait "Invoice created"          # or: product-demo wait 1.5
 product-demo back                            # took a wrong turn? drops the last step and returns to before it
-product-demo end                             # closes the browser and writes film.json
+product-demo end                             # closes the browser and writes film.json in this folder (or --out)
 ```
 
 Every action is added to a draft film (`.product-demo/explore/film.json`), with the element pinned so later runs press the same one, and with its outcome (where the page went, what appeared) so they can check it does the same.
 
-- Name elements by the ref `look` gives them (`@e12`, `@f1e340`).
+- Name elements by the ref `look` gives them (`@e12`). Refs change when the page navigates (`e12` becomes `f1e12`), so always use refs from the latest `look`.
+- `look` shows only what's on screen, and says how much is above and below. Scroll to see more, or use `look --all` for the whole page.
+- Actions (`click`, `fill` and the rest) don't print the screen. Run `look` after them to see what happened.
 - Look at the screenshot `look` saves whenever the tree doesn't explain the screen: icon buttons, canvases, anything that seems wrong. Refs are drawn on it.
 - Wander as much as you need to learn the app. Use `back` for wrong turns, or delete them from the film later.
-- You can edit the draft between commands (add notes, delete a step). Keep it valid JSON: an action won't run on a draft that doesn't parse.
+- You can edit the draft between commands (add notes, delete a step). Keep it valid JSON: an action won't run on a draft that doesn't parse. The draft in `.product-demo/explore/` is only the working copy; `end` writes the film you'll edit and run.
 
 ## 2. Clean up the film, and note it
 
@@ -37,10 +39,10 @@ Edit `film.json`:
 - Delete detours, so only the path the demo should show is left.
 - Add `"notes"` to the film: what it's for, who it's for, what it has to prove.
 - Add a `"note"` to any step whose purpose isn't obvious, or that is fragile or odd. Notes are never run; they're for whoever reads the film next, you included.
-- Set how long the last screen holds: `"ending": { "hold": 2 }`.
+- Set how long the last screen holds, in seconds: `"ending": { "hold": 2 }` (2 if you leave it out).
 - Leave each step's `locator`, `selector`, `fingerprint` and `outcome` as they are.
 
-A step you add by hand names its element as `{ "role": "button", "name": "Save" }`, `{ "text": "Save" }` or `{ "css": "#save" }`. Steps: `visit`, `click`, `fill` (with `text`), `press`, `scroll` (`up` or `down`), `wait` (`{ "text": "..." }` or seconds).
+A step you add by hand names its element as `{ "role": "button", "name": "Save" }`, `{ "text": "Save" }` or `{ "css": "#save" }`. Steps: `visit`, `click`, `fill` (with `text`), `press`, `scroll` (`up` or `down`), `wait` (`{ "text": "..." }` or seconds). A step written by hand has no pin and no outcome, so rehearse and shoot can't check it pressed the right thing: prefer exploring it.
 
 ## 3. Rehearse until it's acceptable
 
@@ -56,16 +58,16 @@ If a step fails, it says which and why and saves `failed.png`. Fix the film (or 
 
 ```bash
 product-demo shoot film.json   # the same run, on camera; tries once more by itself if it flakes
-product-demo cut               # cuts the latest footage into video.mp4 and prints where it is
+product-demo cut               # cuts the latest footage into video.mp4 and prints where it is and how long
 ```
 
-Give the user the video from there, or pass `--out` to `cut`. Lines starting `Check:` are things it chose or waited on that you should look at.
+Give the user the video from there, or pass `--out` to `cut`. Lines starting `Check:` are things it chose or waited on that you should look at. To check the video itself before handing it over, use the `product-demo-review` skill.
 
 ## When something is unclear, ask
 
 If the request could mean two things, a still doesn't look like what was asked for, or a run says several elements match a step, ask the user before going on. Show them the still. Don't guess.
 
-`.product-demo/config.json` can set `"mode": "just_do_it"` to make the best choice instead (runs then print what they chose), the `backdrop` (`halo`, `sky` or `violet`), and how many runs of each film to `keep` (default 10).
+`.product-demo/config.json` can set `"mode": "just_do_it"` to make the best choice instead (runs then print what they chose), the `backdrop` (`halo`, the default, `sky` or `violet`), how many runs of each film to `keep` (default 10), and `"review": true` to have `cut` make a review image every time.
 
 ## What makes a good film
 

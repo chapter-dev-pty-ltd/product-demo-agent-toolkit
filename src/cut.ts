@@ -8,9 +8,18 @@ const CANVAS = { width: 1920, height: 1080 }
 const AT = { x: (CANVAS.width - VIEWPORT.width) / 2, y: (CANVAS.height - VIEWPORT.height) / 2 }
 const RADIUS = 14
 
-/** Cuts footage into an mp4: the app framed on a backdrop, the ending held. */
-export async function cut(footageDir: string, out: string, config: Config): Promise<void> {
-  const footage: Footage = JSON.parse(await readFile(join(footageDir, 'footage.json'), 'utf8'))
+export async function readFootage(footageDir: string): Promise<Footage> {
+  return JSON.parse(await readFile(join(footageDir, 'footage.json'), 'utf8'))
+}
+
+/** How long the cut of this footage runs, in seconds: the take plus the ending's hold. */
+export function videoLength(footage: Footage): number {
+  return footage.end + (footage.film.ending?.hold ?? 2) - (footage.frames[0]?.at ?? 0)
+}
+
+/** Cuts footage into an mp4: the app framed on a backdrop, the ending held. Returns its length. */
+export async function cut(footageDir: string, out: string, config: Config): Promise<number> {
+  const footage = await readFootage(footageDir)
   if (footage.frames.length === 0) throw new Error(`${footageDir} has no frames.`)
 
   const work = join(footageDir, 'cut')
@@ -26,7 +35,7 @@ export async function cut(footageDir: string, out: string, config: Config): Prom
   if (last) lines.push(`file '${resolve(footageDir, last.file)}'`)
   await writeFile(join(work, 'frames.txt'), lines.join('\n'))
   // The backdrop and mask loop forever, so the video's length has to be said.
-  const length = footage.end + hold - (footage.frames[0]?.at ?? 0)
+  const length = videoLength(footage)
 
   await run(await findFfmpeg(), [
     '-loglevel',
@@ -65,6 +74,7 @@ export async function cut(footageDir: string, out: string, config: Config): Prom
     '+faststart',
     out,
   ])
+  return length
 }
 
 /** The still layers, drawn once: the backdrop with the app's shadow on it, and the rounded mask. */
