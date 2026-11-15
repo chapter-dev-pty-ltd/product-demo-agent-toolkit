@@ -1,9 +1,0 @@
-{
-  "site": "https://news.ycombinator.com/",
-  "goal": "Make a demo of opening the comments on the top story.",
-  "acceptable": [
-    "The comments link of the first story is clicked, not another story's",
-    "Ends on that story's comments page"
-  ],
-  "tests": "Many identical links"
-}

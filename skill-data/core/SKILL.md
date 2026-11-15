@@ -27,6 +27,3 @@ Write the plan before touching the browser:
 
 `product-demo check` judges the take against the quality rules. A take that fails is not done. Fix the plan or the data and record again.
 
-## When the user reacts
-
-Record their verdict with `product-demo feedback <take> --good|--bad "why"`. That is how the toolkit learns.
