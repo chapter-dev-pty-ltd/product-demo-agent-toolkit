@@ -1,0 +1,10 @@
+{
+  "site": "https://excalidraw.com/",
+  "goal": "Make a demo of drawing a rectangle on the Excalidraw canvas.",
+  "acceptable": [
+    "The rectangle tool is chosen",
+    "A rectangle is drawn on the canvas",
+    "Ends with the rectangle visible"
+  ],
+  "tests": "Canvas, where the DOM says nothing; expected to fail without coordinate clicks"
+}

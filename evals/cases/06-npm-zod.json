@@ -1,0 +1,10 @@
+{
+  "site": "https://www.npmjs.com/",
+  "goal": "Make a demo of searching npm for zod, opening the package, and showing its versions.",
+  "acceptable": [
+    "zod is searched",
+    "The zod package page is opened",
+    "Ends on its Versions tab"
+  ],
+  "tests": "Search, tabs"
+}

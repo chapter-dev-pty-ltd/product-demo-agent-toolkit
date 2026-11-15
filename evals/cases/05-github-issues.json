@@ -1,0 +1,10 @@
+{
+  "site": "https://github.com/microsoft/playwright",
+  "goal": "Make a demo of going to this repository's issues and filtering them by a label.",
+  "acceptable": [
+    "The Issues tab is opened",
+    "A label filter is applied",
+    "Ends on the issue list filtered by that label"
+  ],
+  "tests": "Heavy SPA, client-side navigation"
+}

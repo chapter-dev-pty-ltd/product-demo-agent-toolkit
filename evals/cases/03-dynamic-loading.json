@@ -1,0 +1,10 @@
+{
+  "site": "https://the-internet.herokuapp.com/dynamic_loading/2",
+  "goal": "Make a demo of starting the dynamic loading example and waiting for what it loads.",
+  "acceptable": [
+    "Start is pressed",
+    "The loading bar is shown briefly, not waited on for long",
+    "Ends on \"Hello World!\""
+  ],
+  "tests": "Spinners, settling, waiting"
+}

@@ -1,0 +1,10 @@
+{
+  "site": "https://www.wikipedia.org/",
+  "goal": "Make a demo of searching Wikipedia for Grace Hopper and opening the article about COBOL from a link in her article's text.",
+  "acceptable": [
+    "Grace Hopper is searched from the Wikipedia portal",
+    "The COBOL link clicked is one in the article text, not the Contents sidebar",
+    "Ends on the COBOL article"
+  ],
+  "tests": "Baseline; duplicate links"
+}
