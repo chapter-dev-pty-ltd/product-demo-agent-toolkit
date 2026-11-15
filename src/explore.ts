@@ -499,15 +499,19 @@ function onScreen(snapshot: string): { text: string; above: number; below: numbe
 }
 
 const PRESSABLE =
-  /^(button|link|textbox|searchbox|checkbox|radio|combobox|menuitem|tab|option|switch|slider|spinbutton)$/
+  /^(button|link|textbox|searchbox|checkbox|radio|combobox|menuitem|menuitemcheckbox|menuitemradio|tab|option|treeitem|switch|slider|spinbutton)$/
 
-/** A screenshot with each pressable element's ref drawn on it, so the picture and the tree line up. */
+/**
+ * A screenshot with each pressable element's ref drawn on it, so the picture and the tree
+ * line up: a pressable role, or anything the page gives a pointer cursor.
+ */
 async function screenshotWithRefs(page: Page, snapshot: string, path: string): Promise<void> {
   const labels: { ref: string; x: number; y: number; width: number; height: number }[] = []
   for (const line of snapshot.split('\n')) {
     const match =
-      /- (\w+)\b.*\[ref=(\w*e\d+)\].*\[box=([\d.-]+),([\d.-]+),([\d.-]+),([\d.-]+)\]/.exec(line)
-    if (!match || !PRESSABLE.test(match[1] ?? '')) continue
+      /- '?(\w+)\b.*\[ref=(\w*e\d+)\].*\[box=([\d.-]+),([\d.-]+),([\d.-]+),([\d.-]+)\]/.exec(line)
+    if (!match) continue
+    if (!PRESSABLE.test(match[1] ?? '') && !line.includes('[cursor=pointer]')) continue
     const [x, y, width, height] = match.slice(3, 7).map(Number)
     if (x === undefined || y === undefined || !width || !height) continue
     if (y > VIEWPORT.height || y + height < 0) continue
