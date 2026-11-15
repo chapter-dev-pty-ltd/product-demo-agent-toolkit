@@ -194,13 +194,14 @@ describe('rank', () => {
     const card = (title: string) => `<product-card data-title="${title}"></product-card>`
     const define = `<script>customElements.define('product-card', class extends HTMLElement {
       connectedCallback() { this.attachShadow({ mode: 'open' }).innerHTML =
-        '<h3>' + this.dataset.title + '</h3><button>Add to cart</button>' } })</script>`
+        '<style>h3{color:red}</style><h3>' + this.dataset.title + '</h3><button>Add to cart</button>' } })</script>`
     const { decision } = await refind(
       define + card('Lamp') + card('Chair'),
       define + card('Desk') + card('Chair') + card('Lamp'),
       (p) => p.locator('product-card[data-title="Lamp"]').getByRole('button'),
     )
     const button = found(decision)
+    expect('found' in decision && decision.found.fingerprint.neighbours).not.toContain('color')
     expect(await button.evaluate((el) => el.getRootNode() instanceof ShadowRoot)).toBe(true)
     expect(
       await button.evaluate((el) =>
@@ -255,6 +256,15 @@ describe('rank', () => {
       (p) => p.getByRole('checkbox', { name: 'Bread' }),
     )
     expect(await found(decision).getAttribute('id')).toBe('Bread')
+  })
+
+  test('finds a button inside a display: contents wrapper', async () => {
+    const bar = (extra: string) =>
+      `<div style="display:flex">${extra}<div style="display:contents"><button aria-label="More tools">⋮</button></div><button>Share</button></div>`
+    const { decision } = await refind(bar(''), bar('<button>Library</button>'), (p) =>
+      p.getByRole('button', { name: 'More tools' }),
+    )
+    expect(await found(decision).getAttribute('aria-label')).toBe('More tools')
   })
 
   test('tells the header link from the footer link after a banner pushed both down', async () => {

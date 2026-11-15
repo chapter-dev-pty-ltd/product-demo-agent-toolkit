@@ -236,7 +236,9 @@ function describe(root: Element, options: { mark: string; tag?: string }): Finge
     const box = el.getBoundingClientRect()
     if (box.width <= 0 || box.height <= 0) return false
     if (!el.checkVisibility({ visibilityProperty: true })) return false
-    const parent = parentOf(el)
+    // A display: contents wrapper has no box, so it always reads as hidden: ask past it.
+    let parent = parentOf(el)
+    while (parent && getComputedStyle(parent).display === 'contents') parent = parentOf(parent)
     if (parent && !parent.checkVisibility({ opacityProperty: true })) return false
     return el instanceof HTMLInputElement || getComputedStyle(el).opacity !== '0'
   }
@@ -332,7 +334,12 @@ function describe(root: Element, options: { mark: string; tag?: string }): Finge
   // A container's words, inside a shadow root too: a host's innerText leaves its shadow out.
   const wordsIn = (node: Element) =>
     node.shadowRoot
-      ? clean(Array.from(node.shadowRoot.children, (child) => textOf(child)).join(' '))
+      ? clean(
+          Array.from(node.shadowRoot.children)
+            .filter((child) => !['STYLE', 'SCRIPT', 'TEMPLATE', 'LINK'].includes(child.tagName))
+            .map((child) => textOf(child))
+            .join(' '),
+        )
       : textOf(node)
   // The container's words without the element's own: in a grid of "Add to cart" buttons,
   // "Desk" is what tells one card from the next, not the "Add to cart" they all share.
