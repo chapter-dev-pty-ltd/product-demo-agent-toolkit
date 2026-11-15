@@ -29,7 +29,7 @@ This is where you work out what to do, so mistakes are fine. Wander, take wrong 
 - `look` shows only what's on screen, and says how much is above and below. Scroll to see more, or use `look --all` for the whole page.
 - Actions (`click`, `fill` and the rest) print their step number but not the screen. Run `look` after them to see what happened.
 - Look at the screenshot `look` saves whenever the tree doesn't explain the screen: icon buttons, canvases, anything that seems wrong. Refs are drawn on it.
-- Keep notes as you go, in the log: `"notes"` at the top for what you learn about the app and what the demo should do, and a `"note"` on any step's `step` worth remembering. The log is read back before every action, so your edits are kept. Keep it valid JSON: an action won't run on a log that doesn't parse.
+- Keep notes as you go, in the log: `"notes"` at the top for what you learn about the app and what the demo should do, and a `"note"` on any step's `step` worth remembering. Note what you learn, not just what you did: which control is the real one, what's fragile, and what changes between runs (counts, banners, the order of results). The log is read back before every action, so your edits are kept. Keep it valid JSON: an action won't run on a log that doesn't parse.
 
 ## 2. Write the film from the log
 
