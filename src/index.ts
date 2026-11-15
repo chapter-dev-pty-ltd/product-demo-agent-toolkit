@@ -1,19 +1,10 @@
 import pkg from '../package.json' with { type: 'json' }
 
 export const version: string = pkg.version
-export { BACKDROPS, readConfig, type Config } from './config.ts'
+export { readConfig } from './config.ts'
 export { cut, readFootage, videoLength } from './cut.ts'
 export { review } from './review.ts'
-export { latestRun, newRun, type Kind } from './footage.ts'
+export { latestRun, newRun } from './footage.ts'
 export { explore, send, serve } from './explore.ts'
-export { readLog, LOG, type Log, type LogEntry } from './log.ts'
-export { readFilm, type Outcome, type Film, type Step, type Target } from './film.ts'
-export {
-  NeedsDecision,
-  rehearse,
-  shoot,
-  VIEWPORT,
-  type Footage,
-  type Rehearsal,
-} from './perform.ts'
-export { decide, fingerprint, rank, similarity, type Fingerprint } from './similo.ts'
+export { readFilm } from './film.ts'
+export { NeedsDecision, rehearse, shoot, type Footage } from './perform.ts'
