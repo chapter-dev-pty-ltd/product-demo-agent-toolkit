@@ -30,41 +30,41 @@ import {
   type Footage,
 } from './index.ts'
 
-const USAGE = `product-demo ${version}
+const USAGE = `product-demo-agent-toolkit ${version}
 
 0. Get the project ready, and see what's missing (run it first):
-  product-demo init
-  product-demo key elevenlabs [key]   Save a voice provider's key for every project (asks for it, hidden, if not given)
+  product-demo-agent-toolkit init
+  product-demo-agent-toolkit key elevenlabs [key]   Save a voice provider's key for every project (asks for it, hidden, if not given)
 
 1. Explore the app, off camera, to learn it and find the path. Every action is logged, pinned.
    Name an element by its ref from look (@e12), or by a point on look's screenshot (640,320):
-  product-demo explore <url>          Open the app in a background browser and show the screen
-  product-demo look [--all]           What's on screen as an accessibility tree with refs, and a screenshot
-  product-demo handles                The small grab handles on screen (resize, rotate, sliders) and where they are
-  product-demo click <el> [--double] [--right] [--with Shift+Meta] [--at 0.9,0.5]
-  product-demo fill <el> "text"       Click into a field and type, replacing what's there
-  product-demo select <el> "option"   Choose an option in a native <select>
-  product-demo type "text"            Type where the caret is, like "@Sam" to open a mention menu
-  product-demo press <key>            Press a key, like Enter or Meta+K
-  product-demo hover <el> [--for 2]   Rest the pointer on an element, to show it or open what it reveals
-  product-demo drag <el> <el> [--at x,y] [--to-at x,y]
-  product-demo scroll up|down [--in <el>] [--by 600]
-  product-demo upload <file> [<el>]   Upload a file through the control that opens the picker
-  product-demo visit <path>
-  product-demo wait "text" [--gone] | <seconds>
-  product-demo back                   Mark the last step undone and return to the screen before it
-  product-demo end                    Close the browser
+  product-demo-agent-toolkit explore <url>          Open the app in a background browser and show the screen
+  product-demo-agent-toolkit look [--all]           What's on screen as an accessibility tree with refs, and a screenshot
+  product-demo-agent-toolkit handles                The small grab handles on screen (resize, rotate, sliders) and where they are
+  product-demo-agent-toolkit click <el> [--double] [--right] [--with Shift+Meta] [--at 0.9,0.5]
+  product-demo-agent-toolkit fill <el> "text"       Click into a field and type, replacing what's there
+  product-demo-agent-toolkit select <el> "option"   Choose an option in a native <select>
+  product-demo-agent-toolkit type "text"            Type where the caret is, like "@Sam" to open a mention menu
+  product-demo-agent-toolkit press <key>            Press a key, like Enter or Meta+K
+  product-demo-agent-toolkit hover <el> [--for 2]   Rest the pointer on an element, to show it or open what it reveals
+  product-demo-agent-toolkit drag <el> <el> [--at x,y] [--to-at x,y]
+  product-demo-agent-toolkit scroll up|down [--in <el>] [--by 600]
+  product-demo-agent-toolkit upload <file> [<el>]   Upload a file through the control that opens the picker
+  product-demo-agent-toolkit visit <path>
+  product-demo-agent-toolkit wait "text" [--gone] | <seconds>
+  product-demo-agent-toolkit back                   Mark the last step undone and return to the screen before it
+  product-demo-agent-toolkit end                    Close the browser
 
 2. Write film.json from the log (.product-demo/explore/log.json), then rehearse it until it's right:
-  product-demo voice <film.json>      Speak the film's lines, and show when each step's word lands
-  product-demo rehearse <film.json>   A full run without the camera, with a still after each step
+  product-demo-agent-toolkit voice <film.json>      Speak the film's lines, and show when each step's word lands
+  product-demo-agent-toolkit rehearse <film.json>   A full run without the camera, with a still after each step
 
 3. Shoot it, and cut the footage into a video:
-  product-demo shoot <film.json>
-  product-demo cut [footage] [--out video.mp4]
-  product-demo review [footage | video.mp4]  An image of frames from across the video, to check it by
+  product-demo-agent-toolkit shoot <film.json>
+  product-demo-agent-toolkit cut [footage] [--out video.mp4]
+  product-demo-agent-toolkit review [footage | video.mp4]  An image of frames from across the video, to check it by
 
-Set up: product-demo skills [dir]   Copy the skills into ~/.claude/skills (or dir) for your agent
+Set up: product-demo-agent-toolkit skills [dir]   Copy the skills into ~/.claude/skills (or dir) for your agent
 
 Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (halo | sky | violet), display (none | browser),
 cursor (black | pink | lime | macos, or { style, size }), sound (true | false | { click }, default true),
@@ -146,7 +146,9 @@ try {
       }
     }
     warn(footage.warnings)
-    console.log(`Shot ${footage.end.toFixed(1)}s into ${dir}. Next: product-demo cut ${dir}`)
+    console.log(
+      `Shot ${footage.end.toFixed(1)}s into ${dir}. Next: product-demo-agent-toolkit cut ${dir}`,
+    )
   } else if (command === 'cut') {
     const config = await readConfig()
     const from = input ?? (await latestRun('footage', 'footage.json'))

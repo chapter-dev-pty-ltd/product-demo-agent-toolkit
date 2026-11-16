@@ -45,7 +45,9 @@ const logSchema: z.ZodType<Log> = z.strictObject({
 
 export async function readLog(path: string = LOG): Promise<Log> {
   if (!existsSync(path))
-    throw new Error('There is no explore log yet. Start with `product-demo explore <url>`.')
+    throw new Error(
+      'There is no explore log yet. Start with `product-demo-agent-toolkit explore <url>`.',
+    )
   const parsed = logSchema.safeParse(await readJson(path))
   if (!parsed.success)
     throw new Error(`${path} is not a valid log:\n${z.prettifyError(parsed.error)}`)

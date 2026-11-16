@@ -8,7 +8,7 @@ What the video looks like and sounds like, as opposed to what happens in the app
   asks for a different look; then change the config.
 - **The film's direction**: the voiceover lines and the highlights, written into `film.json`.
 
-Both are drawn by `product-demo cut`, so changing one never means shooting again: change it, run
+Both are drawn by `product-demo-agent-toolkit cut`, so changing one never means shooting again: change it, run
 `cut`, and the new video is ready in seconds. Only the voice is needed to shoot, since the shoot
 is paced by the spoken lines.
 
@@ -65,13 +65,13 @@ Excalidraw:
 "Ship it" is typed as she says "ship". "Then, starting at the idea" is there to give the
 pointer time to reach the arrow's start before "drag".
 
-Run `product-demo voice film.json` to see how long each line is and when each word comes,
+Run `product-demo-agent-toolkit voice film.json` to see how long each line is and when each word comes,
 then rehearse. If rehearse says an action `landed 0.7s after "drag" was said`, add a few words
 before that word and rehearse again. Keep lines plain and short, about 2.6 words a second.
 
 The voice is Emma, from ElevenLabs, unless the config chooses another:
 `"voice": { "provider": "elevenlabs", "voice": "<voice id>" }`. It needs an ElevenLabs key
-(`product-demo init` says whether there is one).
+(`product-demo-agent-toolkit init` says whether there is one).
 
 ## Highlights
 

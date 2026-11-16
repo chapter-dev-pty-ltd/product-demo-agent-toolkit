@@ -1,11 +1,27 @@
 {
   "name": "product-demo-agent-toolkit",
-  "version": "0.0.1",
-  "description": "A toolkit that lets your agent make demo videos of your real product.",
+  "version": "0.1.0",
+  "description": "Lets your coding agent make polished demo videos of your real web app.",
+  "keywords": [
+    "demo",
+    "video",
+    "screen-recording",
+    "product-demo",
+    "agent",
+    "claude-code",
+    "playwright"
+  ],
+  "homepage": "https://github.com/chapter-dev-pty-ltd/product-demo-agent-toolkit#readme",
+  "bugs": "https://github.com/chapter-dev-pty-ltd/product-demo-agent-toolkit/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chapter-dev-pty-ltd/product-demo-agent-toolkit.git"
+  },
+  "author": "Chapter Dev Pty Ltd",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "product-demo": "./dist/cli.mjs"
+    "product-demo-agent-toolkit": "./dist/cli.mjs"
   },
   "exports": {
     ".": "./dist/index.mjs",
@@ -46,5 +62,8 @@
   "dependencies": {
     "playwright-core": "^1.65.0",
     "zod": "^4.6.7"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

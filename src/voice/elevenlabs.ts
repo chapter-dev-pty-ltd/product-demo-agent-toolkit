@@ -20,7 +20,8 @@ export const elevenlabs: VoiceProvider = {
   },
   async speak(text, choice) {
     const key = process.env.ELEVENLABS_API_KEY
-    if (!key) throw new Error('No ElevenLabs key. Save one with: product-demo key elevenlabs')
+    if (!key)
+      throw new Error('No ElevenLabs key. Save one with: product-demo-agent-toolkit key elevenlabs')
     const url = `${BASE}/v1/text-to-speech/${choice.voice}/with-timestamps?output_format=mp3_44100_128`
     const body = JSON.stringify({
       text,

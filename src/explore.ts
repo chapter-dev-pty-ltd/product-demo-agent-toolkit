@@ -32,12 +32,17 @@ interface Session {
 /** Starts a browser on `url` in the background and returns what's on screen. */
 export async function explore(url: string): Promise<string> {
   if (existsSync(SESSION)) {
-    throw new Error('Already exploring. Run `product-demo end` first, or keep going with `look`.')
+    throw new Error(
+      'Already exploring. Run `product-demo-agent-toolkit end` first, or keep going with `look`.',
+    )
   }
   await mkdir(DIR, { recursive: true })
   const log = openSync(join(DIR, 'browser.log'), 'w')
   const script = process.argv[1]
-  if (!script) throw new Error('Could not find the product-demo script to start the browser with.')
+  if (!script)
+    throw new Error(
+      'Could not find the product-demo-agent-toolkit script to start the browser with.',
+    )
   spawn(process.execPath, [script, '__serve', url], {
     detached: true,
     stdio: ['ignore', log, log],
@@ -56,7 +61,7 @@ export async function send(command: string, args: string[]): Promise<string> {
   try {
     session = JSON.parse(await readFile(SESSION, 'utf8'))
   } catch {
-    throw new Error('Not exploring. Start with `product-demo explore <url>`.')
+    throw new Error('Not exploring. Start with `product-demo-agent-toolkit explore <url>`.')
   }
   const response = await fetch(`http://127.0.0.1:${session.port}/`, {
     method: 'POST',
@@ -65,7 +70,7 @@ export async function send(command: string, args: string[]): Promise<string> {
   }).catch(async () => {
     await rm(SESSION, { force: true })
     throw new Error(
-      'The explore browser has stopped. Start again with `product-demo explore <url>`.',
+      'The explore browser has stopped. Start again with `product-demo-agent-toolkit explore <url>`.',
     )
   })
   const text = await response.text()
@@ -199,21 +204,22 @@ export async function serve(url: string): Promise<void> {
       return logged(step, `${describeStep(step)}.`, [aimed])
     },
     fill: async ([ref, text]) => {
-      if (text === undefined) throw new Error('Usage: product-demo fill <ref> "text"')
+      if (text === undefined) throw new Error('Usage: product-demo-agent-toolkit fill <ref> "text"')
       const aimed = await target(ref)
       return logged({ fill: aimed.target, text }, `Filled ${aimed.target.locator}.`, [aimed])
     },
     select: async ([ref, option]) => {
-      if (option === undefined) throw new Error('Usage: product-demo select <ref> "option"')
+      if (option === undefined)
+        throw new Error('Usage: product-demo-agent-toolkit select <ref> "option"')
       const aimed = await target(ref)
       return logged({ select: aimed.target, option }, `Chose "${option}".`, [aimed])
     },
     type: async ([text]) => {
-      if (text === undefined) throw new Error('Usage: product-demo type "text"')
+      if (text === undefined) throw new Error('Usage: product-demo-agent-toolkit type "text"')
       return logged({ type: text }, `Typed "${text}".`)
     },
     press: async ([key]) => {
-      if (!key) throw new Error('Usage: product-demo press <key>')
+      if (!key) throw new Error('Usage: product-demo-agent-toolkit press <key>')
       return logged({ press: key }, `Pressed ${key}.`)
     },
     hover: async (args) => {
@@ -237,7 +243,8 @@ export async function serve(url: string): Promise<void> {
         allowPositionals: true,
         options: { at: { type: 'string' }, 'to-at': { type: 'string' } },
       })
-      if (positionals.length !== 2) throw new Error('Usage: product-demo drag <from> <to>')
+      if (positionals.length !== 2)
+        throw new Error('Usage: product-demo-agent-toolkit drag <from> <to>')
       const from = await target(positionals[0], values.at)
       const to = await target(positionals[1], values['to-at']).catch(async (error: unknown) => {
         await from.release()
@@ -259,7 +266,9 @@ export async function serve(url: string): Promise<void> {
       })
       const [direction] = positionals
       if (direction !== 'up' && direction !== 'down')
-        throw new Error('Usage: product-demo scroll up|down [--in <ref>] [--by <pixels>]')
+        throw new Error(
+          'Usage: product-demo-agent-toolkit scroll up|down [--in <ref>] [--by <pixels>]',
+        )
       const pane = values.in === undefined ? undefined : await target(values.in)
       const step: Step = {
         scroll: direction,
@@ -269,13 +278,16 @@ export async function serve(url: string): Promise<void> {
       return logged(step, `${describeStep(step)}.`, pane ? [pane] : [])
     },
     upload: async ([file, ref]) => {
-      if (!file) throw new Error('Usage: product-demo upload <file> [<ref of the upload control>]')
+      if (!file)
+        throw new Error(
+          'Usage: product-demo-agent-toolkit upload <file> [<ref of the upload control>]',
+        )
       const control = ref === undefined ? undefined : await target(ref)
       const step: Step = { upload: file, ...(control ? { into: control.target } : {}) }
       return logged(step, `Uploaded ${file}.`, control ? [control] : [])
     },
     visit: async ([path]) => {
-      if (!path) throw new Error('Usage: product-demo visit <path>')
+      if (!path) throw new Error('Usage: product-demo-agent-toolkit visit <path>')
       return logged({ visit: path }, `Opened ${path}.`)
     },
     wait: async (args) => {
@@ -285,7 +297,8 @@ export async function serve(url: string): Promise<void> {
         options: { gone: { type: 'boolean' } },
       })
       const [what] = positionals
-      if (!what) throw new Error('Usage: product-demo wait "text" [--gone] | <seconds>')
+      if (!what)
+        throw new Error('Usage: product-demo-agent-toolkit wait "text" [--gone] | <seconds>')
       const seconds = Number(what)
       if (Number.isFinite(seconds)) return logged({ wait: seconds }, `Waited ${seconds}s.`)
       const step: Step = { wait: { text: what, ...(values.gone ? { gone: true } : {}) } }

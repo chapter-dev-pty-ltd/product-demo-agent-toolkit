@@ -42,7 +42,7 @@ export async function findFfmpeg(): Promise<string> {
   const own = join(
     homedir(),
     '.cache',
-    'product-demo',
+    'product-demo-agent-toolkit',
     `ffmpeg-6.1.1${process.platform === 'win32' ? '.exe' : ''}`,
   )
   if (existsSync(own)) return own

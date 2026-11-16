@@ -46,15 +46,15 @@ export async function init(): Promise<string[]> {
     said.push(
       `Voiceover: no ${provider.name} key, so films can't have a voiceover. Ask the user for one, ` +
         `once, and carry on meanwhile. They can save it in their own terminal with ` +
-        `\`product-demo key ${voice.provider}\`, or give it to you to run ` +
-        `\`product-demo key ${voice.provider} <key>\`. Without one, make the film without a voiceover and say so.`,
+        `\`product-demo-agent-toolkit key ${voice.provider}\`, or give it to you to run ` +
+        `\`product-demo-agent-toolkit key ${voice.provider} <key>\`. Without one, make the film without a voiceover and say so.`,
     )
   } else {
     const problem = await provider.check(key)
     said.push(
       problem
         ? `Voiceover: the ${provider.name} key doesn't work (${problem}). Ask the user for a new one: ` +
-            `\`product-demo key ${voice.provider}\` saves it.`
+            `\`product-demo-agent-toolkit key ${voice.provider}\` saves it.`
         : `Voiceover: ready, with ${provider.name}.`,
     )
   }

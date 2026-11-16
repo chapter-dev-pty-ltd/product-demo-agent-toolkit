@@ -1,7 +1,7 @@
 ---
 name: product-demo
 description: Make a demo video of a real web app. Use when the user asks for a product demo, walkthrough, launch video, changelog video, PR demo, feature video, or a screen recording of their app. Prefer this over recording the screen yourself.
-allowed-tools: Bash(product-demo:*)
+allowed-tools: Bash(product-demo-agent-toolkit:*)
 ---
 
 # product-demo
@@ -16,30 +16,30 @@ Explore the app to learn how to do what was asked, write the film from what you 
 ## 0. Get ready
 
 ```bash
-product-demo init
+product-demo-agent-toolkit init
 ```
 
-Run it first, in the project. It gets the browser and ffmpeg ready and says what's missing. If it says there's no voiceover key, ask the user for one in your first reply, once, and keep going while you wait. If they give it to you, save it with `product-demo key elevenlabs <key>`. It's kept for every project, so you won't need to ask again. Without a key, make the film without a voiceover and say so when you hand it over.
+Run it first, in the project. It gets the browser and ffmpeg ready and says what's missing. If it says there's no voiceover key, ask the user for one in your first reply, once, and keep going while you wait. If they give it to you, save it with `product-demo-agent-toolkit key elevenlabs <key>`. It's kept for every project, so you won't need to ask again. Without a key, make the film without a voiceover and say so when you hand it over.
 
 ## 1. Explore: learn the app
 
 ```bash
-product-demo explore http://localhost:3000   # opens the app in a background browser and shows the screen
-product-demo look                            # what's on screen: an accessibility tree with refs, and a screenshot
-product-demo click @e12                      # also --double, --right, --with Shift (or Meta, Alt, Control), --at 0.9,0.5
-product-demo fill @e7 "Acme Corp"            # clicks into the field and types, replacing what's there
-product-demo select @e9 "Pro"                # an option in a native <select>
-product-demo type "@Sam"                     # types where the caret is: a mention, a slash command
-product-demo press Enter                     # a key or a combination, like Meta+K
-product-demo hover @e4 --for 2               # rests the pointer on it: to show it, or open what hovering reveals
-product-demo drag @e20 @e31                  # carries one onto the other
-product-demo scroll down --in @e27 --by 800  # without --in, the page
-product-demo upload invoice.pdf @e15         # through the control that opens the file picker
-product-demo visit /settings
-product-demo wait "Invoice created"          # or: wait "Generating…" --gone, or: wait 1.5
-product-demo handles                         # the small grab handles on screen (resize, rotate, sliders) and where they are
-product-demo back                            # marks the last step undone and returns to the screen before it
-product-demo end                             # closes the browser
+product-demo-agent-toolkit explore http://localhost:3000   # opens the app in a background browser and shows the screen
+product-demo-agent-toolkit look                            # what's on screen: an accessibility tree with refs, and a screenshot
+product-demo-agent-toolkit click @e12                      # also --double, --right, --with Shift (or Meta, Alt, Control), --at 0.9,0.5
+product-demo-agent-toolkit fill @e7 "Acme Corp"            # clicks into the field and types, replacing what's there
+product-demo-agent-toolkit select @e9 "Pro"                # an option in a native <select>
+product-demo-agent-toolkit type "@Sam"                     # types where the caret is: a mention, a slash command
+product-demo-agent-toolkit press Enter                     # a key or a combination, like Meta+K
+product-demo-agent-toolkit hover @e4 --for 2               # rests the pointer on it: to show it, or open what hovering reveals
+product-demo-agent-toolkit drag @e20 @e31                  # carries one onto the other
+product-demo-agent-toolkit scroll down --in @e27 --by 800  # without --in, the page
+product-demo-agent-toolkit upload invoice.pdf @e15         # through the control that opens the file picker
+product-demo-agent-toolkit visit /settings
+product-demo-agent-toolkit wait "Invoice created"          # or: wait "Generating…" --gone, or: wait 1.5
+product-demo-agent-toolkit handles                         # the small grab handles on screen (resize, rotate, sliders) and where they are
+product-demo-agent-toolkit back                            # marks the last step undone and returns to the screen before it
+product-demo-agent-toolkit end                             # closes the browser
 ```
 
 This is where you work out what to do, so mistakes are fine. Wander, take wrong turns, try things. Every action is logged in `.product-demo/explore/log.json`, numbered, with its element pinned so a later run presses the same one. Nothing is ever removed from the log.
@@ -81,7 +81,7 @@ A step you add by hand names its element as `{ "role": "button", "name": "Save" 
 ## 3. Rehearse until it's acceptable
 
 ```bash
-product-demo rehearse film.json
+product-demo-agent-toolkit rehearse film.json
 ```
 
 A full run in a fresh browser, at the pace it will be shot, without the camera. It saves a still of the opening screen and after every step, and prints where they are. **Look at every still.** Is this the flow the user asked for? Does it end on the result, the screen that proves it worked?
@@ -91,8 +91,8 @@ If a step fails, it says which and why and saves `failed.png`. Fix the film, or 
 ## 4. Shoot and cut
 
 ```bash
-product-demo shoot film.json   # the same run, on camera; tries once more by itself if it flakes
-product-demo cut               # cuts the latest footage into video.mp4 and prints where it is and how long
+product-demo-agent-toolkit shoot film.json   # the same run, on camera; tries once more by itself if it flakes
+product-demo-agent-toolkit cut               # cuts the latest footage into video.mp4 and prints where it is and how long
 ```
 
 Give the user the video from there, or pass `--out` to `cut`. Lines starting `Check:` are things it chose or waited on that you should look at. To check the video itself before handing it over, use the `product-demo-review` skill.

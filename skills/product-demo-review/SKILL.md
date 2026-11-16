@@ -1,7 +1,7 @@
 ---
 name: product-demo-review
-description: Check a demo video made with product-demo before giving it to the user. Use after `product-demo cut`, or when the user asks whether a demo video is right.
-allowed-tools: Bash(product-demo:*)
+description: Check a demo video made with product-demo-agent-toolkit before giving it to the user. Use after `product-demo-agent-toolkit cut`, or when the user asks whether a demo video is right.
+allowed-tools: Bash(product-demo-agent-toolkit:*)
 ---
 
 # product-demo-review
@@ -9,7 +9,7 @@ allowed-tools: Bash(product-demo:*)
 You can't watch a video, so `review` lays frames from across it out in one image you can look at.
 
 ```bash
-product-demo review            # the latest video; or: product-demo review <footage folder>, or the .mp4 cut --out wrote
+product-demo-agent-toolkit review            # the latest video; or: product-demo-agent-toolkit review <footage folder>, or the .mp4 cut --out wrote
 ```
 
 It prints the image's path (`review.jpg`, beside the video). Open it and read it left to right, top to bottom: 24 frames, evenly spaced from the first to the last.
