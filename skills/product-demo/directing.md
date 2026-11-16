@@ -27,49 +27,33 @@ have music or a voiceover that it would fight with.
 
 ## Voiceover
 
-Give a step a line with `"say"`, and name the word its action lands on with `"on"`. The shoot
-performs to the voice: the line starts with its step, the pointer gets there early and presses
-(or starts typing) as the word is said, and the film moves on once the line has finished. One
-line can carry several actions: the steps after it give their own `"on"` and no `"say"`. A
-step with neither waits for the line to end, then runs.
+Write the voiceover with the steps, after exploring. Give a step a line with `"say"`, and mark
+the word in it that its action lands on with `"on"`: the shoot plays the line from the start of
+that step, and presses, types or drags exactly as that word is said. One line can carry
+several actions (later steps give an `"on"` and no `"say"`), and the film waits for a line to
+finish before the next step without an `"on"`.
+
+Choose the word that names what happens, and leave a second or so before it for the action
+before it to finish and the pointer to get there. Here, a guide to drawing a flowchart in
+Excalidraw:
 
 ```json
-{ "press": "r", "say": "Press R for the rectangle tool, and drag out a box.", "on": "R" },
+{ "press": "r", "say": "Let's sketch a quick flowchart. Press R for the rectangle tool, and drag out a box.", "on": "R" },
 { "drag": …, "on": "drag" },
 { "press": "Enter", "say": "Enter again, and call this one ship it.", "on": "enter" },
 { "type": "Ship it", "on": "ship" },
-{ "press": "Escape" }
+{ "press": "Escape" },
+{ "press": "a", "say": "Now press A for an arrow. Then, starting at the idea, drag it across to shipping it.", "on": "A" },
+{ "drag": …, "on": "drag" },
+{ "press": "Escape", "say": "And that's a flowchart, done in under a minute." }
 ```
 
-### Writing lines that land
+"Ship it" is typed as she says "ship". "Then, starting at the idea" is there to give the
+pointer time to reach the arrow's start before "drag".
 
-- Write the lines with the steps in front of you, after exploring: say what the viewer is
-  about to see happen, in the order it happens.
-- Put `on` on the word that names the action: "**press** enter", "**drag** out a box",
-  "**select** the box", "give it some **colour**". For typing, put it on the word that matches
-  what's typed ("call this one **ship** it" as "Ship it" is typed), so the text appears as
-  it's said. A key is written as its letter, "Press R", with `"on": "R"`.
-- Leave room before each `on`. The action before it has to finish first, and the pointer has
-  to get there: allow about a second after a drag, a typed label (a tenth of a second a
-  letter), a page change, or a click that opens a panel, and half a second for the pointer to
-  cross the screen. Don't put the first `on` of a line in its first half second if the
-  pointer has far to go.
-- To make room, add words before the word, not after: "Then, starting at the idea, drag it
-  across" lands better than "and drag it from the idea across". Splitting a long line into
-  two is fine too.
-- Short, plain lines, about 2.6 words a second: full stops and commas, no em dashes, an
-  exclamation mark only in a greeting. "You" or "we", never "as you can see".
-- Steps that don't need a word, like closing a panel with Escape, go after the line with no
-  `say` or `on`. End on a short closing line, on the last step, with no `on`.
-
-### Checking it
-
-1. `product-demo voice film.json` speaks the lines (once; a line that hasn't changed isn't
-   spoken again) and shows when each `on` word lands in its line. Every `on` must be found.
-2. `product-demo rehearse film.json` runs at the voice's pace. A line like
-   `Check: Step 12 … landed 0.7s after "drag" was said` means that action had too little room:
-   add words before its word, and rehearse again. Keep going until there are none, or only a
-   few tenths of a second.
+Run `product-demo voice film.json` to hear how long each line is and when each word comes,
+then rehearse. If rehearse says an action `landed 0.7s after "drag" was said`, add a few words
+before that word and rehearse again. Keep lines plain and short, about 2.6 words a second.
 
 The voice is Emma, from ElevenLabs. Choose another in the config or the film:
 `"voice": { "provider": "elevenlabs", "voice": "<voice id>" }`. It needs `ELEVENLABS_API_KEY`
