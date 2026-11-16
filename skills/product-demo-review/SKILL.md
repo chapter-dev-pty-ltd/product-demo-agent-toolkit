@@ -9,7 +9,7 @@ allowed-tools: Bash(product-demo:*)
 You can't watch a video, so `review` lays frames from across it out in one image you can look at.
 
 ```bash
-product-demo review            # the latest video; or: product-demo review <footage folder>
+product-demo review            # the latest video; or: product-demo review <footage folder>, or the .mp4 cut --out wrote
 ```
 
 It prints the image's path (`review.jpg`, beside the video). Open it and read it left to right, top to bottom: 24 frames, evenly spaced from the first to the last.

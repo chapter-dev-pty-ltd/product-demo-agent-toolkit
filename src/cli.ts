@@ -54,7 +54,7 @@ const USAGE = `product-demo ${version}
 3. Shoot it, and cut the footage into a video:
   product-demo shoot <film.json>
   product-demo cut [footage] [--out video.mp4]
-  product-demo review [footage]      An image of frames from across the video, to check it by
+  product-demo review [footage | video.mp4]  An image of frames from across the video, to check it by
 
 Set up: product-demo skills [dir]   Copy the skills into ~/.claude/skills (or dir) for your agent
 
@@ -177,9 +177,12 @@ try {
     await cp(fileURLToPath(new URL('../skills', import.meta.url)), to, { recursive: true })
     console.log(`Copied the product-demo skills into ${to}. Start a new session to load them.`)
   } else if (command === 'review') {
-    const from = input ?? (await latestRun('footage', 'footage.json'))
-    const video = join(from, 'video.mp4')
-    console.log(await review(video, videoLength(await readFootage(from))))
+    if (input?.endsWith('.mp4')) {
+      console.log(await review(input))
+    } else {
+      const from = input ?? (await latestRun('footage', 'footage.json'))
+      console.log(await review(join(from, 'video.mp4'), videoLength(await readFootage(from))))
+    }
   } else {
     console.log(USAGE)
     if (command) process.exitCode = 1
