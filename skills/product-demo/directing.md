@@ -51,7 +51,7 @@ Excalidraw:
 "Ship it" is typed as she says "ship". "Then, starting at the idea" is there to give the
 pointer time to reach the arrow's start before "drag".
 
-Run `product-demo voice film.json` to hear how long each line is and when each word comes,
+Run `product-demo voice film.json` to see how long each line is and when each word comes,
 then rehearse. If rehearse says an action `landed 0.7s after "drag" was said`, add a few words
 before that word and rehearse again. Keep lines plain and short, about 2.6 words a second.
 
