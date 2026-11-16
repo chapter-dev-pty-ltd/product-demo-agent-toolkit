@@ -65,6 +65,7 @@ Then:
 - Set how long the last screen holds, in seconds: `"ending": { "hold": 2 }` (2 if you leave it out).
 - Decide the effects now: the voiceover and the words each action lands on, what to highlight, and the cursor's colour. Read [directing.md](directing.md) for each.
 - Leave each step's `locator`, `selector` and `fingerprint` as they are.
+- Don't add `wait` steps for loading. Every step already waits for the page to finish what it started (a search, a page opening), so a `wait` after one only adds dead air. Use `wait` with text for something slow the page doesn't show as loading, and seconds only for a moment the viewer should watch, kept short.
 
 A step you add by hand names its element as `{ "role": "button", "name": "Save" }`, `{ "text": "Save" }` or `{ "css": "#save" }`. Steps: `visit`, `click` (with `double`, `right`, `modifiers`, `at`), `fill` (with `text`), `select` (with `option`), `type`, `press`, `hover` (with `seconds`), `drag` (with `to`), `scroll` (`up` or `down`, with `in` and `pixels`), `upload` (a file path, with `into`), `wait` (`{ "text": "..." }`, `{ "text": "...", "gone": true }` or seconds). `at` is where on the element, as fractions of its box: `{ "x": 0.9, "y": 0.5 }`. A step written by hand has no pin: prefer exploring it and copying it from the log.
 

@@ -76,7 +76,8 @@ Point the viewer at one thing, with the camera zooming toward it. Three styles:
 - `"style": "cursor"`: the cursor circles it once and comes back. For pointing at something
   without covering or changing the screen.
 
-Put it on the step after which it should show:
+Put it on the step whose action it should show. It comes on as that step starts, so the
+action happens inside it, then holds after:
 
 ```json
 { "click": { "role": "button", "name": "Save" }, "highlight": { "colour": "#2563eb", "zoom": 0.5 } }
@@ -88,7 +89,7 @@ Put it on the step after which it should show:
   height in pixels on that step's rehearsal still.
 - `zoom` runs from 0 (none, the default) to 1 (the box fills the view). 0.3 to 0.6 reads
   best; near 1 on something small gets soft.
-- `seconds` is how long it holds, 2 by default. The shoot holds still for it, so changing
+- `seconds` is how long it holds after the action, 2 by default. The shoot holds still for it, so changing
   it, or adding a highlight, means shooting again. Changing its style, colour, box or zoom
   only needs another cut.
 - Use it for what the film is about: the result, or the one control that matters. One or

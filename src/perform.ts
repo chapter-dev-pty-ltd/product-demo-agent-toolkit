@@ -211,6 +211,8 @@ async function perform(
           hand.due = line.at + word * 1000
         }
         hand.landed = undefined
+        // A highlight comes on before its action, so the action happens inside it.
+        const lit = step.highlight ? await highlightOn(page, step, finder) : undefined
         await settler.mark()
         await act(page, hand, film.app, step, finder)
         // Late on its word: the line gave the action too little time after the one before it.
@@ -233,8 +235,10 @@ async function perform(
           )
         }
         await watchers.still?.(page, label, index + 1)
-        if (step.highlight)
-          highlights.push({ step: index, ...(await highlight(page, step, finder)) })
+        if (lit) {
+          await page.waitForTimeout((step.highlight?.seconds ?? 2) * 1000)
+          highlights.push({ step: index, ...lit, until: performance.now() })
+        }
         // A line finishes before the film moves on, unless the next step lands on one of its words.
         if (line && !carriesOn) {
           const left = line.at + line.spoken.seconds * 1000 + 350 - performance.now()
@@ -323,14 +327,15 @@ export async function act(
 }
 
 /**
- * A step's highlight: the box of its element (or the box it gives), then a hold while the cut
- * draws it. Times are the clock's; the shoot makes them the video's.
+ * Turns a step's highlight on: the box of its element (or the box it gives), measured before
+ * the action, and a moment for the cut to zoom in. The time is the clock's; the shoot makes
+ * it the video's.
  */
-async function highlight(
+async function highlightOn(
   page: Page,
   step: Step,
   find: Finder,
-): Promise<{ at: number; until: number; box: number[] }> {
+): Promise<{ at: number; box: number[] }> {
   const given = step.highlight?.box
   const target = stepTarget(step)
   let box = given
@@ -341,8 +346,9 @@ async function highlight(
     box = [bounds.x, bounds.y, bounds.width, bounds.height]
   }
   const at = performance.now()
-  await page.waitForTimeout((step.highlight?.seconds ?? 2) * 1000)
-  return { at, until: performance.now(), box }
+  // Time for the cut to zoom in before anything moves.
+  await page.waitForTimeout(600)
+  return { at, box }
 }
 
 /** Types into the focused field, replacing what's in it. */

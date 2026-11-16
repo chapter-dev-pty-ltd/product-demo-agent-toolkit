@@ -8,11 +8,15 @@ import type { Page, Request } from 'playwright-core'
 //    action, not after it.
 //  - No request the page is waiting on is in flight, and none has been for 300ms. Streams
 //    (websockets, server-sent events, media) and requests open for over 5s (long polling)
-//    are left out: the page isn't waiting on them.
+//    are left out: the page isn't waiting on them, and so are requests to an address the
+//    page was already asking for again and again before the action (a playing video's
+//    chunks, analytics pings, polling).
 //  - Every timer the action scheduled in its first second (up to 2s long) has fired, so
 //    "do this in a moment" (a debounce, a delayed navigation, a staged render) is waited
 //    for. A clock that ticks forever, or polling started long before, isn't.
-//  - The DOM hasn't changed for 300ms since the action, ignoring anything we put on the page ourselves.
+//  - The DOM hasn't changed for 300ms since the action, ignoring anything we put on the page
+//    ourselves and anything that was already changing over and over before the action (a
+//    playing video's clock and progress bar).
 //  - No finite animation or transition is running. Endless ones (a pulsing dot) and scroll-
 //    driven ones (a fade tied to how far a list is scrolled) don't count.
 //  - Fonts are loaded and the images on screen have loaded or failed.
@@ -20,9 +24,14 @@ import type { Page, Request } from 'playwright-core'
 //  - A Showroom that reports its own status says it isn't loading.
 //
 // After `cap` it gives up waiting and says what was still going, so a page with a spinner
-// that never stops is filmed and noted rather than waited on forever.
+// that never stops is filmed and noted rather than waited on forever. When nothing is
+// loading (no navigation, no request in flight, nothing saying it's busy) it gives up after
+// 3s: the page is only moving, not loading.
 
 const QUIET_MS = 300
+/** How long before an action something has to keep changing to count as always changing. */
+const BEFORE_MS = 2000
+const MOVING_CAP_MS = 3000
 const LONG_REQUEST_MS = 5000
 const STREAMS = new Set(['websocket', 'eventsource', 'media'])
 
@@ -41,51 +50,64 @@ export interface Settler {
 
 /** Watches a page's requests for as long as it lives. */
 export function watch(page: Page): Settler {
-  const inFlight = new Map<Request, number>()
+  const inFlight = new Map<Request, { at: number; address: string }>()
   let lastNetwork = performance.now()
   let marked = performance.now()
   let navigatedAt = 0
+  // Addresses asked for, recently, and those the page kept asking for before the action.
+  let asked: { address: string; at: number }[] = []
+  let repeating = new Set<string>()
+  const addressOf = (request: Request) => request.url().split(/[?#]/)[0] ?? ''
 
   page.on('request', (request) => {
     if (STREAMS.has(request.resourceType())) return
-    inFlight.set(request, performance.now())
+    const now = performance.now()
+    const address = addressOf(request)
+    asked = asked.filter((a) => now - a.at < BEFORE_MS)
+    asked.push({ address, at: now })
+    inFlight.set(request, { at: now, address })
     if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
       navigatedAt = performance.now()
     }
   })
   const done = (request: Request) => {
-    if (inFlight.delete(request)) lastNetwork = performance.now()
+    const sent = inFlight.get(request)
+    inFlight.delete(request)
+    if (sent && !repeating.has(sent.address)) lastNetwork = performance.now()
   }
   page.on('requestfinished', done)
   page.on('requestfailed', done)
-  void page.addInitScript(watchTimers)
+  void page.addInitScript(watchPage)
 
   return {
     mark: async () => {
       marked = performance.now()
-      await page
-        .evaluate(() => {
-          const view: Window & { __pdMark?: number; __pdLastChange?: number } = window
-          view.__pdMark = performance.now()
-          view.__pdLastChange = performance.now()
-        })
-        .catch(() => {})
+      const counts = new Map<string, number>()
+      for (const { address, at } of asked) {
+        if (marked - at < BEFORE_MS) counts.set(address, (counts.get(address) ?? 0) + 1)
+      }
+      repeating = new Set([...counts].filter(([, n]) => n >= 2).map(([address]) => address))
+      await page.evaluate(markPage, BEFORE_MS).catch(() => {})
     },
     settled: async ({ beat = 0, cap = 10_000 } = {}) => {
       const start = performance.now()
       let waitingOn: string[] = []
-      while (performance.now() - start < cap) {
+      for (;;) {
         waitingOn = []
         const now = performance.now()
-        if (navigatedAt >= marked) {
-          await page.waitForLoadState('load', { timeout: cap }).catch(() => {})
-        }
-        const pending = [...inFlight.values()].filter((at) => now - at < LONG_REQUEST_MS)
+        const navigated = navigatedAt >= marked
+        if (navigated) await page.waitForLoadState('load', { timeout: cap }).catch(() => {})
+        const pending = [...inFlight.values()].filter(
+          (sent) => now - sent.at < LONG_REQUEST_MS && !repeating.has(sent.address),
+        )
         if (pending.length > 0) waitingOn.push(`${pending.length} requests`)
         else if (now - lastNetwork < QUIET_MS) waitingOn.push('requests just finished')
         const screen = await page.evaluate(lookAtScreen, QUIET_MS).catch(() => ['a page loading'])
         waitingOn.push(...screen)
         if (waitingOn.length === 0) break
+        const loading =
+          pending.length > 0 || screen.some((s) => s.includes('loading') || s.includes('busy'))
+        if (performance.now() - start >= (loading ? cap : Math.min(cap, MOVING_CAP_MS))) break
         await page.waitForTimeout(100)
       }
       if (beat > 0) await page.waitForTimeout(beat)
@@ -102,10 +124,15 @@ type Watched = Window & {
   __pdLastChange?: number
   __pdMark?: number
   __pdTimers?: Map<number, Timer>
+  __pdChanges?: { node: Node; at: number }[]
+  __pdRepeating?: Set<Node>
 }
 
-/** Runs in the page before its own scripts: keeps a list of the timers it has pending. */
-function watchTimers(): void {
+/**
+ * Runs in the page before its own scripts: keeps a list of the timers it has pending, and
+ * when the page last changed.
+ */
+function watchPage(): void {
   const view: Watched = window
   if (view.__pdTimers) return
   const timers = new Map<number, Timer>()
@@ -145,30 +172,45 @@ function watchTimers(): void {
     forget(id)
     stop(id)
   })
+
+  // Every change, kept for a few seconds, so the moment before an action can tell what was
+  // already changing over and over. Those changes don't count as the page changing.
+  const changes: { node: Node; at: number }[] = []
+  view.__pdChanges = changes
+  view.__pdLastChange = performance.now()
+  new MutationObserver((records) => {
+    const now = performance.now()
+    for (const record of records) {
+      const node = record.target
+      const element = node instanceof Element ? node : node.parentElement
+      if (element?.closest('[data-product-demo]')) continue
+      changes.push({ node, at: now })
+      if (!view.__pdRepeating?.has(node)) view.__pdLastChange = now
+    }
+    const old = changes.findIndex((c) => now - c.at < 5000)
+    changes.splice(0, old === -1 ? changes.length : old)
+  }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true })
+}
+
+/** Runs in the page just before an action: notes the time, and what keeps changing. */
+function markPage(beforeMs: number): void {
+  const view: Watched = window
+  const now = performance.now()
+  view.__pdMark = now
+  view.__pdLastChange = now
+  const counts = new Map<Node, number>()
+  for (const { node, at } of view.__pdChanges ?? []) {
+    if (now - at < beforeMs) counts.set(node, (counts.get(node) ?? 0) + 1)
+  }
+  view.__pdRepeating = new Set([...counts].filter(([, n]) => n >= 2).map(([node]) => node))
 }
 
 /** Runs in the page: what on screen is still going. Empty when nothing is. */
 function lookAtScreen(quietMs: number): string[] {
   const view: Watched = window
-  if (view.__pdLastChange === undefined) {
-    view.__pdLastChange = performance.now()
-    new MutationObserver((changes) => {
-      const ours = changes.every((c) => {
-        const node = c.target instanceof Element ? c.target : c.target.parentElement
-        return node?.closest('[data-product-demo]')
-      })
-      if (!ours) view.__pdLastChange = performance.now()
-    }).observe(document.documentElement, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      characterData: true,
-    })
-  }
-
   const going: string[] = []
   if (document.readyState !== 'complete') going.push('the page loading')
-  if (performance.now() - view.__pdLastChange < quietMs) going.push('the page changing')
+  if (performance.now() - (view.__pdLastChange ?? 0) < quietMs) going.push('the page changing')
   if (document.fonts.status !== 'loaded') going.push('fonts')
 
   const mark = view.__pdMark ?? 0

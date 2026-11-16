@@ -31,6 +31,10 @@ const PAGES: Record<string, string> = {
   '/stuck': `<button onclick="
       const s = document.createElement('div'); s.setAttribute('aria-busy', 'true'); s.textContent = 'Loading';
       document.body.append(s)">Start</button>`,
+  '/playing': `<span id="clock">0:00</span><div id="bar" style="width:0"></div>
+      <script>let n = 0; setInterval(() => { clock.textContent = '0:' + ++n; bar.style.width = n + 'px' }, 150)
+      setInterval(() => fetch('/chunk?n=' + n), 250)</script>
+      <button onclick="fetch('/slow-data').then(r => r.text()).then(t => document.body.append(t))">Load</button>`,
   '/typing': `<button onclick="
       let n = 0; const t = setInterval(() => { document.body.append('word '); if (++n === 8) clearInterval(t) }, 150)">Write</button>`,
 }
@@ -63,6 +67,7 @@ async function pressAndSettle(path: string, cap?: number) {
   const settler = watch(page)
   await page.goto(base + path)
   await settler.settled()
+  await page.waitForTimeout(500)
   await settler.mark()
   await page.getByRole('button').click()
   const result = await settler.settled(cap ? { cap } : {})
@@ -118,6 +123,26 @@ test('is not held up by an animation tied to scrolling', async () => {
 test('is not held up by a spinner kept in the page out of sight', async () => {
   const { result } = await pressAndSettle('/hidden-spinner')
   expect(result.settled).toBe(true)
+})
+
+test('is not held up by what was changing before, like a playing video', async () => {
+  const start = performance.now()
+  const { page, result } = await pressAndSettle('/playing')
+  expect(result.settled).toBe(true)
+  expect(await page.textContent('body')).toContain('Data loaded')
+  expect(performance.now() - start).toBeLessThan(6000)
+})
+
+test('gives up after 3s on a page that keeps moving but is not loading', async () => {
+  const page: Page = await browser.newPage()
+  const settler = watch(page)
+  await page.goto(base + '/endless')
+  await settler.mark()
+  await page.evaluate(() => setInterval(() => document.body.append('.'), 100))
+  const start = performance.now()
+  const result = await settler.settled()
+  expect(result.settled).toBe(false)
+  expect(performance.now() - start).toBeLessThan(4000)
 })
 
 test('gives up on something busy forever, and says what', async () => {
