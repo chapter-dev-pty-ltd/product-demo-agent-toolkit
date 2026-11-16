@@ -107,14 +107,28 @@ export async function cut(
   return length
 }
 
+/** The clicks, taken in turn, so one click never sounds exactly like the last. */
+const CLICKS = ['click-1.wav', 'click-2.wav']
+
 /** ffmpeg's arguments for the sound: a click at each of these times, for the video's length. */
 function clickSounds(times: number[], length: number): string[] {
   if (times.length === 0) return []
-  const click = fileURLToPath(new URL('../library/sounds/click.wav', import.meta.url))
+  const inputs = CLICKS.flatMap((file) => [
+    '-i',
+    fileURLToPath(new URL(`../library/sounds/${file}`, import.meta.url)),
+  ])
+  // Each sound is split into as many copies as it plays, then each copy is delayed to its time.
+  const splits = CLICKS.map((_, k) => {
+    const mine = times.flatMap((_, i) => (i % CLICKS.length === k ? [`[c${i}]`] : []))
+    return mine.length
+      ? `[${k + 1}:a]asplit=${mine.length}${mine.join('')}`
+      : `[${k + 1}:a]anullsink`
+  })
   const each = times.map((t, i) => `[c${i}]adelay=${Math.round(t * 1000)}:all=1[d${i}]`)
-  const split = `[1:a]asplit=${times.length}${times.map((_, i) => `[c${i}]`).join('')}`
-  const mix = `${times.map((_, i) => `[d${i}]`).join('')}amix=inputs=${times.length}:normalize=0,apad=whole_dur=${length.toFixed(3)}[a]`
+  // A silent track the video's length leads the mix, so the sound runs to the end.
+  const silence = `anullsrc=r=48000:cl=mono:d=${length.toFixed(3)}[q]`
+  const mix = `[q]${times.map((_, i) => `[d${i}]`).join('')}amix=inputs=${times.length + 1}:normalize=0:duration=first[a]`
   // prettier-ignore
-  return ['-i', click, '-filter_complex', [split, ...each, mix].join(';'),
+  return [...inputs, '-filter_complex', [...splits, ...each, silence, mix].join(';'),
     '-map', '0:v', '-map', '[a]', '-c:a', 'aac', '-b:a', '160k']
 }
