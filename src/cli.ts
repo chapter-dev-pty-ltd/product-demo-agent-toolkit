@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import {
   cut,
@@ -50,6 +50,7 @@ const USAGE = `product-demo ${version}
   product-demo review [footage]      An image of frames from across the video, to check it by
 
 Settings live in .product-demo/config.json: mode (ask | just_do_it), backdrop (halo | sky | violet),
+cursor (pink | lime),
 keep (rehearsals and shoots kept per film, default 10), review (cut also makes the review image, default false).`
 
 const EXPLORE = new Set([
@@ -115,7 +116,7 @@ try {
     for (let attempt = 1; !footage; attempt++) {
       dir = await newRun('footage', input, config.keep)
       try {
-        footage = await shoot(film, dir, config)
+        footage = await shoot(film, resolve(input), dir, config)
       } catch (error) {
         // A rehearsed film that fails on camera usually flaked (a slow request): one more
         // try. A decision someone has to make won't change on a second try.

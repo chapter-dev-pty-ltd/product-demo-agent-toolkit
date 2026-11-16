@@ -80,9 +80,9 @@ async function writesH264(ffmpeg: string): Promise<boolean> {
   })
 }
 
-export function run(command: string, args: string[]): Promise<void> {
+export function run(command: string, args: string[], cwd?: string): Promise<void> {
   return new Promise((done, fail) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'inherit', 'inherit'] })
+    const child = spawn(command, args, { stdio: ['ignore', 'inherit', 'inherit'], cwd })
     child.on('error', fail)
     child.on('exit', (code) =>
       code === 0 ? done() : fail(new Error(`${command} failed with code ${code}.`)),

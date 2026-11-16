@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
+import { CURSORS, type Cursor } from './config.ts'
 import type { Fingerprint } from './similo.ts'
 
 /**
@@ -51,6 +52,8 @@ export interface Film {
   app: string
   /** What the film is for and what it has to show. Read by people and agents, never run. */
   notes?: string | undefined
+  /** The cursor's colour in the video, when it isn't the config's. */
+  cursor?: Cursor | undefined
   steps: Step[]
   ending?: { hold: number } | undefined
 }
@@ -128,6 +131,7 @@ export const stepSchema: z.ZodType<Step> = z.union([
 const film: z.ZodType<Film> = z.strictObject({
   app: z.url(),
   notes: z.string().optional(),
+  cursor: z.enum(CURSORS).optional(),
   steps: z.array(stepSchema),
   ending: z.strictObject({ hold: z.number().nonnegative() }).optional(),
 })

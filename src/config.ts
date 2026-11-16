@@ -5,15 +5,24 @@ import { z } from 'zod'
 /** The backdrops in library/backdrops, by name. */
 export const BACKDROPS = ['halo', 'sky', 'violet'] as const
 
+/** The cursor's colours, as the cut draws it. */
+export const CURSORS = ['pink', 'lime'] as const
+export type Cursor = (typeof CURSORS)[number]
+
 export interface Config {
   mode: 'ask' | 'just_do_it'
   backdrop: (typeof BACKDROPS)[number]
+  cursor: Cursor
   keep: number
   review: boolean
 }
 
 const config: z.ZodType<Config> = z.strictObject({
   backdrop: z.enum(BACKDROPS).default('halo').describe('What the app is framed on in the video.'),
+  cursor: z
+    .enum(CURSORS)
+    .default('pink')
+    .describe("The cursor's colour in the video. A film can choose its own."),
   keep: z
     .number()
     .int()

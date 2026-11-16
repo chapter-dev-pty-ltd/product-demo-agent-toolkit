@@ -22,10 +22,16 @@ export interface Rehearsal {
   warnings: string[]
 }
 
-/** What a shoot leaves for `cut`: every frame, timed from the start. */
+/** What a shoot leaves for `cut`: every frame, and where the pointer went, timed from the start. */
 export interface Footage {
   film: Film
+  /** The film file it was shot from, so a cut can read the film's latest directions. */
+  source: string
   frames: { file: string; at: number }[]
+  /** Where the pointer was, from each move; the cut draws the cursor along it. */
+  pointer: { at: number; x: number; y: number }[]
+  /** Where and when the pointer clicked. */
+  clicks: { at: number; x: number; y: number }[]
   end: number
   /** Choices made without asking (`just_do_it`), recoveries, and steps that never settled. */
   warnings: string[]
@@ -34,12 +40,10 @@ export interface Footage {
 /** A step that can't go on until someone decides something. Trying again won't help. */
 export class NeedsDecision extends Error {}
 
-const CURSOR = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26"><path d="M3 2l17 11.5-7.4 1.4 4.3 8.2-3.2 1.6-4.3-8.3L3 21z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>`
-
 /** Performs the film without a camera, keeping a still after each step. */
 export async function rehearse(film: Film, dir: string, config: Config): Promise<Rehearsal> {
   const stills: Rehearsal['stills'] = []
-  const warnings = await perform(film, dir, config, {
+  const { warnings } = await perform(film, dir, config, {
     still: async (page, step, index) => {
       const file = join(dir, `${String(index).padStart(2, '0')}.png`)
       await page.screenshot({ path: file })
@@ -52,13 +56,18 @@ export async function rehearse(film: Film, dir: string, config: Config): Promise
 }
 
 /** Performs the film on camera, keeping every frame. */
-export async function shoot(film: Film, dir: string, config: Config): Promise<Footage> {
+export async function shoot(
+  film: Film,
+  source: string,
+  dir: string,
+  config: Config,
+): Promise<Footage> {
   await mkdir(join(dir, 'frames'), { recursive: true })
   const frames: Footage['frames'] = []
   const writes: Promise<void>[] = []
   let started = 0
   let end = 0
-  const warnings = await perform(film, dir, config, {
+  const { warnings, trail } = await perform(film, dir, config, {
     camera: async (page) => {
       started = performance.now()
       const session = await page.context().newCDPSession(page)
@@ -81,7 +90,14 @@ export async function shoot(film: Film, dir: string, config: Config): Promise<Fo
     },
   })
   await Promise.all(writes)
-  const footage: Footage = { film, frames, end, warnings }
+  // The pointer from where it rested when the camera started: earlier moves count as at 0.
+  const since = (t: number) => Math.max(0, (t - started) / 1000)
+  const first = trail.findLastIndex((m) => m.t <= started)
+  const pointer = trail.slice(Math.max(0, first)).map((m) => ({ at: since(m.t), x: m.x, y: m.y }))
+  const clicks = trail
+    .filter((m) => m.click && m.t >= started)
+    .map((m) => ({ at: since(m.t), x: m.x, y: m.y }))
+  const footage: Footage = { film, source, frames, pointer, clicks, end, warnings }
   await writeFile(join(dir, 'footage.json'), JSON.stringify(footage, null, 2))
   return footage
 }
@@ -93,19 +109,21 @@ interface Watchers {
   still?: (page: Page, step: string, index: number) => Promise<void>
 }
 
-/** One run of the film in a fresh browser. Returns its warnings; throws at the first step that fails. */
+/**
+ * One run of the film in a fresh browser. Returns its warnings and the hand's trail; throws
+ * at the first step that fails.
+ */
 async function perform(
   film: Film,
   dir: string,
   config: Config,
   watchers: Watchers,
-): Promise<string[]> {
+): Promise<{ warnings: string[]; trail: Hand['trail'] }> {
   await mkdir(dir, { recursive: true })
   const browser = await launchBrowser()
   try {
     const page = await browser.newPage({ viewport: VIEWPORT })
     const settler = watch(page)
-    await page.addInitScript(drawCursor, CURSOR)
     await page.goto(film.app)
     const hand = new Hand(page)
     await hand.rest(VIEWPORT.width / 2, VIEWPORT.height / 2)
@@ -137,7 +155,7 @@ async function perform(
       }
     }
     await stopCamera?.()
-    return warnings
+    return { warnings, trail: hand.trail }
   } finally {
     await browser.close()
   }
@@ -330,6 +348,8 @@ export class Hand {
   page: Page
   /** Exploring: no travel and no pauses, only what the page needs to hear. */
   quick: boolean
+  /** Every move and click, with its time, for the cut to draw the cursor from. */
+  trail: { t: number; x: number; y: number; click?: true }[] = []
   constructor(page: Page, quick = false) {
     this.page = page
     this.quick = quick
@@ -339,9 +359,15 @@ export class Hand {
     if (!this.quick) await this.page.waitForTimeout(ms)
   }
 
-  /** Puts the pointer somewhere without travelling, so the page draws it there. */
+  /** Puts the pointer somewhere without travelling. */
   async rest(x: number, y: number): Promise<void> {
+    await this.move(x, y)
+  }
+
+  /** Moves the mouse, and keeps the move in the trail. */
+  private async move(x: number, y: number): Promise<void> {
     await this.page.mouse.move(x, y)
+    if (!this.quick) this.trail.push({ t: performance.now(), x, y })
     this.x = x
     this.y = y
   }
@@ -353,7 +379,7 @@ export class Hand {
     const ms = Math.min(900, 250 + Math.hypot(x - fromX, y - fromY) * 0.5)
     for (let t = 0; t <= ms; t += 16) {
       const k = ease(t / ms)
-      await this.page.mouse.move(fromX + (x - fromX) * k, fromY + (y - fromY) * k)
+      await this.move(fromX + (x - fromX) * k, fromY + (y - fromY) * k)
       await this.page.waitForTimeout(16)
     }
     await this.rest(x, y)
@@ -385,6 +411,8 @@ export class Hand {
       const presses = how.double ? 2 : 1
       for (let clickCount = 1; clickCount <= presses; clickCount++) {
         await this.page.mouse.down({ button, clickCount })
+        if (!this.quick)
+          this.trail.push({ t: performance.now(), x: this.x, y: this.y, click: true })
         await this.pause(80)
         await this.page.mouse.up({ button, clickCount })
         if (clickCount < presses) await this.pause(60)
@@ -415,18 +443,16 @@ export class Hand {
     const ms = this.quick ? 400 : Math.min(1400, 450 + distance * 0.7)
     for (let t = 16; t < ms; t += 16) {
       const k = ease(t / ms)
-      await mouse.move(start.x + (end.x - start.x) * k, start.y + (end.y - start.y) * k)
+      await this.move(start.x + (end.x - start.x) * k, start.y + (end.y - start.y) * k)
       await this.page.waitForTimeout(16)
     }
     // Over the drop long enough for it to light up, then a nudge, since some libraries test
     // the target on a move rather than on release.
-    await mouse.move(end.x, end.y)
+    await this.move(end.x, end.y)
     await this.page.waitForTimeout(this.quick ? 200 : 350)
     await mouse.move(end.x + 1, end.y)
-    await mouse.move(end.x, end.y)
+    await this.move(end.x, end.y)
     await mouse.up()
-    this.x = end.x
-    this.y = end.y
   }
 
   /** Turns the wheel where the pointer is, eased in and out. */
@@ -448,22 +474,3 @@ async function spotOn(target: Locator, at?: Point): Promise<{ x: number; y: numb
 }
 
 const ease = (k: number) => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2)
-
-/** Runs in the page: a pointer that follows the mouse, since headless Chromium draws none. */
-function drawCursor(svg: string): void {
-  const draw = () => {
-    const cursor = document.createElement('div')
-    cursor.dataset.productDemo = 'pointer'
-    cursor.innerHTML = svg
-    cursor.style.cssText =
-      'position:fixed;left:0;top:0;pointer-events:none;z-index:2147483647;transform:translate(-100px,-100px)'
-    document.documentElement.append(cursor)
-    addEventListener(
-      'mousemove',
-      (e) => (cursor.style.transform = `translate(${e.clientX - 3}px,${e.clientY - 2}px)`),
-      true,
-    )
-  }
-  if (document.documentElement) draw()
-  else addEventListener('DOMContentLoaded', draw)
-}

@@ -58,6 +58,7 @@ Then:
 - Add `"notes"` to the film: what it's for, who it's for, what it has to prove.
 - Add a `"note"` to any step whose purpose isn't obvious, or that is fragile or odd. Notes are never run; they're for whoever reads the film next, you included.
 - Set how long the last screen holds, in seconds: `"ending": { "hold": 2 }` (2 if you leave it out).
+- To change how the video looks (the cursor's colour), read [directing.md](directing.md).
 - Leave each step's `locator`, `selector` and `fingerprint` as they are.
 
 A step you add by hand names its element as `{ "role": "button", "name": "Save" }`, `{ "text": "Save" }` or `{ "css": "#save" }`. Steps: `visit`, `click` (with `double`, `right`, `modifiers`, `at`), `fill` (with `text`), `select` (with `option`), `type`, `press`, `hover` (with `seconds`), `drag` (with `to`), `scroll` (`up` or `down`, with `in` and `pixels`), `upload` (a file path, with `into`), `wait` (`{ "text": "..." }`, `{ "text": "...", "gone": true }` or seconds). `at` is where on the element, as fractions of its box: `{ "x": 0.9, "y": 0.5 }`. A step written by hand has no pin: prefer exploring it and copying it from the log.
@@ -85,7 +86,7 @@ Give the user the video from there, or pass `--out` to `cut`. Lines starting `Ch
 
 If the request could mean two things, a still doesn't look like what was asked for, or a run says several elements match a step, ask the user before going on. Show them the still. Don't guess.
 
-`.product-demo/config.json` can set `"mode": "just_do_it"` to make the best choice instead (runs then print what they chose), the `backdrop` (`halo`, the default, `sky` or `violet`), how many runs of each film to `keep` (default 10), and `"review": true` to have `cut` make a review image every time.
+`.product-demo/config.json` can set `"mode": "just_do_it"` to make the best choice instead (runs then print what they chose), the `backdrop` (`halo`, the default, `sky` or `violet`), the `cursor` (`pink`, the default, or `lime`), how many runs of each film to `keep` (default 10), and `"review": true` to have `cut` make a review image every time.
 
 ## What makes a good film
 
