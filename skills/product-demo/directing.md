@@ -87,8 +87,8 @@ action happens inside it, then holds after:
 - Without a `box`, it highlights the step's own element (for a drag, where it was dropped).
   A step with no element (`press`, `type`, `visit`, `wait`) needs a `box`: x, y, width and
   height in pixels on that step's rehearsal still.
-- `zoom` runs from 0 (none, the default) to 1 (the box fills the view). 0.3 to 0.6 reads
-  best; near 1 on something small gets soft.
+- `zoom` runs from 0 (none, the default) to 1 (the box fills the view, up to 2x: closer gets
+  soft). 0.3 to 0.6 reads best.
 - `seconds` is how long it holds after the action, 2 by default. The shoot holds still for it, so changing
   it, or adding a highlight, means shooting again. Changing its style, colour, box or zoom
   only needs another cut.

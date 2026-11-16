@@ -200,7 +200,9 @@ const W = ${VIEWPORT.width}, H = ${VIEWPORT.height};
 const ease = (k) => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2);
 
 // A highlight at t. The camera zooms toward its box by its zoom (1 is the box filling the
-// view), centred on it but never past the app's edges. Then either an outline in its colour
+// view, but never past 2x: the frames are recorded at 1x), centred on it but never past the
+// app's edges. It zooms about one fixed point, worked out from where it ends, so the box only
+// ever moves one way on screen, never out and back. Then either an outline in its colour
 // fades in, the region is magnified (a copy of it lifts off the dimmed screen), or the cursor
 // circles it from where it rests.
 const highlightAt = async (t, rest) => {
@@ -212,14 +214,16 @@ const highlightAt = async (t, rest) => {
   }
   const [x, y, w, h2] = h.box;
   const since = t - h.at, left = h.until - t;
-  const inOut = Math.min(0.6, (h.until - h.at) / 3);
+  const inOut = Math.min(0.8, (h.until - h.at) / 3);
   const e = ease(Math.min(1, since / inOut, left / inOut));
-  const full = Math.min(W / (w + 96), H / (h2 + 96));
-  const scale = 1 + (Math.max(1, full) - 1) * h.zoom * e;
-  const fx = W / 2 + (x + w / 2 - W / 2) * e, fy = H / 2 + (y + h2 / 2 - H / 2) * e;
-  const tx = Math.min(0, Math.max(W - W * scale, W / 2 - fx * scale));
-  const ty = Math.min(0, Math.max(H - H * scale, H / 2 - fy * scale));
-  camera.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+  const full = Math.min(2, W / (w + 96), H / (h2 + 96));
+  const end = 1 + (Math.max(1, full) - 1) * h.zoom;
+  const endX = Math.min(0, Math.max(W - W * end, W / 2 - (x + w / 2) * end));
+  const endY = Math.min(0, Math.max(H - H * end, H / 2 - (y + h2 / 2) * end));
+  // The point that stays put: where it is on the page is where it ends on screen.
+  const px = end > 1 ? endX / (1 - end) : 0, py = end > 1 ? endY / (1 - end) : 0;
+  const scale = 1 + (end - 1) * e;
+  camera.style.transform = 'translate(' + px * (1 - scale) + 'px,' + py * (1 - scale) + 'px) scale(' + scale + ')';
   const fade = Math.min(1, since / 0.25, left / 0.25);
   if (h.style === 'cursor') {
     box.style.opacity = dim.style.opacity = lift.style.opacity = 0;

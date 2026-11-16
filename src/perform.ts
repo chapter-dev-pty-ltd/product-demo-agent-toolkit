@@ -347,7 +347,7 @@ async function highlightOn(
   }
   const at = performance.now()
   // Time for the cut to zoom in before anything moves.
-  await page.waitForTimeout(600)
+  await page.waitForTimeout(800)
   return { at, box }
 }
 
