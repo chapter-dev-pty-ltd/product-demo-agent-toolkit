@@ -21,11 +21,12 @@ own.
 ## The cursor
 
 The cut draws the cursor along the path the pointer took when the film was shot: a rounded
-arrow with a white edge that dips as it clicks. It comes in three colours:
+arrow with a white edge that dips as it clicks, in three colours, or a Mac's pointer:
 
 - `black`, the default.
 - `pink`.
 - `lime`.
+- `macos`: a classic pointer, black with a white edge, like the one on a Mac.
 
 Black reads on almost any app. Pink or lime stand out more, on a dark app for instance: lime
 where pink gets lost, on a pink, red or warm-coloured app.

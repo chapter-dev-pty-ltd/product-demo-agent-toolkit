@@ -11,7 +11,7 @@ export const DISPLAYS = ['none', 'browser'] as const
 export type Display = (typeof DISPLAYS)[number]
 
 /** The cursor's colours, as the cut draws it. */
-export const CURSORS = ['black', 'pink', 'lime'] as const
+export const CURSORS = ['black', 'pink', 'lime', 'macos'] as const
 export type Cursor = (typeof CURSORS)[number]
 
 /** Which sounds the video has: all or none, or each on its own. */

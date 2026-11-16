@@ -15,10 +15,19 @@ import { VIEWPORT, type Footage } from '../perform.ts'
 
 const CANVAS = { width: 1920, height: 1080 }
 const ORIGIN = 'https://stage.product-demo'
-const COLOURS: Record<Config['cursor'], string> = {
-  black: '#111111',
-  pink: '#ff7ccb',
-  lime: '#b6f24f',
+/**
+ * Each cursor: its drawing, its size on the stage, where its tip is (from its top left, in
+ * stage pixels) and its colour. The rounded arrow comes in colours; `macos` is a classic
+ * pointer, black with a white edge.
+ */
+const CURSOR_LOOKS: Record<
+  Config['cursor'],
+  { file: string; width: number; height: number; tip: number; colour: string }
+> = {
+  black: { file: 'arrow.svg', width: 28.8, height: 28.8, tip: 4, colour: '#111111' },
+  pink: { file: 'arrow.svg', width: 28.8, height: 28.8, tip: 4, colour: '#ff7ccb' },
+  lime: { file: 'arrow.svg', width: 28.8, height: 28.8, tip: 4, colour: '#b6f24f' },
+  macos: { file: 'macos.svg', width: 22, height: 31, tip: 1.5, colour: '#000000' },
 }
 
 /** A highlight as the stage draws it, timed from the footage's start. */
@@ -69,7 +78,7 @@ export async function openStage(
   const files: Record<string, () => Promise<Buffer>> = {
     '/backdrop.jpg': () => readFile(library(`backdrops/${look.backdrop}.jpg`)),
   }
-  const arrow = await readFile(library('cursors/arrow.svg'), 'utf8')
+  const arrow = await readFile(library(`cursors/${CURSOR_LOOKS[look.cursor].file}`), 'utf8')
 
   const page = await browser.newPage({ viewport: CANVAS, deviceScaleFactor: 1 })
   // Served from one made-up origin: the page, the library's pictures and the footage.
@@ -123,6 +132,7 @@ function html(
   extra: string,
 ): string {
   const browser = look.display === 'browser'
+  const pointer = CURSOR_LOOKS[look.cursor]
   // In a browser it's the whole window, toolbar and all, that's centred.
   const app = {
     x: (CANVAS.width - VIEWPORT.width) / 2,
@@ -176,10 +186,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 #lift { position: absolute; overflow: hidden; border-radius: 12px; opacity: 0; transform-origin: center;
   box-shadow: 0 28px 70px rgb(0 0 0 / .32), 0 8px 20px rgb(0 0 0 / .18); }
 #lift img { position: absolute; width: ${VIEWPORT.width}px; height: ${VIEWPORT.height}px; max-width: none; }
-/* The arrow at 80% of its drawn 36px, its tip (5,5 in the drawing) on the pointer, with a thick
-   white edge and a soft shadow so it reads on any app. */
-#cursor { position: absolute; left: -4px; top: -4px; width: 28.8px; height: 28.8px; color: ${COLOURS[look.cursor]}; }
-#cursor svg { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: 4px 4px; animation: dip 250ms linear paused;
+/* The cursor with its tip on the pointer, and a soft shadow so it reads on any app. */
+#cursor { position: absolute; left: -${pointer.tip}px; top: -${pointer.tip}px; width: ${pointer.width}px; height: ${pointer.height}px; color: ${pointer.colour}; }
+#cursor svg { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: ${pointer.tip}px ${pointer.tip}px; animation: dip 250ms linear paused;
   filter: drop-shadow(0 1.5px 2.5px rgb(0 0 0 / .28)); }
 /* A click: the arrow pressed in, then springing back past its size and settling. */
 @keyframes dip {
