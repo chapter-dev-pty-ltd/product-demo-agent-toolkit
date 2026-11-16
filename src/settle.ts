@@ -12,7 +12,7 @@ import type { Page, Request } from 'playwright-core'
 //  - Every timer the action scheduled in its first second (up to 2s long) has fired, so
 //    "do this in a moment" (a debounce, a delayed navigation, a staged render) is waited
 //    for. A clock that ticks forever, or polling started long before, isn't.
-//  - The DOM hasn't changed for 300ms since the action, ignoring our own pointer.
+//  - The DOM hasn't changed for 300ms since the action, ignoring anything we put on the page ourselves.
 //  - No finite animation or transition is running. Endless ones (a pulsing dot) and scroll-
 //    driven ones (a fade tied to how far a list is scrolled) don't count.
 //  - Fonts are loaded and the images on screen have loaded or failed.

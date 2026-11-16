@@ -7,7 +7,7 @@ edit the film, run `cut`, and the new video is ready in seconds.
 ## The cursor
 
 The cut draws the cursor along the path the pointer took when the film was shot: a rounded
-arrow, with a ripple from its tip on every click. It comes in two colours:
+arrow that dips as it clicks. It comes in two colours:
 
 - `pink`, the default.
 - `lime`.

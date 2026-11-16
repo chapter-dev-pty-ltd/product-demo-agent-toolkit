@@ -13,12 +13,12 @@ import { VIEWPORT, type Footage } from '../perform.ts'
 // An element with `data-at="2.5"` runs its CSS animations from 2.5s into the video, and
 // with `data-for="0.6"` it shows only for those 0.6s. That's how an effect is added.
 
-export const CANVAS = { width: 1920, height: 1080 }
+const CANVAS = { width: 1920, height: 1080 }
 const ORIGIN = 'https://stage.product-demo'
 const COLOURS: Record<Config['cursor'], string> = { pink: '#ff7ccb', lime: '#b6f24f' }
 
 /** What the stage is told, in video time (seconds from its start) and app pixels. */
-export interface StageData {
+interface StageData {
   length: number
   frames: { file: string; at: number }[]
   pointer: { at: number; x: number; y: number }[]
