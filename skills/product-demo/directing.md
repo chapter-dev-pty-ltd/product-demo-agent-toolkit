@@ -19,9 +19,10 @@ for a whole film, and the same one across a set of films made together.
 
 ## Sound
 
-Every click has a click sound, on by default. Turn it off for one film with `"sound": false`
-at its top level, or for every film in `.product-demo/config.json`. Leave it on unless the
-video will have music or a voiceover that the clicks would fight with.
+Every click has a click sound, on by default. Set `"sound"` at the film's top level, or in
+`.product-demo/config.json` for every film: `false` for none, or `{ "click": false }` to
+choose each (`typing` will join `click`). Leave sound on unless the video will have music or
+a voiceover that the clicks would fight with.
 
 ## Highlights
 

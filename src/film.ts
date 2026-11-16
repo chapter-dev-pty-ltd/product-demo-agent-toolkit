@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
-import { CURSORS, type Cursor } from './config.ts'
+import { CURSORS, soundSchema, type Cursor, type Sound } from './config.ts'
 import type { Fingerprint } from './similo.ts'
 
 /**
@@ -82,8 +82,8 @@ export interface Film {
   notes?: string | undefined
   /** The cursor's colour in the video, when it isn't the config's. */
   cursor?: Cursor | undefined
-  /** Whether the video has click sounds, when it isn't the config's. */
-  sound?: boolean | undefined
+  /** The video's sounds, when they aren't the config's. */
+  sound?: Sound | undefined
   steps: Step[]
   ending?: { hold: number } | undefined
 }
@@ -178,7 +178,7 @@ const film: z.ZodType<Film> = z.strictObject({
   app: z.url(),
   notes: z.string().optional(),
   cursor: z.enum(CURSORS).optional(),
-  sound: z.boolean().optional(),
+  sound: soundSchema.optional(),
   steps: z.array(stepSchema),
   ending: z.strictObject({ hold: z.number().nonnegative() }).optional(),
 })

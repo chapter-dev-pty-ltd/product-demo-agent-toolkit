@@ -9,11 +9,25 @@ export const BACKDROPS = ['halo', 'sky', 'violet'] as const
 export const CURSORS = ['pink', 'lime'] as const
 export type Cursor = (typeof CURSORS)[number]
 
+/** Which sounds the video has: all or none, or each on its own. */
+export type Sound = boolean | { click?: boolean | undefined; typing?: boolean | undefined }
+
+export const soundSchema: z.ZodType<Sound> = z.union([
+  z.boolean(),
+  z.strictObject({ click: z.boolean().optional(), typing: z.boolean().optional() }),
+])
+
+/** Whether a sound is on, given the film's setting over the config's. Each is on by default. */
+export function soundOn(kind: 'click' | 'typing', ...settings: (Sound | undefined)[]): boolean {
+  const setting = settings.find((s) => s !== undefined)
+  return typeof setting === 'object' ? (setting[kind] ?? true) : (setting ?? true)
+}
+
 export interface Config {
   mode: 'ask' | 'just_do_it'
   backdrop: (typeof BACKDROPS)[number]
   cursor: Cursor
-  sound: boolean
+  sound: Sound
   keep: number
   review: boolean
 }
@@ -24,10 +38,11 @@ const config: z.ZodType<Config> = z.strictObject({
     .enum(CURSORS)
     .default('pink')
     .describe("The cursor's colour in the video. A film can choose its own."),
-  sound: z
-    .boolean()
+  sound: soundSchema
     .default(true)
-    .describe('Whether the video has a click sound on every click. A film can choose its own.'),
+    .describe(
+      'The video\'s sounds: true or false for all of them, or { "click": false } to choose each. A film can choose its own.',
+    ),
   keep: z
     .number()
     .int()

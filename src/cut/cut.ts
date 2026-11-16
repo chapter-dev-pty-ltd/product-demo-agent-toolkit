@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { once } from 'node:events'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Config } from '../config.ts'
+import { soundOn, type Config } from '../config.ts'
 import { readFilm } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
@@ -71,13 +71,12 @@ export async function cut(
     )
     const camera = await page.context().newCDPSession(page)
     const start = footage.frames[0]?.at ?? 0
-    const sound =
-      (film.sound ?? config.sound)
-        ? clickSounds(
-            footage.clicks.map((c) => c.at - start),
-            length,
-          )
-        : []
+    const sound = soundOn('click', film.sound, config.sound)
+      ? clickSounds(
+          footage.clicks.map((c) => c.at - start),
+          length,
+        )
+      : []
     const encoder = spawn(
       await findFfmpeg(),
       // prettier-ignore
