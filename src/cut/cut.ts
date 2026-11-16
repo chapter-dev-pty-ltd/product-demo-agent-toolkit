@@ -71,12 +71,25 @@ export async function cut(
     )
     const camera = await page.context().newCDPSession(page)
     const start = footage.frames[0]?.at ?? 0
-    const sound = soundOn('click', film.sound, config.sound)
-      ? clickSounds(
-          footage.clicks.map((c) => c.at - start),
-          length,
-        )
-      : []
+    const sound = soundArgs(
+      [
+        {
+          files: CLICKS,
+          times: soundOn('click', film.sound, config.sound)
+            ? footage.clicks.map((c) => c.at - start)
+            : [],
+          volume: 1,
+        },
+        ...Object.entries(KEYS).map(([kind, file]) => ({
+          files: [file],
+          times: soundOn('typing', film.sound, config.sound)
+            ? (footage.keys ?? []).filter((k) => keyKind(k.key) === kind).map((k) => k.at - start)
+            : [],
+          volume: 0.7,
+        })),
+      ],
+      length,
+    )
     const encoder = spawn(
       await findFfmpeg(),
       // prettier-ignore
@@ -107,35 +120,64 @@ export async function cut(
   return length
 }
 
-/** The clicks, one picked at random for each, so they don't all sound the same. */
+// The sounds the cut plays: a click picked at random for each click, so they don't all sound
+// the same, and a key sound for each key, with space and Enter their own.
 const CLICKS = ['click-1.wav', 'click-2.wav']
+const KEYS: Record<'key' | 'space' | 'enter', string> = {
+  key: 'key.wav',
+  space: 'space.wav',
+  enter: 'enter.wav',
+}
 
-/** ffmpeg's arguments for the sound: a click at each of these times, for the video's length. */
-function clickSounds(times: number[], length: number): string[] {
-  if (times.length === 0) return []
-  const inputs = CLICKS.flatMap((file) => [
-    '-i',
-    fileURLToPath(new URL(`../library/sounds/${file}`, import.meta.url)),
-  ])
-  // Random, but seeded by the click's time, so cutting the same footage again sounds the same.
-  const pick = (t: number) => {
-    let h = Math.round(t * 1000)
-    h = Math.imul(h ^ (h >>> 16), 0x7feb352d)
-    h = Math.imul(h ^ (h >>> 15), 0x846ca68b)
-    return ((h ^ (h >>> 16)) >>> 0) % CLICKS.length
+/** Which key sound a key gets: Enter and space have their own. */
+const keyKind = (key: string): keyof typeof KEYS =>
+  key === ' ' || key === 'Space' ? 'space' : key.split('+').at(-1) === 'Enter' ? 'enter' : 'key'
+
+/** A set of sounds, the times to play one of them, and how loud. */
+interface Track {
+  files: string[]
+  times: number[]
+  volume: number
+}
+
+/** Random, but seeded by the time, so cutting the same footage again sounds the same. */
+function pick(t: number, of: number): number {
+  let h = Math.round(t * 1000)
+  h = Math.imul(h ^ (h >>> 16), 0x7feb352d)
+  h = Math.imul(h ^ (h >>> 15), 0x846ca68b)
+  return ((h ^ (h >>> 16)) >>> 0) % of
+}
+
+/** ffmpeg's arguments for the sound: each track's sounds at its times, for the video's length. */
+function soundArgs(tracks: Track[], length: number): string[] {
+  const inputs: string[] = []
+  const graph: string[] = []
+  const played: string[] = []
+  for (const [n, track] of tracks.entries()) {
+    if (track.times.length === 0) continue
+    // Each sound is split into as many copies as it plays, then each copy delayed to its time.
+    for (const [k, file] of track.files.entries()) {
+      inputs.push('-i', fileURLToPath(new URL(`../library/sounds/${file}`, import.meta.url)))
+      const input = inputs.length / 2
+      const mine = track.times.flatMap((t, i) =>
+        pick(t, track.files.length) === k ? [`[s${n}_${i}]`] : [],
+      )
+      graph.push(
+        mine.length
+          ? `[${input}:a]volume=${track.volume},asplit=${mine.length}${mine.join('')}`
+          : `[${input}:a]anullsink`,
+      )
+    }
+    for (const [i, t] of track.times.entries()) {
+      graph.push(`[s${n}_${i}]adelay=${Math.round(t * 1000)}:all=1[p${n}_${i}]`)
+      played.push(`[p${n}_${i}]`)
+    }
   }
-  // Each sound is split into as many copies as it plays, then each copy is delayed to its time.
-  const splits = CLICKS.map((_, k) => {
-    const mine = times.flatMap((t, i) => (pick(t) === k ? [`[c${i}]`] : []))
-    return mine.length
-      ? `[${k + 1}:a]asplit=${mine.length}${mine.join('')}`
-      : `[${k + 1}:a]anullsink`
-  })
-  const each = times.map((t, i) => `[c${i}]adelay=${Math.round(t * 1000)}:all=1[d${i}]`)
+  if (played.length === 0) return []
   // A silent track the video's length leads the mix, so the sound runs to the end.
-  const silence = `anullsrc=r=48000:cl=mono:d=${length.toFixed(3)}[q]`
-  const mix = `[q]${times.map((_, i) => `[d${i}]`).join('')}amix=inputs=${times.length + 1}:normalize=0:duration=first[a]`
+  graph.push(`anullsrc=r=48000:cl=mono:d=${length.toFixed(3)}[q]`)
+  graph.push(`[q]${played.join('')}amix=inputs=${played.length + 1}:normalize=0:duration=first[a]`)
   // prettier-ignore
-  return [...inputs, '-filter_complex', [...splits, ...each, silence, mix].join(';'),
+  return [...inputs, '-filter_complex', graph.join(';'),
     '-map', '0:v', '-map', '[a]', '-c:a', 'aac', '-b:a', '160k']
 }

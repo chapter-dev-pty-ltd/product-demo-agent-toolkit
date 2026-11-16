@@ -19,10 +19,11 @@ for a whole film, and the same one across a set of films made together.
 
 ## Sound
 
-Every click has a click sound, on by default. Set `"sound"` at the film's top level, or in
-`.product-demo/config.json` for every film: `false` for none, or `{ "click": false }` to
-choose each (`typing` will join `click`). Leave sound on unless the video will have music or
-a voiceover that the clicks would fight with.
+The video sounds like the shot: a click on every click, and a key on every key typed, with
+space and Enter their own sounds. Both are on by default. Set `"sound"` at the film's top
+level, or in `.product-demo/config.json` for every film: `false` for none, or
+`{ "click": true, "typing": false }` to choose each. Leave sound on unless the video will
+have music or a voiceover that it would fight with.
 
 ## Highlights
 

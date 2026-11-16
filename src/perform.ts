@@ -40,6 +40,8 @@ export interface Footage {
   pointer: { at: number; x: number; y: number }[]
   /** Where and when the pointer clicked. */
   clicks: { at: number; x: number; y: number }[]
+  /** Each key pressed, typing included, and when: the cut plays a key sound for each. */
+  keys: { at: number; key: string }[]
   /** When each highlighted step held, and its element's box in screen pixels. */
   highlights: { step: number; at: number; until: number; box: number[] }[]
   end: number
@@ -77,7 +79,7 @@ export async function shoot(
   const writes: Promise<void>[] = []
   let started = 0
   let end = 0
-  const { warnings, trail, highlights } = await perform(film, dir, config, {
+  const { warnings, trail, keys, highlights } = await perform(film, dir, config, {
     camera: async (page) => {
       started = performance.now()
       const session = await page.context().newCDPSession(page)
@@ -113,6 +115,7 @@ export async function shoot(
     frames,
     pointer,
     clicks,
+    keys: keys.filter((k) => k.t >= started).map((k) => ({ at: since(k.t), key: k.key })),
     highlights: highlights.map((h) => ({ ...h, at: since(h.at), until: since(h.until) })),
     end,
     warnings,
@@ -137,7 +140,12 @@ async function perform(
   dir: string,
   config: Config,
   watchers: Watchers,
-): Promise<{ warnings: string[]; trail: Hand['trail']; highlights: Footage['highlights'] }> {
+): Promise<{
+  warnings: string[]
+  trail: Hand['trail']
+  keys: Hand['keys']
+  highlights: Footage['highlights']
+}> {
   await mkdir(dir, { recursive: true })
   const browser = await launchBrowser()
   try {
@@ -177,7 +185,7 @@ async function perform(
       }
     }
     await stopCamera?.()
-    return { warnings, trail: hand.trail, highlights }
+    return { warnings, trail: hand.trail, keys: hand.keys, highlights }
   } finally {
     await browser.close()
   }
@@ -211,9 +219,9 @@ export async function act(
       throw new Error(`It has no option "${step.option}", or it isn't a <select>.`)
     })
   } else if ('type' in step) {
-    await page.keyboard.type(step.type, { delay: hand.quick ? 0 : 70 })
+    await hand.type(step.type)
   } else if ('press' in step) {
-    await page.keyboard.press(step.press)
+    await hand.key(step.press)
   } else if ('hover' in step) {
     await hand.reach(await find(step.hover), step.at)
     await hand.pause((step.seconds ?? 1.2) * 1000)
@@ -291,7 +299,7 @@ async function fill(page: Page, hand: Hand, text: string): Promise<void> {
   if (field === 'none') throw new Error("Clicking it didn't focus a field to type into.")
   await page.keyboard.press('ControlOrMeta+A')
   await page.keyboard.press('Backspace')
-  await page.keyboard.type(text, { delay: hand.quick ? 0 : 70 })
+  await hand.type(text)
 }
 
 /** Gives a file to the page: through the control that opens the picker, as a person would. */
@@ -395,6 +403,8 @@ export class Hand {
   quick: boolean
   /** Every move and click, with its time, for the cut to draw the cursor from. */
   trail: { t: number; x: number; y: number; click?: true }[] = []
+  /** Each key pressed and when, for the cut's key sounds. */
+  keys: { t: number; key: string }[] = []
   constructor(page: Page, quick = false) {
     this.page = page
     this.quick = quick
@@ -498,6 +508,22 @@ export class Hand {
     await mouse.move(end.x + 1, end.y)
     await this.move(end.x, end.y)
     await mouse.up()
+  }
+
+  /** Types at a person's pace, a key at a time, keeping when each was pressed. */
+  async type(text: string): Promise<void> {
+    if (this.quick) return this.page.keyboard.type(text)
+    for (const character of text) {
+      await this.page.keyboard.type(character)
+      this.keys.push({ t: performance.now(), key: character })
+      await this.page.waitForTimeout(70)
+    }
+  }
+
+  /** Presses a key or a combination, like Enter or Meta+K. */
+  async key(key: string): Promise<void> {
+    await this.page.keyboard.press(key)
+    if (!this.quick) this.keys.push({ t: performance.now(), key })
   }
 
   /** Turns the wheel where the pointer is, eased in and out. */
