@@ -1,0 +1,58 @@
+# Publishes to npm when a version tag is pushed (npm version patch, then git push --follow-tags).
+# A version like 0.2.0 goes out as latest; one like 0.2.0-beta.0 as next. npm trusts this
+# workflow directly (trusted publishing), so there's no token, and the package gets provenance.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # the GitHub Release
+  id-token: write # npm trusted publishing
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install -g npm@latest
+      - name: The tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match package.json's $version." && exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright-core install --with-deps chromium-headless-shell
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination "$RUNNER_TEMP"
+      # Published from outside the repo: npm otherwise refuses, as the repo asks for pnpm.
+      - name: Publish to npm
+        working-directory: ${{ runner.temp }}
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-*) tag=next ;;
+            *) tag=latest ;;
+          esac
+          npm publish ./product-demo-agent-toolkit-*.tgz --tag "$tag" --access public --provenance
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-*) gh release create "$GITHUB_REF_NAME" --generate-notes --prerelease ;;
+            *) gh release create "$GITHUB_REF_NAME" --generate-notes ;;
+          esac

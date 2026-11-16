@@ -1,0 +1,35 @@
+# Checks every push and pull request: types, lint, tests and build, then that the packed
+# package installs and runs.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The tests open real pages, so they need Chromium and what it runs on.
+      - run: pnpm exec playwright-core install --with-deps chromium-headless-shell
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+      # Install the package as npm would ship it, from outside the repo, and run it.
+      - run: pnpm pack --pack-destination "$RUNNER_TEMP"
+      - name: Install the packed package and run it
+        working-directory: ${{ runner.temp }}
+        run: |
+          npm install -g ./product-demo-agent-toolkit-*.tgz
+          product-demo-agent-toolkit --version
