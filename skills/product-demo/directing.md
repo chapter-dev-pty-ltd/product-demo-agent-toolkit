@@ -28,26 +28,52 @@ have music or a voiceover that it would fight with.
 ## Voiceover
 
 Give a step a line with `"say"`, and name the word its action lands on with `"on"`. The shoot
-performs to the voice: the line starts with its step, the hand gets there early and presses
+performs to the voice: the line starts with its step, the pointer gets there early and presses
 (or starts typing) as the word is said, and the film moves on once the line has finished. One
-line can carry several actions: the next steps give their own `"on"` and no `"say"`.
+line can carry several actions: the steps after it give their own `"on"` and no `"say"`. A
+step with neither waits for the line to end, then runs.
 
 ```json
-{ "fill": …, "text": "Book flights", "say": "First, I'll add booking our flights, and then press enter.", "on": "add" },
-{ "press": "Enter", "on": "enter" },
-{ "click": …, "say": "Now I'll show only what's left.", "on": "show" }
+{ "press": "r", "say": "Press R for the rectangle tool, and drag out a box.", "on": "R" },
+{ "drag": …, "on": "drag" },
+{ "press": "Enter", "say": "Enter again, and call this one ship it.", "on": "enter" },
+{ "type": "Ship it", "on": "ship" },
+{ "press": "Escape" }
 ```
 
-- Run `product-demo voice film.json` after writing the lines: it speaks them (once; a line
-  that hasn't changed isn't spoken again), says how long each runs, and when each `on` lands.
-- Leave room before each `on`: an action can't start until the one before it has finished
-  (typing a long name, a page loading). If one lands late, rehearse says so with a `Check:`
-  line; add words before it, or split the line.
-- About 2.6 words a second. Short, plain lines: full stops and commas, no em dashes, an
-  exclamation mark only in a greeting. Talk about what the viewer is seeing, as "you" or "we".
-- The voice is Emma, from ElevenLabs. Choose another in the config or the film:
-  `"voice": { "provider": "elevenlabs", "voice": "<voice id>" }`. It needs `ELEVENLABS_API_KEY`
-  in the environment or a `.env` file in the project.
+### Writing lines that land
+
+- Write the lines with the steps in front of you, after exploring: say what the viewer is
+  about to see happen, in the order it happens.
+- Put `on` on the word that names the action: "**press** enter", "**drag** out a box",
+  "**select** the box", "give it some **colour**". For typing, put it on the word that matches
+  what's typed ("call this one **ship** it" as "Ship it" is typed), so the text appears as
+  it's said. A key is written as its letter, "Press R", with `"on": "R"`.
+- Leave room before each `on`. The action before it has to finish first, and the pointer has
+  to get there: allow about a second after a drag, a typed label (a tenth of a second a
+  letter), a page change, or a click that opens a panel, and half a second for the pointer to
+  cross the screen. Don't put the first `on` of a line in its first half second if the
+  pointer has far to go.
+- To make room, add words before the word, not after: "Then, starting at the idea, drag it
+  across" lands better than "and drag it from the idea across". Splitting a long line into
+  two is fine too.
+- Short, plain lines, about 2.6 words a second: full stops and commas, no em dashes, an
+  exclamation mark only in a greeting. "You" or "we", never "as you can see".
+- Steps that don't need a word, like closing a panel with Escape, go after the line with no
+  `say` or `on`. End on a short closing line, on the last step, with no `on`.
+
+### Checking it
+
+1. `product-demo voice film.json` speaks the lines (once; a line that hasn't changed isn't
+   spoken again) and shows when each `on` word lands in its line. Every `on` must be found.
+2. `product-demo rehearse film.json` runs at the voice's pace. A line like
+   `Check: Step 12 … landed 0.7s after "drag" was said` means that action had too little room:
+   add words before its word, and rehearse again. Keep going until there are none, or only a
+   few tenths of a second.
+
+The voice is Emma, from ElevenLabs. Choose another in the config or the film:
+`"voice": { "provider": "elevenlabs", "voice": "<voice id>" }`. It needs `ELEVENLABS_API_KEY`
+in the environment or a `.env` file in the project.
 
 ## Highlights
 

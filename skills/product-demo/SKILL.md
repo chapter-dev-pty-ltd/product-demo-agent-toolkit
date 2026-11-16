@@ -76,7 +76,7 @@ product-demo rehearse film.json
 
 A full run in a fresh browser, at the pace it will be shot, without the camera. It saves a still of the opening screen and after every step, and prints where they are. **Look at every still.** Is this the flow the user asked for? Does it end on the result, the screen that proves it worked?
 
-If a step fails, it says which and why and saves `failed.png`. Fix the film, or explore that part again and copy it in from the log, and rehearse again. Keep going until the stills are right.
+If a step fails, it says which and why and saves `failed.png`. Fix the film, or explore that part again and copy it in from the log, and rehearse again. Keep going until the stills are right. With a voiceover, also clear every `Check:` line that says an action landed late on its word (see [directing.md](directing.md)).
 
 ## 4. Shoot and cut
 
