@@ -12,7 +12,23 @@ export type Display = (typeof DISPLAYS)[number]
 
 /** The cursors the cut can draw: the rounded arrow in three colours, or a Mac's pointer. */
 export const CURSORS = ['black', 'pink', 'lime', 'macos'] as const
-export type Cursor = (typeof CURSORS)[number]
+
+/** The cursor: which one, and how big (1 is its own size). */
+export interface Cursor {
+  style: (typeof CURSORS)[number]
+  size: number
+}
+
+/** `"macos"` for one at its own size, or `{ "style": "macos", "size": 1.5 }`. */
+const cursorSchema: z.ZodType<Cursor, unknown> = z
+  .union([
+    z.enum(CURSORS),
+    z.strictObject({
+      style: z.enum(CURSORS).default('black'),
+      size: z.number().min(0.5).max(3).default(1),
+    }),
+  ])
+  .transform((cursor) => (typeof cursor === 'string' ? { style: cursor, size: 1 } : cursor))
 
 /** Which sounds the video has: all or none, or each on its own. */
 export type Sound = boolean | { click?: boolean | undefined; typing?: boolean | undefined }
@@ -41,7 +57,6 @@ export interface Config {
   backdrop: (typeof BACKDROPS)[number]
   display: Display
   cursor: Cursor
-  cursorSize: number
   sound: Sound
   voice: VoiceChoice
   keep: number
@@ -54,16 +69,11 @@ const config: z.ZodType<Config> = z.strictObject({
     .enum(DISPLAYS)
     .default('none')
     .describe('How the app is shown: none, on the backdrop as it is, or in a browser window.'),
-  cursor: z
-    .enum(CURSORS)
-    .default('black')
-    .describe('The cursor in the video: the rounded arrow in black, pink or lime, or macos.'),
-  cursorSize: z
-    .number()
-    .min(0.5)
-    .max(3)
-    .default(1)
-    .describe('How big the cursor is: 1 is its own size, 1.5 half as big again, 0.75 smaller.'),
+  cursor: cursorSchema
+    .default({ style: 'black', size: 1 })
+    .describe(
+      'The cursor in the video: its style (the rounded arrow in black, pink or lime, or macos) and size (1 is its own size, 1.5 half as big again). A style alone is fine: "macos".',
+    ),
   sound: soundSchema
     .default(true)
     .describe(

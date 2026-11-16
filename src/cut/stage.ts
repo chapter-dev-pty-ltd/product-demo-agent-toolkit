@@ -21,7 +21,7 @@ const ORIGIN = 'https://stage.product-demo'
  * pointer, black with a white edge.
  */
 const CURSOR_LOOKS: Record<
-  Config['cursor'],
+  Config['cursor']['style'],
   { file: string; width: number; height: number; tip: number; colour: string }
 > = {
   black: { file: 'arrow.svg', width: 28.8, height: 28.8, tip: 4, colour: '#111111' },
@@ -61,7 +61,6 @@ export async function openStage(
   look: {
     backdrop: Config['backdrop']
     cursor: Config['cursor']
-    cursorSize: number
     display: Config['display']
   },
   length: number,
@@ -83,7 +82,7 @@ export async function openStage(
   const files: Record<string, () => Promise<Buffer>> = {
     '/backdrop.jpg': () => readFile(library(`backdrops/${look.backdrop}.jpg`)),
   }
-  const arrow = await readFile(library(`cursors/${CURSOR_LOOKS[look.cursor].file}`), 'utf8')
+  const arrow = await readFile(library(`cursors/${CURSOR_LOOKS[look.cursor.style].file}`), 'utf8')
 
   const page = await browser.newPage({ viewport: CANVAS, deviceScaleFactor: 1 })
   // Served from one made-up origin: the page, the library's pictures and the footage.
@@ -133,17 +132,17 @@ const RIM = 10
 function html(
   data: StageData,
   arrow: string,
-  look: { cursor: Config['cursor']; cursorSize: number; display: Config['display'] },
+  look: { cursor: Config['cursor']; display: Config['display'] },
   extra: string,
 ): string {
   const browser = look.display === 'browser'
   // The cursor at its own size, times the config's.
-  const own = CURSOR_LOOKS[look.cursor]
+  const own = CURSOR_LOOKS[look.cursor.style]
   const pointer = {
     ...own,
-    width: own.width * look.cursorSize,
-    height: own.height * look.cursorSize,
-    tip: own.tip * look.cursorSize,
+    width: own.width * look.cursor.size,
+    height: own.height * look.cursor.size,
+    tip: own.tip * look.cursor.size,
   }
   // In a browser it's the whole window, toolbar and all, that's centred.
   const app = {

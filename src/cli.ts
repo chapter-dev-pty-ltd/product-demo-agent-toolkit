@@ -67,7 +67,7 @@ const USAGE = `product-demo ${version}
 Set up: product-demo skills [dir]   Copy the skills into ~/.claude/skills (or dir) for your agent
 
 Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (halo | sky | violet), display (none | browser),
-cursor (black | pink | lime | macos), cursorSize (default 1), sound (true | false | { click }, default true),
+cursor (black | pink | lime | macos, or { style, size }), sound (true | false | { click }, default true),
 keep (rehearsals and shoots kept per film, default 10), review (cut also makes the review image, default false).`
 
 // Keys, such as ELEVENLABS_API_KEY: the environment, then the project's .env, then ~/.product-demo/.env.

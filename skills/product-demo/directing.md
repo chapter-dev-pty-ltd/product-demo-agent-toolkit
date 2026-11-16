@@ -28,7 +28,8 @@ arrow with a white edge that dips as it clicks, in three colours, or a Mac's poi
 - `lime`.
 - `macos`: a classic pointer, black with a white edge, like the one on a Mac.
 
-`"cursorSize"` grows or shrinks it: `1` is its own size, `1.5` half as big again. Black reads on
+`{ "style": "macos", "size": 1.5 }` sets its size too: `1` is its own size, `1.5` half as big
+again. Black reads on
 almost any app. Pink or lime stand out more, on a dark app for instance: lime
 where pink gets lost, on a pink, red or warm-coloured app.
 
