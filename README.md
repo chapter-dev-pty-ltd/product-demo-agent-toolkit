@@ -61,17 +61,18 @@ voiceover, cursor, sound and highlights.
 Everything has a default, so no config is needed. To change one, add
 `.product-demo/config.json` to the project:
 
-| Setting    | Default               | What it does                                                                                 |
-| ---------- | --------------------- | -------------------------------------------------------------------------------------------- |
-| `mode`     | `"just_do_it"`        | When something is unclear, make the best choice and note it. `"ask"` stops and asks instead. |
-| `backdrop` | `"halo"`              | What the app sits on: `halo`, `sky` or `violet`.                                             |
-| `cursor`   | `"pink"`              | The cursor's colour: `pink` or `lime`.                                                       |
-| `sound`    | `true`                | Click and typing sounds. `false` for none, or `{ "click": true, "typing": false }`.          |
-| `voice`    | Emma, from ElevenLabs | Who speaks the voiceover: `{ \"provider\": \"elevenlabs\", \"voice\": \"<voice id>\" }`.     |
-| `keep`     | `10`                  | How many rehearsals and shoots of each film to keep.                                         |
-| `review`   | `false`               | Whether `cut` also makes the review image.                                                   |
+| Setting    | Default               | What it does                                                                                                   |
+| ---------- | --------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `mode`     | `"just_do_it"`        | When something is unclear, make the best choice and note it. `"ask"` stops and asks instead.                   |
+| `backdrop` | `"halo"`              | What the app sits on: `halo`, `sky` or `violet`.                                                               |
+| `display`  | `\"none\"`            | How the app is shown: `none`, on the backdrop as it is, or `browser`, in a browser window with an address bar. |
+| `cursor`   | `"pink"`              | The cursor's colour: `pink` or `lime`.                                                                         |
+| `sound`    | `true`                | Click and typing sounds. `false` for none, or `{ "click": true, "typing": false }`.                            |
+| `voice`    | Emma, from ElevenLabs | Who speaks the voiceover: `{ \"provider\": \"elevenlabs\", \"voice\": \"<voice id>\" }`.                       |
+| `keep`     | `10`                  | How many rehearsals and shoots of each film to keep.                                                           |
+| `review`   | `false`               | Whether `cut` also makes the review image.                                                                     |
 
-A film can set its own `cursor`, `sound` and `voice`.
+A film can set its own `display`, `cursor`, `sound` and `voice`.
 
 ## Good to know
 

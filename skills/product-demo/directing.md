@@ -4,6 +4,13 @@ What the video looks like, as opposed to what happens in the app. These are set 
 `film.json` and drawn by `product-demo cut`, so changing one never means shooting again:
 edit the film, run `cut`, and the new video is ready in seconds.
 
+## Display
+
+`"display": "browser"` puts the app in a browser window: frosted glass over the backdrop, with
+an address bar that follows the page's address. `"none"`, the default, shows the app on its
+own. Use the browser for a web product a viewer should recognise as a site, or when the
+address matters to the story. Set it at the film's top level, or in the config for every film.
+
 ## The cursor
 
 The cut draws the cursor along the path the pointer took when the film was shot: a rounded

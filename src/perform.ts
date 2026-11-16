@@ -43,6 +43,8 @@ export interface Footage {
   clicks: { at: number; x: number; y: number }[]
   /** Each key pressed, typing included, and when: the cut plays a key sound for each. */
   keys: { at: number; key: string }[]
+  /** The page's address over time, for a browser frame's address bar. */
+  addresses: { at: number; url: string }[]
   /** Each line of voiceover, its audio file, and when the shoot started it. */
   lines: { at: number; file: string; text: string }[]
   /** When each highlighted step held, and its element's box in screen pixels. */
@@ -82,7 +84,7 @@ export async function shoot(
   const writes: Promise<void>[] = []
   let started = 0
   let end = 0
-  const { warnings, trail, keys, lines, highlights } = await perform(film, dir, config, {
+  const { warnings, trail, keys, lines, addresses, highlights } = await perform(film, dir, config, {
     camera: async (page) => {
       started = performance.now()
       const session = await page.context().newCDPSession(page)
@@ -120,6 +122,15 @@ export async function shoot(
     clicks,
     keys: keys.filter((k) => k.t >= started).map((k) => ({ at: since(k.t), key: k.key })),
     lines: lines.map((l) => ({ ...l, at: since(l.at) })),
+    // The address from the one showing when the camera started.
+    addresses: addresses
+      .slice(
+        Math.max(
+          0,
+          addresses.findLastIndex((a) => a.t <= started),
+        ),
+      )
+      .map((a) => ({ at: since(a.t), url: a.url })),
     highlights: highlights.map((h) => ({ ...h, at: since(h.at), until: since(h.until) })),
     end,
     warnings,
@@ -149,6 +160,7 @@ async function perform(
   trail: Hand['trail']
   keys: Hand['keys']
   lines: Footage['lines']
+  addresses: { t: number; url: string }[]
   highlights: Footage['highlights']
 }> {
   await mkdir(dir, { recursive: true })
@@ -162,6 +174,11 @@ async function perform(
   try {
     const page = await browser.newPage({ viewport: VIEWPORT })
     const settler = watch(page)
+    // Every address the page shows, a link followed or a route changed in place.
+    const addresses: { t: number; url: string }[] = []
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) addresses.push({ t: performance.now(), url: frame.url() })
+    })
     await page.goto(film.app)
     const hand = new Hand(page)
     await hand.rest(VIEWPORT.width / 2, VIEWPORT.height / 2)
@@ -233,7 +250,7 @@ async function perform(
       }
     }
     await stopCamera?.()
-    return { warnings, trail: hand.trail, keys: hand.keys, lines, highlights }
+    return { warnings, trail: hand.trail, keys: hand.keys, lines, addresses, highlights }
   } finally {
     await browser.close()
   }

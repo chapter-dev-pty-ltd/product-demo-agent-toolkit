@@ -6,6 +6,10 @@ import type { VoiceChoice } from './voice.ts'
 /** The backdrops in library/backdrops, by name. */
 export const BACKDROPS = ['halo', 'sky', 'violet'] as const
 
+/** How the app is shown: on the backdrop as it is, or in a browser window. */
+export const DISPLAYS = ['none', 'browser'] as const
+export type Display = (typeof DISPLAYS)[number]
+
 /** The cursor's colours, as the cut draws it. */
 export const CURSORS = ['pink', 'lime'] as const
 export type Cursor = (typeof CURSORS)[number]
@@ -36,6 +40,7 @@ export const voiceSchema: z.ZodObject<{
 export interface Config {
   mode: 'ask' | 'just_do_it'
   backdrop: (typeof BACKDROPS)[number]
+  display: Display
   cursor: Cursor
   sound: Sound
   voice: VoiceChoice
@@ -45,6 +50,10 @@ export interface Config {
 
 const config: z.ZodType<Config> = z.strictObject({
   backdrop: z.enum(BACKDROPS).default('halo').describe('What the app is framed on in the video.'),
+  display: z
+    .enum(DISPLAYS)
+    .default('none')
+    .describe('How the app is shown: none, on the backdrop as it is, or in a browser window.'),
   cursor: z
     .enum(CURSORS)
     .default('pink')

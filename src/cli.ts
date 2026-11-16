@@ -58,7 +58,7 @@ const USAGE = `product-demo ${version}
 
 Set up: product-demo skills [dir]   Copy the skills into ~/.claude/skills (or dir) for your agent
 
-Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (halo | sky | violet),
+Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (halo | sky | violet), display (none | browser),
 cursor (pink | lime), sound (true | false | { click }, default true),
 keep (rehearsals and shoots kept per film, default 10), review (cut also makes the review image, default false).`
 

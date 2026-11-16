@@ -39,7 +39,11 @@ export async function cut(
   if (footage.frames.length === 0) throw new Error(`${footageDir} has no frames.`)
   const film = existsSync(footage.source) ? await readFilm(footage.source) : footage.film
   const length = videoLength(footage)
-  const look = { backdrop: config.backdrop, cursor: film.cursor ?? config.cursor }
+  const look = {
+    backdrop: config.backdrop,
+    cursor: film.cursor ?? config.cursor,
+    display: film.display ?? config.display,
+  }
   const title = film.notes?.split(/(?<=\.)\s/)[0] ?? ''
   // How each highlight looks comes from the film as it is now; when it held, from the shoot.
   const highlights = footage.highlights.flatMap((held) => {

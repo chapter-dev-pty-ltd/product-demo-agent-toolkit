@@ -34,6 +34,8 @@ interface StageData {
   pointer: { at: number; x: number; y: number }[]
   clicks: { at: number; x: number; y: number }[]
   highlights: Highlighted[]
+  /** The address bar's text over time, for a browser frame. */
+  addresses: { at: number; label: string }[]
   title: string
 }
 
@@ -43,7 +45,7 @@ export async function openStage(
   footageDir: string,
   footage: Footage,
   highlights: Highlighted[],
-  look: { backdrop: Config['backdrop']; cursor: Config['cursor'] },
+  look: { backdrop: Config['backdrop']; cursor: Config['cursor']; display: Config['display'] },
   length: number,
   title: string,
   extra = '',
@@ -56,6 +58,7 @@ export async function openStage(
     pointer: footage.pointer.map(time),
     clicks: footage.clicks.map(time),
     highlights: highlights.map((h) => ({ ...h, at: h.at - start, until: h.until - start })),
+    addresses: (footage.addresses ?? []).map((a) => ({ at: a.at - start, label: label(a.url) })),
     title,
   }
   const library = (path: string) => new URL(`../library/${path}`, import.meta.url)
@@ -83,15 +86,49 @@ export async function openStage(
   return page
 }
 
+/** An address as an address bar shows it: no scheme, nothing trailing. */
+function label(url: string): string {
+  return url.replace(/^[a-z]+:\/\//, '').replace(/[/#]+$/, '')
+}
+
+/** A browser window's toolbar, as Chapter draws it: lights, back and forward, the address, share, new tab, tabs. */
+function toolbar(): string {
+  const light = (x: number, colour: string) =>
+    `<i class="light" style="left:${x}px;background:${colour}"></i>`
+  const icon = (x: number, paths: string, style = '') =>
+    `<svg viewBox="0 0 18 18" style="left:${x}px;${style}">${paths}</svg>`
+  return `<div id="glass"><div id="frost"></div><div id="bar">
+${light(16, '#ff5f57')}${light(36, '#febc2e')}${light(56, '#28c840')}
+${icon(95, '<path d="M12 3 6 9l6 6"/>')}${icon(121, '<path d="m6 3 6 6-6 6"/>', 'opacity:.5')}
+<div id="address"><svg viewBox="0 0 14 14"><rect x="3" y="6.5" width="8" height="6" rx="1.5" fill="currentColor" stroke="none"/><path d="M4.8 6.5V5a2.2 2.2 0 0 1 4.4 0v1.5"/></svg><span id="address-text"></span></div>
+<span style="position:absolute;right:0;top:0;width:120px;height:${BAR}px">
+${icon(8, '<path d="M7 6H5v8h8V6h-2M9 11V2M6.5 4.5 9 2l2.5 2.5"/>')}
+${icon(44, '<path d="M3 9h12M9 3v12"/>')}
+${icon(80, '<rect x="3" y="6" width="9" height="9" rx="2"/><path d="M6 3h7a2 2 0 0 1 2 2v7"/>')}
+</span></div></div>`
+}
+
+// A browser window's glass: a toolbar across the top and a rim at the sides and bottom.
+const BAR = 46
+const RIM = 10
+
 function html(
   data: StageData,
   arrow: string,
-  look: { cursor: Config['cursor'] },
+  look: { cursor: Config['cursor']; display: Config['display'] },
   extra: string,
 ): string {
+  const browser = look.display === 'browser'
+  // In a browser it's the whole window, toolbar and all, that's centred.
   const app = {
     x: (CANVAS.width - VIEWPORT.width) / 2,
-    y: (CANVAS.height - VIEWPORT.height) / 2,
+    y: (CANVAS.height - VIEWPORT.height + (browser ? BAR - RIM : 0)) / 2,
+  }
+  const glass = {
+    x: app.x - RIM,
+    y: app.y - BAR,
+    width: VIEWPORT.width + RIM * 2,
+    height: VIEWPORT.height + BAR + RIM,
   }
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 html, body { margin: 0; width: ${CANVAS.width}px; height: ${CANVAS.height}px; overflow: hidden; }
@@ -100,9 +137,32 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 #window {
   position: absolute; left: ${app.x}px; top: ${app.y}px;
   width: ${VIEWPORT.width}px; height: ${VIEWPORT.height}px;
-  border-radius: 14px; overflow: hidden; background: #fff;
-  box-shadow: 0 30px 80px rgb(20 20 60 / 0.28), 0 6px 18px rgb(20 20 60 / 0.16);
+  border-radius: ${browser ? 10 : 14}px; overflow: hidden; background: #fff;
+  box-shadow: ${browser ? '0 1px 6px rgb(20 20 50 / 0.10)' : '0 30px 80px rgb(20 20 60 / 0.28), 0 6px 18px rgb(20 20 60 / 0.16)'};
 }
+/* A browser window of frosted glass: the backdrop blurred and milky behind its toolbar. */
+#glass {
+  position: absolute; left: ${glass.x}px; top: ${glass.y}px; width: ${glass.width}px; height: ${glass.height}px;
+  border-radius: 16px; overflow: hidden; box-shadow: 0 30px 70px rgb(40 30 80 / .18), 0 0 0 0.5px rgb(30 30 60 / .12);
+}
+/* The frost: the backdrop itself, lined up with the one behind and blurred, clipped to the
+   glass, so its edges are as even as its middle. Then a milky pane over it. */
+#frost { position: absolute; left: ${-glass.x}px; top: ${-glass.y}px; width: ${CANVAS.width}px; height: ${CANVAS.height}px;
+  background: url(/backdrop.jpg) center / cover; filter: blur(28px) saturate(1.3); }
+#glass::after { content: ''; position: absolute; inset: 0; background: rgb(255 255 255 / .52); }
+#bar { z-index: 1; }
+#bar { position: absolute; left: 0; right: 0; top: 0; height: ${BAR}px; display: flex; align-items: center;
+  color: rgb(40 40 55 / .55); }
+#bar .light { position: absolute; top: ${BAR / 2 - 6}px; width: 12px; height: 12px; border-radius: 50%;
+  box-shadow: inset 0 0 0 .75px rgb(0 0 0 / .12); }
+#bar svg { position: absolute; top: ${BAR / 2 - 9}px; width: 18px; height: 18px; fill: none;
+  stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+#address { position: absolute; left: 50%; top: ${BAR / 2 - 15}px; width: 460px; height: 30px; margin-left: -230px;
+  box-sizing: border-box; border-radius: 9px; background: rgb(255 255 255 / .62); border: 1px solid rgb(255 255 255 / .9);
+  display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 40px;
+  font: 500 14px Inter, system-ui, -apple-system, sans-serif; color: rgb(30 30 40 / .8); }
+#address span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#address svg { position: static; flex: none; width: 14px; height: 14px; }
 /* Everything that moves with the camera: the app and the cursor. */
 #camera { position: absolute; inset: 0; transform-origin: 0 0; }
 #shot { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -123,6 +183,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 }
 </style></head><body>
 <div id="backdrop"></div>
+${browser ? toolbar() : ''}
 <div id="window"><div id="camera"><img id="shot" alt=""><div id="highlight"></div><div id="dim"></div><div id="lift"><img alt=""></div><div id="cursor">${arrow}</div></div></div>
 <script>
 const data = ${JSON.stringify(data)};
@@ -210,6 +271,9 @@ const lastBy = (list, t) => {
 window.stage = {
   data,
   async seek(t) {
+    const address = data.addresses[lastBy(data.addresses, t)];
+    const bar = document.getElementById('address-text');
+    if (bar && address && bar.textContent !== address.label) bar.textContent = address.label;
     const frame = data.frames[Math.max(0, lastBy(data.frames, t))];
     if (frame && shot.getAttribute('src') !== frame.file) {
       shot.setAttribute('src', frame.file);
