@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import type { Locator, Page } from 'playwright-core'
 import { readConfig } from './config.ts'
+import { findDrawn, type Drawn } from './drawn.ts'
 import { describeStep, KEYS, type Key, type Point, type Step, type Target } from './film.ts'
 import { LOG, readLog, startLog, writeLog } from './log.ts'
 import { before, outcomeSince } from './outcome.ts'
@@ -83,6 +84,22 @@ export async function serve(url: string): Promise<void> {
   await page.goto(url)
   await settler.settled()
   let looks = 0
+  // What the last look found drawn on canvas-like surfaces, named d1, d2…; stale once an
+  // action changes the drawing.
+  let drawn: Drawn[] = []
+  let drawnChanged = false
+  const target = async (name: string | undefined, at?: string) => {
+    const ref = /^@?d(\d+)$/.exec(name ?? '')
+    if (!ref) return aim(page, name, at)
+    if (drawnChanged)
+      throw new Error('The drawing has changed since the last look. Run look for fresh refs.')
+    const thing = drawn[Number(ref[1]) - 1]
+    if (!thing) throw new Error(`The last look found nothing drawn called ${name}.`)
+    const where = at === undefined ? undefined : fractions(at)
+    const x = where ? thing.x + thing.width * where.x : thing.grip.x
+    const y = where ? thing.y + thing.height * where.y : thing.grip.y
+    return aim(page, `${Math.round(x)},${Math.round(y)}`)
+  }
   let idle = setTimeout(() => void stop(), IDLE_MS)
 
   const stop = async () => {
@@ -118,6 +135,7 @@ export async function serve(url: string): Promise<void> {
       await act(page, hand, url, step, finder)
       const settled = await settler.settled()
       const outcome = await outcomeSince(page, was)
+      if (outcome?.drawn) drawnChanged = true
       const n = log.entries.length + 1
       const warning = settled.settled
         ? undefined
@@ -140,7 +158,9 @@ export async function serve(url: string): Promise<void> {
       looks++
       const shot = join(DIR, `look-${looks}.png`)
       const snapshot = await page.ariaSnapshot({ mode: 'ai', boxes: true })
-      await screenshotWithRefs(page, snapshot, shot)
+      drawn = await findDrawn(page)
+      drawnChanged = false
+      await screenshotWithRefs(page, snapshot, shot, drawn)
       const { text, above, below } =
         flag === '--all' ? { text: snapshot, above: 0, below: 0 } : onScreen(snapshot)
       const bare = text.replace(/ \[box=[\d.,-]+\]/g, '')
@@ -150,7 +170,13 @@ export async function serve(url: string): Promise<void> {
         above || below
           ? `\n\nOff screen: ${above} elements above, ${below} below. Scroll to them, or run \`look --all\` for the whole page.`
           : ''
-      return `${page.url()} — "${await page.title()}"\n${trimmed}${off}\n\nScreenshot with refs: ${shot}`
+      const things = drawn.map(
+        (d, i) => `- drawn [ref=d${i + 1}] [box=${d.x},${d.y},${d.width},${d.height}] ${d.colour}`,
+      )
+      const canvas = things.length
+        ? `\n\nDrawn on canvas-like areas, read from the screen (not in the tree above). Name them by ref; --at is a point on their box:\n${things.join('\n')}`
+        : ''
+      return `${page.url()} — "${await page.title()}"\n${trimmed}${off}${canvas}\n\nScreenshot with refs: ${shot}`
     },
     handles: async () => handles(page),
     click: async (args) => {
@@ -164,7 +190,7 @@ export async function serve(url: string): Promise<void> {
           with: { type: 'string' },
         },
       })
-      const aimed = await aim(page, positionals[0], values.at)
+      const aimed = await target(positionals[0], values.at)
       const modifiers = keys(values.with)
       const step: Step = {
         click: aimed.target,
@@ -177,12 +203,12 @@ export async function serve(url: string): Promise<void> {
     },
     fill: async ([ref, text]) => {
       if (text === undefined) throw new Error('Usage: product-demo fill <ref> "text"')
-      const aimed = await aim(page, ref)
+      const aimed = await target(ref)
       return logged({ fill: aimed.target, text }, `Filled ${aimed.target.locator}.`, [aimed])
     },
     select: async ([ref, option]) => {
       if (option === undefined) throw new Error('Usage: product-demo select <ref> "option"')
-      const aimed = await aim(page, ref)
+      const aimed = await target(ref)
       return logged({ select: aimed.target, option }, `Chose "${option}".`, [aimed])
     },
     type: async ([text]) => {
@@ -199,7 +225,7 @@ export async function serve(url: string): Promise<void> {
         allowPositionals: true,
         options: { at: { type: 'string' }, for: { type: 'string' } },
       })
-      const aimed = await aim(page, positionals[0], values.at)
+      const aimed = await target(positionals[0], values.at)
       const seconds = values.for === undefined ? undefined : Number(values.for)
       const step: Step = {
         hover: aimed.target,
@@ -215,8 +241,8 @@ export async function serve(url: string): Promise<void> {
         options: { at: { type: 'string' }, 'to-at': { type: 'string' } },
       })
       if (positionals.length !== 2) throw new Error('Usage: product-demo drag <from> <to>')
-      const from = await aim(page, positionals[0], values.at)
-      const to = await aim(page, positionals[1], values['to-at']).catch(async (error: unknown) => {
+      const from = await target(positionals[0], values.at)
+      const to = await target(positionals[1], values['to-at']).catch(async (error: unknown) => {
         await from.release()
         throw error
       })
@@ -237,7 +263,7 @@ export async function serve(url: string): Promise<void> {
       const [direction] = positionals
       if (direction !== 'up' && direction !== 'down')
         throw new Error('Usage: product-demo scroll up|down [--in <ref>] [--by <pixels>]')
-      const pane = values.in === undefined ? undefined : await aim(page, values.in)
+      const pane = values.in === undefined ? undefined : await target(values.in)
       const step: Step = {
         scroll: direction,
         ...(pane ? { in: pane.target } : {}),
@@ -247,7 +273,7 @@ export async function serve(url: string): Promise<void> {
     },
     upload: async ([file, ref]) => {
       if (!file) throw new Error('Usage: product-demo upload <file> [<ref of the upload control>]')
-      const control = ref === undefined ? undefined : await aim(page, ref)
+      const control = ref === undefined ? undefined : await target(ref)
       const step: Step = { upload: file, ...(control ? { into: control.target } : {}) }
       return logged(step, `Uploaded ${file}.`, control ? [control] : [])
     },
@@ -380,8 +406,17 @@ async function aim(page: Page, name: string | undefined, at?: string): Promise<A
   )
   if (!box || !box.width || !box.height) throw new Error(`Nothing is drawn at ${x},${y}.`)
   const element = page.locator(`[data-product-demo-at~="${mark}"]`)
+  // Takes off only this mark, at once: both ends of a drag can be on one canvas.
   const release = () =>
-    element.evaluate((el) => el.removeAttribute('data-product-demo-at')).catch(() => {})
+    page
+      .evaluate((mark) => {
+        for (const el of document.querySelectorAll(`[data-product-demo-at~="${mark}"]`)) {
+          const rest = (el.getAttribute('data-product-demo-at') ?? '').replace(mark, '').trim()
+          if (rest) el.setAttribute('data-product-demo-at', rest)
+          else el.removeAttribute('data-product-demo-at')
+        }
+      }, mark)
+      .catch(() => {})
   const round = (n: number) => Math.round(n * 1000) / 1000
   try {
     return {
@@ -435,7 +470,7 @@ async function handles(page: Page): Promise<string> {
         .join(' ')
       if (style.visibility === 'hidden' || style.display === 'none') continue
       if (Number(style.opacity) === 0 && !marks) continue
-      const className = typeof element.className === 'string' ? element.className : ''
+      const className = element.getAttribute('class') ?? ''
       const name = [
         element.getAttribute('aria-label'),
         element.getAttribute('title'),
@@ -505,8 +540,15 @@ const PRESSABLE =
  * A screenshot with each pressable element's ref drawn on it, so the picture and the tree
  * line up: a pressable role, or anything the page gives a pointer cursor.
  */
-async function screenshotWithRefs(page: Page, snapshot: string, path: string): Promise<void> {
-  const labels: { ref: string; x: number; y: number; width: number; height: number }[] = []
+async function screenshotWithRefs(
+  page: Page,
+  snapshot: string,
+  path: string,
+  drawn: Drawn[],
+): Promise<void> {
+  const labels: { ref: string; x: number; y: number; width: number; height: number }[] = drawn.map(
+    (d, i) => ({ ref: `d${i + 1}`, x: d.x, y: d.y, width: d.width, height: d.height }),
+  )
   for (const line of snapshot.split('\n')) {
     const match =
       /- '?(\w+)\b.*\[ref=(\w*e\d+)\].*\[box=([\d.-]+),([\d.-]+),([\d.-]+),([\d.-]+)\]/.exec(line)

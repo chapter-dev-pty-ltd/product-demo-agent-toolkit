@@ -19,6 +19,8 @@ export interface Outcome {
   url?: string | undefined
   /** A line of text it made appear. */
   appeared?: string | undefined
+  /** On a canvas-like surface, the boxes of what's drawn after it: x, y, width, height. */
+  drawn?: number[][] | undefined
 }
 
 /** Where on an element, as fractions of its box: 0,0 is its top left, 1,1 its bottom right. */
@@ -94,7 +96,11 @@ const target: z.ZodType<Target> = z.union([
 ])
 
 const outcome = z
-  .strictObject({ url: z.string().optional(), appeared: z.string().optional() })
+  .strictObject({
+    url: z.string().optional(),
+    appeared: z.string().optional(),
+    drawn: z.array(z.array(z.number()).length(4)).optional(),
+  })
   .optional()
 
 const note = z.string().optional()

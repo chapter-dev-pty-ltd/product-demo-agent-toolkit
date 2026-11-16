@@ -1,4 +1,5 @@
 import type { Page } from 'playwright-core'
+import { findDrawn, missingDrawn, type Drawn } from './drawn.ts'
 import type { Outcome } from './film.ts'
 
 // A step's outcome: what it changed on the page. `explore` writes down where the page went
@@ -8,10 +9,14 @@ import type { Outcome } from './film.ts'
 // Only the page's content counts as "appeared": a heading first, else a line of text. What
 // floats over the page (a fundraising banner, a toast, a cookie bar, a dialog) comes and goes
 // on its own, so a check against it fails runs that did nothing wrong.
+//
+// On a canvas-like surface a step changes no text, so what's drawn there is written down
+// too (drawn.ts), and checked the same way.
 
 export interface Before {
   url: string
   content: Content
+  drawn: Drawn[]
 }
 
 interface Content {
@@ -29,7 +34,7 @@ const contentOf = (page: Page): Promise<Content> =>
 
 /** The page as it is before a step: its address and its content. */
 export async function before(page: Page): Promise<Before> {
-  return { url: page.url(), content: await contentOf(page) }
+  return { url: page.url(), content: await contentOf(page), drawn: await findDrawn(page) }
 }
 
 /** What changed since `before`: where the page went, and a new heading or line of content. */
@@ -42,15 +47,27 @@ export async function outcomeSince(page: Page, was: Before): Promise<Outcome | u
   const appeared =
     now.headings.find(fresh(was.content.headings)) ?? now.lines.find(fresh(was.content.lines))
   if (appeared) outcome.appeared = appeared
-  return outcome.url || outcome.appeared ? outcome : undefined
+  const drawn = await findDrawn(page)
+  const boxes = (all: Drawn[]) => all.map((d) => [d.x, d.y, d.width, d.height])
+  const changed =
+    drawn.length !== was.drawn.length ||
+    missingDrawn(boxes(drawn), was.drawn) ||
+    missingDrawn(boxes(was.drawn), drawn)
+  if (changed) outcome.drawn = boxes(drawn)
+  return outcome.url || outcome.appeared || outcome.drawn ? outcome : undefined
 }
 
 /**
  * Checks the page shows what the step changed when it was explored. A different address
- * throws. Missing text throws too, unless the address already matched: then the step
- * plainly went where it should, and the text is returned as a warning instead.
+ * throws. Missing text throws too, unless the address or the drawing already matched: then
+ * the step plainly did what it should, and the text is returned as a warning instead. A
+ * drawing that doesn't match is a warning.
  */
-export async function checkOutcome(page: Page, outcome: Outcome): Promise<string | undefined> {
+export async function checkOutcome(
+  page: Page,
+  outcome: Outcome,
+  pointer?: { x: number; y: number },
+): Promise<string | undefined> {
   if (outcome.url) {
     const expected = outcome.url
     await page
@@ -61,19 +78,27 @@ export async function checkOutcome(page: Page, outcome: Outcome): Promise<string
         )
       })
   }
+  // The drawing is checked before the text: when it matches, the step plainly did its job.
+  const drawing = outcome.drawn && missingDrawn(outcome.drawn, await findDrawn(page, pointer))
+  const drew = outcome.drawn && !drawing
   if (outcome.appeared) {
     const shown = await page
       .getByText(outcome.appeared, { exact: true })
       .first()
       // Already on the right page, the text has had its chance; on camera, waiting is a still.
-      .waitFor({ timeout: outcome.url ? 1500 : 5000 })
+      .waitFor({ timeout: outcome.url || drew ? 1500 : 5000 })
       .then(() => true)
       .catch(() => false)
     if (!shown) {
       const missing = `"${outcome.appeared}" never appeared, as it did when explored.`
-      if (!outcome.url) throw new Error(missing)
-      return `${missing} The page is the right one (${outcome.url}), so it went on.`
+      if (outcome.url)
+        return `${missing} The page is the right one (${outcome.url}), so it went on.`
+      if (drew) return `${missing} The canvas looks as it did when explored, so it went on.`
+      throw new Error(missing)
     }
+  }
+  if (drawing) {
+    return `The canvas doesn't look as it did when explored: nothing is drawn at ${drawing.join(',')} (x,y,width,height).`
   }
   return undefined
 }

@@ -128,7 +128,9 @@ async function perform(
             `${label}: went on before the page settled (${settled.waitingOn.join(', ')}).`,
           )
         }
-        const unseen = step.outcome ? await checkOutcome(page, step.outcome) : undefined
+        const unseen = step.outcome
+          ? await checkOutcome(page, step.outcome, { x: hand.x, y: hand.y })
+          : undefined
         if (unseen) warnings.push(`${label}: ${unseen}`)
         await watchers.still?.(page, label, index + 1)
       } catch (error) {
