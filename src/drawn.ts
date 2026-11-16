@@ -19,21 +19,15 @@ export interface Drawn {
 }
 
 /** The things drawn on the screen's canvas-like surfaces; none when it has none. */
-export async function findDrawn(
-  page: Page,
-  /** Where the filmed pointer is, so it isn't read as a drawing. */
-  pointer?: { x: number; y: number },
-): Promise<Drawn[]> {
+export async function findDrawn(page: Page): Promise<Drawn[]> {
   const surfaces = await page.evaluate(scan, null).catch(() => [])
   if (!surfaces.length) return []
   const png = (await page.screenshot()).toString('base64')
-  return page.evaluate(scan, { png, pointer: pointer ?? null }).catch(() => [])
+  return page.evaluate(scan, png).catch(() => [])
 }
 
 /** Runs in the page. Without a screenshot, says only whether there are surfaces (one empty entry each). */
-async function scan(
-  shot: { png: string; pointer: { x: number; y: number } | null } | null,
-): Promise<Drawn[]> {
+async function scan(png: string | null): Promise<Drawn[]> {
   const W = innerWidth
   const H = innerHeight
   // Ink is read in 4px cells, so things a few pixels apart stay apart; what's under the
@@ -54,7 +48,7 @@ async function scan(
   )
   const surfaces = candidates.filter((el) => !candidates.some((o) => o !== el && o.contains(el)))
   const none = { x: 0, y: 0, width: 0, height: 0, colour: '', grip: { x: 0, y: 0 } }
-  if (!shot) return surfaces.map(() => none)
+  if (!png) return surfaces.map(() => none)
 
   // What's under each cell: the surface's own drawing, or the app's interface over it (a
   // toolbar, a panel), which holds controls.
@@ -87,7 +81,7 @@ async function scan(
     return result
   }
 
-  const bytes = Uint8Array.from(atob(shot.png), (c) => c.charCodeAt(0))
+  const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0))
   const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
   const context = canvas.getContext('2d')
@@ -133,19 +127,10 @@ async function scan(
         blocked[row * cols + col] = 1
   }
   const counts = new Map<number, { n: number; colour: readonly number[] }>()
-  const pointer = shot.pointer
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const x = col * CELL + CELL / 2
       const y = row * CELL + CELL / 2
-      if (
-        pointer &&
-        x > pointer.x - 8 &&
-        x < pointer.x + 30 &&
-        y > pointer.y - 8 &&
-        y < pointer.y + 30
-      )
-        continue
       if (blocked[row * cols + col] || !drawnOn(hitAt(x, y))) continue
       on[row * cols + col] = 1
       const colour = rgb(x, y)
@@ -229,23 +214,4 @@ async function scan(
     found.push({ x, y, width, height, colour, grip: nearest })
   }
   return found.sort((a, b) => a.y - b.y || a.x - b.x).slice(0, 40)
-}
-
-/** The first box expected that nothing drawn now matches, within a few pixels: hand-drawn strokes vary a little. */
-export function missingDrawn(expected: number[][], found: Drawn[]): number[] | undefined {
-  // Handles, dots and the like are too small to judge a step by.
-  return expected.find(
-    (box) =>
-      ((box[2] ?? 0) > 24 || (box[3] ?? 0) > 24) &&
-      !found.some((d) => {
-        const [x = 0, y = 0, w = 0, h = 0] = box
-        const slack = Math.max(16, 0.1 * Math.max(w, h))
-        return (
-          Math.abs(d.x - x) <= slack &&
-          Math.abs(d.y - y) <= slack &&
-          Math.abs(d.width - w) <= slack &&
-          Math.abs(d.height - h) <= slack
-        )
-      }),
-  )
 }

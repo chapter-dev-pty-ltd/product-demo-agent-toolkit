@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
 import type { Config } from './config.ts'
 import { describeStep, type Film, type Key, type Point, type Step, type Target } from './film.ts'
-import { checkOutcome } from './outcome.ts'
 import { watch } from './settle.ts'
 import { decide, fingerprint, rank } from './similo.ts'
 import { launchBrowser } from './tools.ts'
@@ -12,7 +11,7 @@ import { launchBrowser } from './tools.ts'
 export const VIEWPORT = { width: 1440, height: 900 }
 
 // Rehearse and shoot are the same run: a fresh browser, every step performed at a
-// person's pace with a hand-moved pointer, settling and checking each step's outcome.
+// person's pace with a hand-moved pointer, letting the page settle after each.
 // Shooting films it; rehearsing leaves a still after every step to judge it by instead.
 
 /** What a rehearsal leaves: a still of the opening screen and after every step. */
@@ -128,10 +127,6 @@ async function perform(
             `${label}: went on before the page settled (${settled.waitingOn.join(', ')}).`,
           )
         }
-        const unseen = step.outcome
-          ? await checkOutcome(page, step.outcome, { x: hand.x, y: hand.y })
-          : undefined
-        if (unseen) warnings.push(`${label}: ${unseen}`)
         await watchers.still?.(page, label, index + 1)
       } catch (error) {
         const failed = join(dir, 'failed.png')

@@ -4,8 +4,8 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { readJson, stepSchema, type Step } from './film.ts'
 
-// What exploring leaves: a log of everything the agent did, each step already pinned and with
-// its outcome, numbered, plus the agent's notes. Nothing in it is ever deleted (going back
+// What exploring leaves: a log of everything the agent did, each step already pinned,
+// numbered, plus the agent's notes. Nothing in it is ever deleted (going back
 // marks steps undone), and it isn't a film: the agent reads it and writes the film itself,
 // copying in the steps that make the demo. Each step is already in the film's format.
 

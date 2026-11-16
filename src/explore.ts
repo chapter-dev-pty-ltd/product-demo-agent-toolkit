@@ -10,7 +10,6 @@ import { readConfig } from './config.ts'
 import { findDrawn, type Drawn } from './drawn.ts'
 import { describeStep, KEYS, type Key, type Point, type Step, type Target } from './film.ts'
 import { LOG, readLog, startLog, writeLog } from './log.ts'
-import { before, outcomeSince } from './outcome.ts'
 import { act, find, Hand, VIEWPORT, type Finder } from './perform.ts'
 import { watch } from './settle.ts'
 import { fingerprint } from './similo.ts'
@@ -18,7 +17,7 @@ import { launchBrowser } from './tools.ts'
 
 // Exploring: the agent drives a browser one command at a time, off camera, to learn the
 // app and find the path. A small process of ours holds the browser between commands, and
-// every action the agent takes is logged, pinned and with its outcome, for it to write
+// every action the agent takes is logged and pinned, for it to write
 // the film from afterwards (log.ts).
 
 const DIR = join('.product-demo', 'explore')
@@ -85,7 +84,7 @@ export async function serve(url: string): Promise<void> {
   await settler.settled()
   let looks = 0
   // What the last look found drawn on canvas-like surfaces, named d1, d2…; stale once an
-  // action changes the drawing.
+  // action has run, since it may have changed the drawing.
   let drawn: Drawn[] = []
   let drawnChanged = false
   const target = async (name: string | undefined, at?: string) => {
@@ -118,12 +117,11 @@ export async function serve(url: string): Promise<void> {
   }
 
   /**
-   * Performs a step the way a shoot will, at once, then logs it with what it changed. The
+   * Performs a step the way a shoot will, at once, then logs it. The
    * elements it names were just pinned, so they're used as they are, not found again.
    */
   const logged = async (step: Step, said: string, aimed: Aimed[] = []) => {
     const log = await readLog()
-    const was = await before(page)
     const finder: Finder = async (target) => {
       const known = aimed.find((a) => a.target === target)
       if (!known) return find(page, target, config, () => {})
@@ -134,20 +132,19 @@ export async function serve(url: string): Promise<void> {
       await settler.mark()
       await act(page, hand, url, step, finder)
       const settled = await settler.settled()
-      const outcome = await outcomeSince(page, was)
-      if (outcome?.drawn) drawnChanged = true
+      if (drawn.length) drawnChanged = true
       const n = log.entries.length + 1
       const warning = settled.settled
         ? undefined
         : `The page hadn't settled after 10s: ${settled.waitingOn.join(', ')}.`
       log.entries.push({
         n,
-        step: outcome ? { ...step, outcome } : step,
+        step,
         at: address(),
         ...(warning ? { warning } : {}),
       })
       await writeLog(log)
-      return `${n}. ${said}${outcome?.url ? ` Now at ${outcome.url}.` : ''}${warning ? ` ${warning}` : ''}`
+      return `${n}. ${said}${warning ? ` ${warning}` : ''}`
     } finally {
       for (const a of aimed) await a.release()
     }

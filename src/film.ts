@@ -13,16 +13,6 @@ export type Target =
   | { css: string }
   | { locator: string; selector: string; fingerprint: Fingerprint }
 
-/** What a step changed when it was explored, so rehearse and shoot can check it changes the same. */
-export interface Outcome {
-  /** The address it went to: path, query and hash. */
-  url?: string | undefined
-  /** A line of text it made appear. */
-  appeared?: string | undefined
-  /** On a canvas-like surface, the boxes of what's drawn after it: x, y, width, height. */
-  drawn?: number[][] | undefined
-}
-
 /** Where on an element, as fractions of its box: 0,0 is its top left, 1,1 its bottom right. */
 export interface Point {
   x: number
@@ -52,7 +42,6 @@ export type Step = (
   | { upload: string; into?: Target | undefined }
   | { wait: { text: string; gone?: boolean | undefined } | number }
 ) & {
-  outcome?: Outcome | undefined
   /** Why the step is there, or anything odd about it. Read by people and agents, never run. */
   note?: string | undefined
 }
@@ -95,55 +84,43 @@ const target: z.ZodType<Target> = z.union([
   z.strictObject({ locator: z.string(), selector: z.string(), fingerprint }),
 ])
 
-const outcome = z
-  .strictObject({
-    url: z.string().optional(),
-    appeared: z.string().optional(),
-    drawn: z.array(z.array(z.number()).length(4)).optional(),
-  })
-  .optional()
-
 const note = z.string().optional()
 
 const point = z.strictObject({ x: z.number(), y: z.number() }).optional()
 
 export const stepSchema: z.ZodType<Step> = z.union([
-  z.strictObject({ visit: z.string(), outcome, note }),
+  z.strictObject({ visit: z.string(), note }),
   z.strictObject({
     click: target,
     at: point,
     double: z.boolean().optional(),
     right: z.boolean().optional(),
     modifiers: z.array(z.enum(KEYS)).optional(),
-    outcome,
     note,
   }),
-  z.strictObject({ fill: target, text: z.string(), outcome, note }),
-  z.strictObject({ select: target, option: z.string(), outcome, note }),
-  z.strictObject({ type: z.string(), outcome, note }),
-  z.strictObject({ press: z.string(), outcome, note }),
+  z.strictObject({ fill: target, text: z.string(), note }),
+  z.strictObject({ select: target, option: z.string(), note }),
+  z.strictObject({ type: z.string(), note }),
+  z.strictObject({ press: z.string(), note }),
   z.strictObject({
     hover: target,
     at: point,
     seconds: z.number().positive().optional(),
-    outcome,
     note,
   }),
-  z.strictObject({ drag: target, at: point, to: target, toAt: point, outcome, note }),
+  z.strictObject({ drag: target, at: point, to: target, toAt: point, note }),
   z.strictObject({
     scroll: z.enum(['up', 'down']),
     in: target.optional(),
     pixels: z.number().positive().optional(),
-    outcome,
     note,
   }),
-  z.strictObject({ upload: z.string(), into: target.optional(), outcome, note }),
+  z.strictObject({ upload: z.string(), into: target.optional(), note }),
   z.strictObject({
     wait: z.union([
       z.strictObject({ text: z.string(), gone: z.boolean().optional() }),
       z.number().positive(),
     ]),
-    outcome,
     note,
   }),
 ])
