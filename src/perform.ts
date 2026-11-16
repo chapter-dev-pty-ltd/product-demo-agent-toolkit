@@ -211,8 +211,15 @@ async function perform(
           hand.due = line.at + word * 1000
         }
         hand.landed = undefined
-        // A highlight comes on before its action, so the action happens inside it.
+        // A hover on the way to another pointer step is passed through, not stopped at: the
+        // pointer flows on into the next move, with no wait for the page between them.
+        const next = film.steps[index + 1]
+        hand.passing =
+          'hover' in step && step.seconds === undefined && !step.highlight && pointing(next)
+        // A highlight comes on before its action, and the press waits for its zoom, so the
+        // action happens inside it.
         const lit = step.highlight ? await highlightOn(page, step, finder) : undefined
+        hand.notBefore = lit ? lit.at + ZOOM_MS : 0
         await settler.mark()
         await act(page, hand, film.app, step, finder)
         // Late on its word: the line gave the action too little time after the one before it.
@@ -226,9 +233,10 @@ async function perform(
         }
         hand.due = undefined
         // Within a line, the voice paces the film: only the page is waited for, not a beat too.
-        const next = film.steps[index + 1]
         const carriesOn = Boolean(line && next?.on && !next.say)
-        const settled = await settler.settled({ beat: carriesOn ? 0 : 400 })
+        const settled = hand.passing
+          ? { settled: true, waitingOn: [] }
+          : await settler.settled({ beat: carriesOn ? 0 : 400 })
         if (!settled.settled) {
           warnings.push(
             `${label}: went on before the page settled (${settled.waitingOn.join(', ')}).`,
@@ -262,6 +270,16 @@ async function perform(
 
 export type Finder = (target: Target) => Promise<Locator>
 
+/** Whether a step moves the pointer to an element, so a hover before it can flow into it. */
+const pointing = (step: Step | undefined): boolean =>
+  step !== undefined && ['hover', 'click', 'drag', 'fill', 'select'].some((kind) => kind in step)
+
+/** How long a hand takes from letting go of the mouse to the first key. */
+const TO_KEYBOARD_MS = 600
+
+/** How long the cut takes to zoom in on a highlight (stage.ts eases over the same). */
+const ZOOM_MS = 800
+
 /** Performs one step with the hand: at a person's pace when filming, at once when exploring. */
 export async function act(
   page: Page,
@@ -277,9 +295,10 @@ export async function act(
   } else if ('click' in step) {
     await hand.click(await find(step.click), step)
   } else if ('fill' in step) {
-    // On a word, the typing starts on it: the field is clicked a beat before.
+    // On a word, the typing starts on it: the field is clicked a beat before, and the hand
+    // has moved to the keyboard by then.
     const due = hand.due
-    if (due !== undefined) hand.due = due - 400
+    if (due !== undefined) hand.due = due - TO_KEYBOARD_MS - 150
     await hand.click(await find(step.fill))
     hand.due = due
     hand.landed = undefined
@@ -301,7 +320,7 @@ export async function act(
   } else if ('hover' in step) {
     await hand.reach(await find(step.hover), step.at)
     await hand.onTime()
-    await hand.pause((step.seconds ?? 1.2) * 1000)
+    if (!hand.passing) await hand.pause((step.seconds ?? 1.2) * 1000)
   } else if ('drag' in step) {
     // The drop is found before the press: once something is held, what's dragged can cover it.
     const from = await find(step.drag)
@@ -328,8 +347,7 @@ export async function act(
 
 /**
  * Turns a step's highlight on: the box of its element (or the box it gives), measured before
- * the action, and a moment for the cut to zoom in. The time is the clock's; the shoot makes
- * it the video's.
+ * the action. The time is the clock's; the shoot makes it the video's.
  */
 async function highlightOn(
   page: Page,
@@ -345,10 +363,7 @@ async function highlightOn(
     if (!bounds) throw new Error('The element to highlight has no size on screen.')
     box = [bounds.x, bounds.y, bounds.width, bounds.height]
   }
-  const at = performance.now()
-  // Time for the cut to zoom in before anything moves.
-  await page.waitForTimeout(800)
-  return { at, box }
+  return { at: performance.now(), box }
 }
 
 /** Types into the focused field, replacing what's in it. */
@@ -376,6 +391,7 @@ async function fill(page: Page, hand: Hand, text: string): Promise<void> {
   if (field === 'set') return
   // Select-all with no field focused selects the whole page.
   if (field === 'none') throw new Error("Clicking it didn't focus a field to type into.")
+  await hand.toKeyboard()
   await page.keyboard.press('ControlOrMeta+A')
   await page.keyboard.press('Backspace')
   await hand.type(text)
@@ -486,6 +502,14 @@ export class Hand {
   due: number | undefined
   /** Each key pressed and when, for the cut's key sounds. */
   keys: { t: number; key: string }[] = []
+  /** On the way through: this move arrives still moving, to flow into the next. */
+  passing = false
+  /** Not to press before this (a highlight zooming in). */
+  notBefore = 0
+  /** When the mouse button was last let go, if the hand hasn't gone to the keyboard since. */
+  private onMouse = 0
+  /** How fast the pointer was going as it passed through, and when, to carry on at. */
+  private flow: { speed: number; at: number } | undefined
   constructor(page: Page, quick = false) {
     this.page = page
     this.quick = quick
@@ -518,33 +542,72 @@ export class Hand {
     if (this.due !== undefined) this.landed ??= performance.now()
   }
 
-  /** How long a glide to there takes, in ms: longer for further, up to 0.9s. */
+  /** How long a glide to there takes, in ms: longer for further, up to about 0.9s. */
   travel(x: number, y: number): number {
-    return Math.min(900, 250 + Math.hypot(x - this.x, y - this.y) * 0.5)
+    // A little different each time, as no two of a person's moves take quite as long.
+    const varied = 0.9 + Math.random() * 0.2
+    return Math.min(900, 250 + Math.hypot(x - this.x, y - this.y) * 0.5) * varied
   }
 
-  async glide(x: number, y: number): Promise<void> {
+  /**
+   * Moves the pointer the way a hand does: off smoothly, a slight arc on a long move, and
+   * settling at the end. Passing through on the way to the next move, it arrives still moving,
+   * and the next move carries on at that speed. Positions follow the clock, not a frame count,
+   * so a slow mouse event never makes it stutter.
+   */
+  async glide(x: number, y: number, ms: number = this.travel(x, y)): Promise<void> {
     if (this.quick) return this.rest(x, y)
     const fromX = this.x
     const fromY = this.y
-    const ms = this.travel(x, y)
-    for (let t = 0; t <= ms; t += 16) {
-      const k = ease(t / ms)
-      await this.move(fromX + (x - fromX) * k, fromY + (y - fromY) * k)
+    const distance = Math.hypot(x - fromX, y - fromY)
+    if (distance < 1) return this.rest(x, y)
+    const carried = this.flow && performance.now() - this.flow.at < 400 ? this.flow.speed : 0
+    const v0 = Math.min(1.5, (carried * ms) / distance)
+    const v1 = this.passing ? 0.35 : 0
+    // Bowed slightly downward, as a hand pivoting at the wrist moves; short moves stay straight.
+    const bend = distance > 80 ? Math.min(36, distance * 0.05) : 0
+    const side = x >= fromX ? 1 : -1
+    const nx = (-(y - fromY) / distance) * side
+    const ny = ((x - fromX) / distance) * side
+    const start = performance.now()
+    for (;;) {
+      const k = Math.min(1, (performance.now() - start) / ms)
+      const s = flowing(k, v0, v1)
+      const arc = bend * Math.sin(Math.PI * k)
+      await this.move(fromX + (x - fromX) * s + nx * arc, fromY + (y - fromY) * s + ny * arc)
+      if (k >= 1) break
       await this.page.waitForTimeout(16)
     }
-    await this.rest(x, y)
+    this.flow = v1 > 0 ? { speed: (v1 * distance) / ms, at: performance.now() } : undefined
+  }
+
+  /** After a click, the hand takes a moment to reach the keyboard before the first key. */
+  async toKeyboard(): Promise<void> {
+    const wait = this.onMouse + TO_KEYBOARD_MS - performance.now()
+    if (wait > 0 && !this.quick) await this.page.waitForTimeout(wait)
+    this.onMouse = 0
+  }
+
+  /** Waits until a highlight has zoomed in, so the press happens inside it. */
+  private async whenZoomed(): Promise<void> {
+    const wait = this.notBefore - performance.now()
+    if (wait > 0 && !this.quick) await this.page.waitForTimeout(wait)
   }
 
   /** Moves onto an element, to a point on it (its middle unless told). */
   async reach(target: Locator, at?: Point): Promise<{ x: number; y: number }> {
     const spot = await spotOn(target, at)
-    // Due on a word: set off so as to arrive a moment before it.
-    if (this.due !== undefined) {
-      const wait = this.due - performance.now() - this.travel(spot.x, spot.y) - 250
-      if (wait > 0) await this.page.waitForTimeout(wait)
+    let ms = this.travel(spot.x, spot.y)
+    // Due on a word: a hand takes about as long for a distance whatever the deadline, so when
+    // early it rests, then moves briskly (stretched by a quarter at most) to arrive as the word
+    // is said, a moment before to press on it. Stretched further, a move becomes a slow drift.
+    if (this.due !== undefined && !this.quick) {
+      const left = this.due - performance.now() - (this.passing ? 0 : 250)
+      const slowest = ms * 1.25
+      if (left > slowest) await this.page.waitForTimeout(left - slowest)
+      ms = Math.max(ms, Math.min(left, slowest))
     }
-    await this.glide(spot.x, spot.y)
+    await this.glide(spot.x, spot.y, ms)
     return spot
   }
 
@@ -559,6 +622,7 @@ export class Hand {
   ): Promise<void> {
     await this.reach(target, how.at)
     await this.pause(120)
+    await this.whenZoomed()
     await this.onTime()
     const button = how.right ? 'right' : 'left'
     const held = how.modifiers ?? []
@@ -574,6 +638,7 @@ export class Hand {
         await this.page.mouse.up({ button, clickCount })
         if (clickCount < presses) await this.pause(60)
       }
+      this.onMouse = performance.now()
     } finally {
       for (const key of held.toReversed()) await this.page.keyboard.up(key)
     }
@@ -593,15 +658,17 @@ export class Hand {
     const start = await this.reach(from, at)
     const end = await spotOn(to, toAt)
     await this.pause(120)
+    await this.whenZoomed()
     await this.onTime()
     const mouse = this.page.mouse
     await mouse.down()
-    await this.page.waitForTimeout(this.quick ? 80 : 200)
+    await this.page.waitForTimeout(this.quick ? 80 : 150)
     const distance = Math.hypot(end.x - start.x, end.y - start.y)
     const ms = this.quick ? 400 : Math.min(1400, 450 + distance * 0.7)
-    for (let t = 16; t < ms; t += 16) {
-      const k = ease(t / ms)
-      await this.move(start.x + (end.x - start.x) * k, start.y + (end.y - start.y) * k)
+    const began = performance.now()
+    for (let k = 0; k < 1; k = Math.min(1, (performance.now() - began) / ms)) {
+      const s = flowing(k, 0, 0)
+      await this.move(start.x + (end.x - start.x) * s, start.y + (end.y - start.y) * s)
       await this.page.waitForTimeout(16)
     }
     // Over the drop long enough for it to light up, then a nudge, since some libraries test
@@ -611,11 +678,13 @@ export class Hand {
     await mouse.move(end.x + 1, end.y)
     await this.move(end.x, end.y)
     await mouse.up()
+    this.onMouse = performance.now()
   }
 
   /** Types at a person's pace and rhythm, a key at a time, keeping when each was pressed. */
   async type(text: string): Promise<void> {
     if (this.quick) return this.page.keyboard.type(text)
+    await this.toKeyboard()
     await this.onTime()
     for (const character of text) {
       await this.page.keyboard.type(character)
@@ -627,6 +696,7 @@ export class Hand {
 
   /** Presses a key or a combination, like Enter or Meta+K. */
   async key(key: string): Promise<void> {
+    await this.toKeyboard()
     await this.onTime()
     await this.page.keyboard.press(key)
     if (!this.quick) this.keys.push({ t: performance.now(), key })
@@ -644,11 +714,30 @@ export class Hand {
   }
 }
 
-/** A point on an element, in page pixels: `at` as fractions of its box, or its middle. */
+/**
+ * A point on an element, in page pixels: `at` as fractions of its box, or its middle. Waits
+ * (up to half a second) for the box to stop moving, as one a hover just revealed slides out.
+ */
 async function spotOn(target: Locator, at?: Point): Promise<{ x: number; y: number }> {
-  const box = await target.boundingBox()
+  let box = await target.boundingBox()
+  for (let tries = 0; box && tries < 10; tries++) {
+    await new Promise((done) => setTimeout(done, 50))
+    const now = await target.boundingBox()
+    const still =
+      now && Math.abs(now.x - box.x) + Math.abs(now.y - box.y) + Math.abs(now.width - box.width) < 1
+    box = now
+    if (still) break
+  }
   if (!box) throw new Error('The element has no size on screen.')
   return { x: box.x + box.width * (at?.x ?? 0.5), y: box.y + box.height * (at?.y ?? 0.5) }
 }
 
-const ease = (k: number) => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2)
+/**
+ * How far along a move is, 0 to 1, at time k (0 to 1), setting off at speed v0 and arriving
+ * at v1 (1 is the move's average speed). At rest at both ends it's a hand's own profile
+ * (minimum jerk): quick off the mark, settling gently.
+ */
+const flowing = (k: number, v0: number, v1: number): number =>
+  v0 * (k - 6 * k ** 3 + 8 * k ** 4 - 3 * k ** 5) +
+  (10 * k ** 3 - 15 * k ** 4 + 6 * k ** 5) +
+  v1 * (-4 * k ** 3 + 7 * k ** 4 - 3 * k ** 5)
