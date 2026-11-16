@@ -510,13 +510,14 @@ export class Hand {
     await mouse.up()
   }
 
-  /** Types at a person's pace, a key at a time, keeping when each was pressed. */
+  /** Types at a person's pace and rhythm, a key at a time, keeping when each was pressed. */
   async type(text: string): Promise<void> {
     if (this.quick) return this.page.keyboard.type(text)
     for (const character of text) {
       await this.page.keyboard.type(character)
       this.keys.push({ t: performance.now(), key: character })
-      await this.page.waitForTimeout(70)
+      // Uneven, as a person types: a beat longer after a space.
+      await this.page.waitForTimeout(55 + Math.random() * 60 + (character === ' ' ? 40 : 0))
     }
   }
 

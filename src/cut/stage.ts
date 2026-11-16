@@ -163,17 +163,16 @@ const highlightAt = async (t, rest) => {
   if (h.style === 'cursor') {
     box.style.opacity = dim.style.opacity = lift.style.opacity = 0;
     if (!rest) return;
-    // Out to the top of a ring around the box, once round it clockwise, and back.
-    const go = Math.min(0.35, (h.until - h.at) / 4), loop = h.until - h.at - 2 * go;
+    // Once round a ring about the box, clockwise, starting from the point nearest where the
+    // cursor rests. The cursor eases onto the moving ring and off it again, so it flows into
+    // and out of the loop rather than stopping to turn.
+    const span = h.until - h.at, go = Math.min(0.45, span / 4);
     const cx = x + w / 2, cy = y + h2 / 2, rx = w / 2 + 20, ry = h2 / 2 + 20;
-    let px, py;
-    if (since < go || left <= go) {
-      const k = ease(Math.min(since, left) / go);
-      px = rest.x + (cx - rest.x) * k, py = rest.y + (cy - ry - rest.y) * k;
-    } else {
-      const a = 2 * Math.PI * ease((since - go) / loop);
-      px = cx + rx * Math.sin(a), py = cy - ry * Math.cos(a);
-    }
+    const a0 = Math.atan2((rest.x - cx) / rx, -(rest.y - cy) / ry);
+    const a = a0 + 2 * Math.PI * (0.5 - 0.5 * Math.cos((Math.PI * since) / span));
+    const on = ease(Math.min(1, since / go, left / go));
+    const px = rest.x + (cx + rx * Math.sin(a) - rest.x) * on;
+    const py = rest.y + (cy - ry * Math.cos(a) - rest.y) * on;
     cursor.style.transform = 'translate(' + px + 'px,' + py + 'px)';
     return;
   }

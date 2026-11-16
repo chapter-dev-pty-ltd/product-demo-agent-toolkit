@@ -80,8 +80,8 @@ export async function cut(
             : [],
           volume: 1,
         },
-        ...Object.entries(KEYS).map(([kind, file]) => ({
-          files: [file],
+        ...Object.entries(KEYS).map(([kind, files]) => ({
+          files,
           times: soundOn('typing', film.sound, config.sound)
             ? (footage.keys ?? []).filter((k) => keyKind(k.key) === kind).map((k) => k.at - start)
             : [],
@@ -120,13 +120,15 @@ export async function cut(
   return length
 }
 
-// The sounds the cut plays: a click picked at random for each click, so they don't all sound
-// the same, and a key sound for each key, with space and Enter their own.
+// The sounds the cut plays: a click for each click, and a keystroke for each key, with space
+// and Enter their own. Each is picked at random from its set, never the same one twice running,
+// and pitched and levelled a little differently, as no two real presses sound the same. The keys
+// are cut from one recording of one keyboard.
 const CLICKS = ['click-1.wav', 'click-2.wav']
-const KEYS: Record<'key' | 'space' | 'enter', string> = {
-  key: 'key.wav',
-  space: 'space.wav',
-  enter: 'enter.wav',
+const KEYS: Record<'key' | 'space' | 'enter', string[]> = {
+  key: Array.from({ length: 8 }, (_, i) => `key-${i + 1}.wav`),
+  space: ['space.wav'],
+  enter: ['enter.wav'],
 }
 
 /** Which key sound a key gets: Enter and space have their own. */
@@ -142,10 +144,15 @@ interface Track {
 
 /** Random, but seeded by the time, so cutting the same footage again sounds the same. */
 function pick(t: number, of: number): number {
+  return Math.floor(chance(t) * of)
+}
+
+/** A number from 0 to 1, random but always the same for the same time. */
+function chance(t: number): number {
   let h = Math.round(t * 1000)
   h = Math.imul(h ^ (h >>> 16), 0x7feb352d)
   h = Math.imul(h ^ (h >>> 15), 0x846ca68b)
-  return ((h ^ (h >>> 16)) >>> 0) % of
+  return ((h ^ (h >>> 16)) >>> 0) / 2 ** 32
 }
 
 /** ffmpeg's arguments for the sound: each track's sounds at its times, for the video's length. */
@@ -155,13 +162,22 @@ function soundArgs(tracks: Track[], length: number): string[] {
   const played: string[] = []
   for (const [n, track] of tracks.entries()) {
     if (track.times.length === 0) continue
-    // Each sound is split into as many copies as it plays, then each copy delayed to its time.
+    // Which sound each time gets: random, but never the one just before.
+    const picks: number[] = []
+    for (const t of track.times) {
+      const before = picks.at(-1)
+      const k =
+        track.files.length > 1 && before !== undefined
+          ? pick(t, track.files.length - 1)
+          : pick(t, track.files.length)
+      picks.push(before !== undefined && track.files.length > 1 && k >= before ? k + 1 : k)
+    }
+    // Each sound is split into as many copies as it plays, then each copy varied a little and
+    // delayed to its time.
     for (const [k, file] of track.files.entries()) {
       inputs.push('-i', fileURLToPath(new URL(`../library/sounds/${file}`, import.meta.url)))
       const input = inputs.length / 2
-      const mine = track.times.flatMap((t, i) =>
-        pick(t, track.files.length) === k ? [`[s${n}_${i}]`] : [],
-      )
+      const mine = track.times.flatMap((_, i) => (picks[i] === k ? [`[s${n}_${i}]`] : []))
       graph.push(
         mine.length
           ? `[${input}:a]volume=${track.volume},asplit=${mine.length}${mine.join('')}`
@@ -169,7 +185,11 @@ function soundArgs(tracks: Track[], length: number): string[] {
       )
     }
     for (const [i, t] of track.times.entries()) {
-      graph.push(`[s${n}_${i}]adelay=${Math.round(t * 1000)}:all=1[p${n}_${i}]`)
+      const pitch = 1 + (chance(t + 0.1) - 0.5) * 0.06
+      const gain = (chance(t + 0.2) - 0.5) * 4
+      graph.push(
+        `[s${n}_${i}]asetrate=${Math.round(48000 * pitch)},aresample=48000,volume=${gain.toFixed(2)}dB,adelay=${Math.round(t * 1000)}:all=1[p${n}_${i}]`,
+      )
       played.push(`[p${n}_${i}]`)
     }
   }
