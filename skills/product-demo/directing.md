@@ -27,11 +27,13 @@ have music or a voiceover that it would fight with.
 
 ## Highlights
 
-Point the viewer at one thing, with the camera zooming toward it. Two styles:
+Point the viewer at one thing, with the camera zooming toward it. Three styles:
 
 - `"style": "box"`, the default: an outline around it, in `colour` (any hex, red if left out).
 - `"style": "magnify"`: it lifts out of the screen, a little bigger, over the dimmed rest.
   Best for a row, a card or a value the viewer should read; an outline suits a control.
+- `"style": "cursor"`: the cursor circles it once and comes back. For pointing at something
+  without covering or changing the screen.
 
 Put it on the step after which it should show:
 

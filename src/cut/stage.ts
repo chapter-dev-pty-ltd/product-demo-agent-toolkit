@@ -23,7 +23,7 @@ export interface Highlighted {
   until: number
   box: number[]
   zoom: number
-  style: 'box' | 'magnify'
+  style: 'box' | 'magnify' | 'cursor'
   colour: string
 }
 
@@ -140,8 +140,9 @@ const ease = (k) => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2);
 
 // A highlight at t. The camera zooms toward its box by its zoom (1 is the box filling the
 // view), centred on it but never past the app's edges. Then either an outline in its colour
-// fades in, or the region is magnified: a copy of it lifts off the dimmed screen.
-const highlightAt = async (t) => {
+// fades in, the region is magnified (a copy of it lifts off the dimmed screen), or the cursor
+// circles it from where it rests.
+const highlightAt = async (t, rest) => {
   const h = data.highlights.find((h) => t >= h.at && t < h.until);
   if (!h) {
     box.style.opacity = dim.style.opacity = lift.style.opacity = 0;
@@ -159,6 +160,23 @@ const highlightAt = async (t) => {
   const ty = Math.min(0, Math.max(H - H * scale, H / 2 - fy * scale));
   camera.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
   const fade = Math.min(1, since / 0.25, left / 0.25);
+  if (h.style === 'cursor') {
+    box.style.opacity = dim.style.opacity = lift.style.opacity = 0;
+    if (!rest) return;
+    // Out to the top of a ring around the box, once round it clockwise, and back.
+    const go = Math.min(0.35, (h.until - h.at) / 4), loop = h.until - h.at - 2 * go;
+    const cx = x + w / 2, cy = y + h2 / 2, rx = w / 2 + 20, ry = h2 / 2 + 20;
+    let px, py;
+    if (since < go || left <= go) {
+      const k = ease(Math.min(since, left) / go);
+      px = rest.x + (cx - rest.x) * k, py = rest.y + (cy - ry - rest.y) * k;
+    } else {
+      const a = 2 * Math.PI * ease((since - go) / loop);
+      px = cx + rx * Math.sin(a), py = cy - ry * Math.cos(a);
+    }
+    cursor.style.transform = 'translate(' + px + 'px,' + py + 'px)';
+    return;
+  }
   if (h.style === 'box') {
     const pad = 8;
     Object.assign(box.style, { left: x - pad + 'px', top: y - pad + 'px', width: w + pad * 2 + 'px', height: h2 + pad * 2 + 'px', borderColor: h.colour, opacity: fade });
@@ -201,12 +219,14 @@ window.stage = {
     // The cursor between the two samples around t.
     const i = lastBy(data.pointer, t);
     const a = data.pointer[Math.max(0, i)], b = data.pointer[i + 1];
+    let rest;
     if (a) {
       const k = b && i >= 0 ? Math.min(1, (t - a.at) / Math.max(1e-6, b.at - a.at)) : 0;
       const x = b ? a.x + (b.x - a.x) * k : a.x, y = b ? a.y + (b.y - a.y) * k : a.y;
       cursor.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+      rest = { x, y };
     }
-    await highlightAt(t);
+    await highlightAt(t, rest);
     const click = data.clicks[lastBy(data.clicks, t)];
     const press = dip();
     if (press) press.currentTime = click ? Math.min(250, (t - click.at) * 1000) : 250;
