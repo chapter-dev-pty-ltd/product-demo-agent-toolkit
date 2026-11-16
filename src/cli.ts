@@ -1,5 +1,8 @@
 #!/usr/bin/env node
+import { cp } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
   cut,
@@ -48,6 +51,8 @@ const USAGE = `product-demo ${version}
   product-demo shoot <film.json>
   product-demo cut [footage] [--out video.mp4]
   product-demo review [footage]      An image of frames from across the video, to check it by
+
+Set up: product-demo skills [dir]   Copy the skills into ~/.claude/skills (or dir) for your agent
 
 Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (halo | sky | violet),
 cursor (pink | lime), sound (true | false | { click }, default true),
@@ -134,6 +139,10 @@ try {
     const seconds = await cut(from, out, config)
     console.log(`Cut ${out} (${seconds.toFixed(1)}s)`)
     if (config.review) console.log(`Review it: ${await review(out, seconds)}`)
+  } else if (command === 'skills') {
+    const to = input ?? join(homedir(), '.claude', 'skills')
+    await cp(fileURLToPath(new URL('../skills', import.meta.url)), to, { recursive: true })
+    console.log(`Copied the product-demo skills into ${to}. Start a new session to load them.`)
   } else if (command === 'review') {
     const from = input ?? (await latestRun('footage', 'footage.json'))
     const video = join(from, 'video.mp4')

@@ -33,6 +33,7 @@
     "test": "vitest run",
     "lint": "oxlint",
     "format": "prettier --write .",
+    "prepare": "tsdown",
     "prepublishOnly": "pnpm build"
   },
   "devDependencies": {
