@@ -11,7 +11,7 @@ export const DISPLAYS = ['none', 'browser'] as const
 export type Display = (typeof DISPLAYS)[number]
 
 /** The cursor's colours, as the cut draws it. */
-export const CURSORS = ['pink', 'lime'] as const
+export const CURSORS = ['black', 'pink', 'lime'] as const
 export type Cursor = (typeof CURSORS)[number]
 
 /** Which sounds the video has: all or none, or each on its own. */
@@ -56,7 +56,7 @@ const config: z.ZodType<Config> = z.strictObject({
     .describe('How the app is shown: none, on the backdrop as it is, or in a browser window.'),
   cursor: z
     .enum(CURSORS)
-    .default('pink')
+    .default('black')
     .describe("The cursor's colour in the video. A film can choose its own."),
   sound: soundSchema
     .default(true)

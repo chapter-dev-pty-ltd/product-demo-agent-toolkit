@@ -14,14 +14,16 @@ address matters to the story. Set it at the film's top level, or in the config f
 ## The cursor
 
 The cut draws the cursor along the path the pointer took when the film was shot: a rounded
-arrow that dips as it clicks. It comes in two colours:
+arrow with a white edge that dips as it clicks. It comes in three colours:
 
-- `pink`, the default.
+- `black`, the default.
+- `pink`.
 - `lime`.
 
-Set it for one film at its top level, `"cursor": "lime"`, or for every film in
-`.product-demo/config.json`. Choose the one that stands out against the app: pink on most
-apps, lime when the app is pink, red or warm-coloured, where pink gets lost. Keep one colour
+Set it for one film at its top level, `"cursor": "pink"`, or for every film in
+`.product-demo/config.json`. Black reads on almost any app. Choose pink or lime when the app
+is dark or the cursor should stand out more: pink on most, lime when the app is pink, red or
+warm-coloured, where pink gets lost. Keep one colour
 for a whole film, and the same one across a set of films made together.
 
 ## Sound

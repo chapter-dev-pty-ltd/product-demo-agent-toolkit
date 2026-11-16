@@ -15,7 +15,11 @@ import { VIEWPORT, type Footage } from '../perform.ts'
 
 const CANVAS = { width: 1920, height: 1080 }
 const ORIGIN = 'https://stage.product-demo'
-const COLOURS: Record<Config['cursor'], string> = { pink: '#ff7ccb', lime: '#b6f24f' }
+const COLOURS: Record<Config['cursor'], string> = {
+  black: '#111111',
+  pink: '#ff7ccb',
+  lime: '#b6f24f',
+}
 
 /** A highlight as the stage draws it, timed from the footage's start. */
 export interface Highlighted {
@@ -172,8 +176,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 #lift { position: absolute; overflow: hidden; border-radius: 12px; opacity: 0; transform-origin: center;
   box-shadow: 0 28px 70px rgb(0 0 0 / .32), 0 8px 20px rgb(0 0 0 / .18); }
 #lift img { position: absolute; width: ${VIEWPORT.width}px; height: ${VIEWPORT.height}px; max-width: none; }
-#cursor { position: absolute; left: -5px; top: -5px; width: 36px; height: 36px; color: ${COLOURS[look.cursor]}; }
-#cursor svg { display: block; transform-origin: 5px 5px; animation: dip 250ms linear paused; }
+/* The arrow at 80% of its drawn 36px, its tip (5,5 in the drawing) on the pointer, with a thick
+   white edge and a soft shadow so it reads on any app. */
+#cursor { position: absolute; left: -4px; top: -4px; width: 28.8px; height: 28.8px; color: ${COLOURS[look.cursor]}; }
+#cursor svg { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: 4px 4px; animation: dip 250ms linear paused;
+  filter: drop-shadow(0 1.5px 2.5px rgb(0 0 0 / .28)); }
 /* A click: the arrow pressed in, then springing back past its size and settling. */
 @keyframes dip {
   0% { transform: scale(1); animation-timing-function: cubic-bezier(.2,.7,.3,1); }

@@ -74,7 +74,7 @@ Everything has a default, so no config is needed. To change one, add
 | `mode`     | `"just_do_it"`        | When something is unclear, make the best choice and note it. `"ask"` stops and asks instead.                   |
 | `backdrop` | `"halo"`              | What the app sits on: `halo`, `sky` or `violet`.                                                               |
 | `display`  | `"none"`              | How the app is shown: `none`, on the backdrop as it is, or `browser`, in a browser window with an address bar. |
-| `cursor`   | `"pink"`              | The cursor's colour: `pink` or `lime`.                                                                         |
+| `cursor`   | `"black"`             | The cursor's colour: `black`, `pink` or `lime`.                                                                |
 | `sound`    | `true`                | Click and typing sounds. `false` for none, or `{ "click": true, "typing": false }`.                            |
 | `voice`    | Emma, from ElevenLabs | Who speaks the voiceover: `{ "provider": "elevenlabs", "voice": "<voice id>" }`.                               |
 | `keep`     | `10`                  | How many rehearsals and shoots of each film to keep.                                                           |
