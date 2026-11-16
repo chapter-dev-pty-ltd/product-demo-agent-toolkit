@@ -40,10 +40,34 @@ export async function cut(
   const length = videoLength(footage)
   const look = { backdrop: config.backdrop, cursor: film.cursor ?? config.cursor }
   const title = film.notes?.split(/(?<=\.)\s/)[0] ?? ''
+  // How each highlight looks comes from the film as it is now; when it held, from the shoot.
+  const highlights = footage.highlights.flatMap((held) => {
+    const now = film.steps[held.step]?.highlight
+    if (!now) return []
+    return [
+      {
+        at: held.at,
+        until: held.until,
+        box: now.box ?? held.box,
+        zoom: now.zoom ?? 0,
+        style: now.style ?? 'box',
+        colour: now.colour ?? '#ff3b30',
+      },
+    ]
+  })
 
   const browser = await launchBrowser()
   try {
-    const page = await openStage(browser, footageDir, footage, look, length, title, extra)
+    const page = await openStage(
+      browser,
+      footageDir,
+      footage,
+      highlights,
+      look,
+      length,
+      title,
+      extra,
+    )
     const camera = await page.context().newCDPSession(page)
     const encoder = spawn(
       await findFfmpeg(),

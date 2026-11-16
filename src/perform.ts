@@ -40,8 +40,8 @@ export interface Footage {
   pointer: { at: number; x: number; y: number }[]
   /** Where and when the pointer clicked. */
   clicks: { at: number; x: number; y: number }[]
-  /** What the film highlighted, and when: the box in screen pixels, and how far to zoom. */
-  highlights: { at: number; until: number; box: number[]; zoom: number }[]
+  /** When each highlighted step held, and its element's box in screen pixels. */
+  highlights: { step: number; at: number; until: number; box: number[] }[]
   end: number
   /** Choices made without asking (`just_do_it`), recoveries, and steps that never settled. */
   warnings: string[]
@@ -166,7 +166,8 @@ async function perform(
           )
         }
         await watchers.still?.(page, label, index + 1)
-        if (step.highlight) highlights.push(await highlight(page, step, finder))
+        if (step.highlight)
+          highlights.push({ step: index, ...(await highlight(page, step, finder)) })
       } catch (error) {
         const failed = join(dir, 'failed.png')
         await page.screenshot({ path: failed }).catch(() => {})
@@ -248,7 +249,7 @@ async function highlight(
   page: Page,
   step: Step,
   find: Finder,
-): Promise<Footage['highlights'][number]> {
+): Promise<{ at: number; until: number; box: number[] }> {
   const given = step.highlight?.box
   const target = stepTarget(step)
   let box = given
@@ -260,7 +261,7 @@ async function highlight(
   }
   const at = performance.now()
   await page.waitForTimeout((step.highlight?.seconds ?? 2) * 1000)
-  return { at, until: performance.now(), box, zoom: step.highlight?.zoom ?? 0 }
+  return { at, until: performance.now(), box }
 }
 
 /** Types into the focused field, replacing what's in it. */

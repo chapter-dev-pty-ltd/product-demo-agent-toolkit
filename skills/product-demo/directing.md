@@ -19,12 +19,17 @@ for a whole film, and the same one across a set of films made together.
 
 ## Highlights
 
-Point the viewer at one thing: a red box around it, with the camera zooming toward it. Put
-it on the step after which it should show:
+Point the viewer at one thing, with the camera zooming toward it. Two styles:
+
+- `"style": "box"`, the default: an outline around it, in `colour` (any hex, red if left out).
+- `"style": "magnify"`: it lifts out of the screen, a little bigger, over the dimmed rest.
+  Best for a row, a card or a value the viewer should read; an outline suits a control.
+
+Put it on the step after which it should show:
 
 ```json
-{ "click": { "role": "button", "name": "Save" }, "highlight": { "zoom": 0.5, "seconds": 2 } }
-{ "press": "Enter", "highlight": { "box": [640, 120, 400, 300], "zoom": 0.3 } }
+{ "click": { "role": "button", "name": "Save" }, "highlight": { "colour": "#2563eb", "zoom": 0.5 } }
+{ "press": "Enter", "highlight": { "style": "magnify", "box": [640, 120, 400, 300] } }
 ```
 
 - Without a `box`, it highlights the step's own element (for a drag, where it was dropped).
@@ -33,7 +38,7 @@ it on the step after which it should show:
 - `zoom` runs from 0 (none, the default) to 1 (the box fills the view). 0.3 to 0.6 reads
   best; near 1 on something small gets soft.
 - `seconds` is how long it holds, 2 by default. The shoot holds still for it, so changing
-  it means shooting again; changing the box or zoom only needs another cut.
+  it, or adding a highlight, means shooting again. Changing its style, colour, box or zoom
+  only needs another cut.
 - Use it for what the film is about: the result, or the one control that matters. One or
   two in a film; a highlight on every step points at nothing.
-

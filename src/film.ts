@@ -54,6 +54,10 @@ export type Step = (
  * pixels). `zoom` runs from 0, none, to 1, the box filling the view. It holds for `seconds`.
  */
 export interface Highlight {
+  /** `box` outlines it in `colour`; `magnify` lifts it out of the screen, bigger. */
+  style?: 'box' | 'magnify' | undefined
+  /** The outline's colour, as hex. Red if left out. */
+  colour?: string | undefined
   box?: number[] | undefined
   zoom?: number | undefined
   seconds?: number | undefined
@@ -114,6 +118,11 @@ const target: z.ZodType<Target> = z.union([
 const note = z.string().optional()
 const highlight = z
   .strictObject({
+    style: z.enum(['box', 'magnify']).optional(),
+    colour: z
+      .string()
+      .regex(/^#[0-9a-f]{3,8}$/i)
+      .optional(),
     box: z.array(z.number()).length(4).optional(),
     zoom: z.number().min(0).max(1).optional(),
     seconds: z.number().positive().optional(),

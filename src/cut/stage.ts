@@ -17,13 +17,23 @@ const CANVAS = { width: 1920, height: 1080 }
 const ORIGIN = 'https://stage.product-demo'
 const COLOURS: Record<Config['cursor'], string> = { pink: '#ff7ccb', lime: '#b6f24f' }
 
+/** A highlight as the stage draws it, timed from the footage's start. */
+export interface Highlighted {
+  at: number
+  until: number
+  box: number[]
+  zoom: number
+  style: 'box' | 'magnify'
+  colour: string
+}
+
 /** What the stage is told, in video time (seconds from its start) and app pixels. */
 interface StageData {
   length: number
   frames: { file: string; at: number }[]
   pointer: { at: number; x: number; y: number }[]
   clicks: { at: number; x: number; y: number }[]
-  highlights: { at: number; until: number; box: number[]; zoom: number }[]
+  highlights: Highlighted[]
   title: string
 }
 
@@ -32,6 +42,7 @@ export async function openStage(
   browser: Browser,
   footageDir: string,
   footage: Footage,
+  highlights: Highlighted[],
   look: { backdrop: Config['backdrop']; cursor: Config['cursor'] },
   length: number,
   title: string,
@@ -44,7 +55,7 @@ export async function openStage(
     frames: footage.frames.map(time),
     pointer: footage.pointer.map(time),
     clicks: footage.clicks.map(time),
-    highlights: footage.highlights.map((h) => ({ ...h, at: h.at - start, until: h.until - start })),
+    highlights: highlights.map((h) => ({ ...h, at: h.at - start, until: h.until - start })),
     title,
   }
   const library = (path: string) => new URL(`../library/${path}`, import.meta.url)
@@ -95,7 +106,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 /* Everything that moves with the camera: the app and the cursor. */
 #camera { position: absolute; inset: 0; transform-origin: 0 0; }
 #shot { position: absolute; inset: 0; width: 100%; height: 100%; }
-#highlight { position: absolute; box-sizing: border-box; border: 3px solid #ff3b30; border-radius: 8px; opacity: 0; }
+#highlight { position: absolute; box-sizing: border-box; border: 3px solid; border-radius: 8px; opacity: 0; }
+/* Magnify: a copy of the region, lifted off the dimmed screen. */
+#dim { position: absolute; inset: 0; background: rgb(15 15 30); opacity: 0; }
+#lift { position: absolute; overflow: hidden; border-radius: 12px; opacity: 0; transform-origin: center;
+  box-shadow: 0 28px 70px rgb(0 0 0 / .32), 0 8px 20px rgb(0 0 0 / .18); }
+#lift img { position: absolute; width: ${VIEWPORT.width}px; height: ${VIEWPORT.height}px; max-width: none; }
 #cursor { position: absolute; left: -5px; top: -5px; width: 36px; height: 36px; color: ${COLOURS[look.cursor]}; }
 #cursor svg { display: block; transform-origin: 5px 5px; animation: dip 250ms linear paused; }
 /* A click: the arrow pressed in, then springing back past its size and settling. */
@@ -107,37 +123,60 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 }
 </style></head><body>
 <div id="backdrop"></div>
-<div id="window"><div id="camera"><img id="shot" alt=""><div id="highlight"></div><div id="cursor">${arrow}</div></div></div>
+<div id="window"><div id="camera"><img id="shot" alt=""><div id="highlight"></div><div id="dim"></div><div id="lift"><img alt=""></div><div id="cursor">${arrow}</div></div></div>
 <script>
 const data = ${JSON.stringify(data)};
 const shot = document.getElementById('shot');
 const cursor = document.getElementById('cursor');
 const camera = document.getElementById('camera');
 const box = document.getElementById('highlight');
+const dim = document.getElementById('dim');
+const lift = document.getElementById('lift');
+const lens = lift.querySelector('img');
+// Out past 1 and back: the lift's spring.
+const pop = (k) => 1 + 2.70158 * (k - 1) ** 3 + 1.70158 * (k - 1) ** 2;
 const W = ${VIEWPORT.width}, H = ${VIEWPORT.height};
 const ease = (k) => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2);
 
-// A highlight at t: the red box fades in, and the camera zooms toward the box by its zoom
-// (1 is the box filling the view), centred on it but never past the app's edges.
-const highlightAt = (t) => {
+// A highlight at t. The camera zooms toward its box by its zoom (1 is the box filling the
+// view), centred on it but never past the app's edges. Then either an outline in its colour
+// fades in, or the region is magnified: a copy of it lifts off the dimmed screen.
+const highlightAt = async (t) => {
   const h = data.highlights.find((h) => t >= h.at && t < h.until);
   if (!h) {
-    box.style.opacity = 0;
+    box.style.opacity = dim.style.opacity = lift.style.opacity = 0;
     camera.style.transform = '';
     return;
   }
   const [x, y, w, h2] = h.box;
-  const pad = 8;
-  Object.assign(box.style, { left: x - pad + 'px', top: y - pad + 'px', width: w + pad * 2 + 'px', height: h2 + pad * 2 + 'px' });
-  const span = h.until - h.at, inOut = Math.min(0.6, span / 3);
-  const e = ease(Math.min(1, (t - h.at) / inOut, (h.until - t) / inOut));
-  box.style.opacity = Math.min(1, (t - h.at) / 0.25, (h.until - t) / 0.25);
+  const since = t - h.at, left = h.until - t;
+  const inOut = Math.min(0.6, (h.until - h.at) / 3);
+  const e = ease(Math.min(1, since / inOut, left / inOut));
   const full = Math.min(W / (w + 96), H / (h2 + 96));
   const scale = 1 + (Math.max(1, full) - 1) * h.zoom * e;
   const fx = W / 2 + (x + w / 2 - W / 2) * e, fy = H / 2 + (y + h2 / 2 - H / 2) * e;
   const tx = Math.min(0, Math.max(W - W * scale, W / 2 - fx * scale));
   const ty = Math.min(0, Math.max(H - H * scale, H / 2 - fy * scale));
   camera.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+  const fade = Math.min(1, since / 0.25, left / 0.25);
+  if (h.style === 'box') {
+    const pad = 8;
+    Object.assign(box.style, { left: x - pad + 'px', top: y - pad + 'px', width: w + pad * 2 + 'px', height: h2 + pad * 2 + 'px', borderColor: h.colour, opacity: fade });
+    dim.style.opacity = lift.style.opacity = 0;
+    return;
+  }
+  const pad = 6;
+  Object.assign(lift.style, { left: x - pad + 'px', top: y - pad + 'px', width: w + pad * 2 + 'px', height: h2 + pad * 2 + 'px' });
+  Object.assign(lens.style, { left: pad - x + 'px', top: pad - y + 'px' });
+  if (lens.getAttribute('src') !== shot.getAttribute('src')) {
+    lens.setAttribute('src', shot.getAttribute('src'));
+    await lens.decode().catch(() => {});
+  }
+  const grow = Math.min(pop(Math.min(1, since / 0.45)), ease(Math.min(1, left / 0.3)));
+  lift.style.transform = 'scale(' + (1 + 0.22 * grow) + ')';
+  lift.style.opacity = Math.min(1, since / 0.1, left / 0.2);
+  dim.style.opacity = 0.35 * e;
+  box.style.opacity = 0;
 };
 const dip = () => cursor.querySelector('svg').getAnimations()[0];
 
@@ -167,7 +206,7 @@ window.stage = {
       const x = b ? a.x + (b.x - a.x) * k : a.x, y = b ? a.y + (b.y - a.y) * k : a.y;
       cursor.style.transform = 'translate(' + x + 'px,' + y + 'px)';
     }
-    highlightAt(t);
+    await highlightAt(t);
     const click = data.clicks[lastBy(data.clicks, t)];
     const press = dip();
     if (press) press.currentTime = click ? Math.min(250, (t - click.at) * 1000) : 250;
