@@ -1,39 +1,44 @@
 import type { Page, Request } from 'playwright-core'
+import { cellsIn, watchScreen } from './screen.ts'
 
-// Knowing when the page has finished what an action started. Not a fixed wait: the page
-// is settled when every one of these says so, checked every 100ms.
+// Knowing when the page has finished what an action started. Not a fixed wait: checked
+// every 100ms, the page is ready once nothing is loading and the screen has stopped changing.
 //
-//  - A navigation the action started has loaded. Actions that navigate often only start
+// Loading, waited for up to `cap` (10s):
+//  - A navigation the action started hasn't loaded. Actions that navigate often only start
 //    to a moment later (Enter in a search box), so requests are watched from before the
 //    action, not after it.
-//  - No request the page is waiting on is in flight, and none has been for 300ms. Streams
-//    (websockets, server-sent events, media) and requests open for over 5s (long polling)
-//    are left out: the page isn't waiting on them, and so are requests to an address the
-//    page was already asking for again and again before the action (a playing video's
-//    chunks, analytics pings, polling).
-//  - Every timer the action scheduled in its first second (up to 2s long) has fired, so
-//    "do this in a moment" (a debounce, a delayed navigation, a staged render) is waited
-//    for. A clock that ticks forever, or polling started long before, isn't.
-//  - The DOM hasn't changed for 300ms since the action, ignoring anything we put on the page
-//    ourselves and anything that was already changing over and over before the action (a
-//    playing video's clock and progress bar).
-//  - No finite animation or transition is running. Endless ones (a pulsing dot) and scroll-
-//    driven ones (a fade tied to how far a list is scrolled) don't count.
-//  - Fonts are loaded and the images on screen have loaded or failed.
-//  - Nothing on screen says it is busy: aria-busy, a progressbar, a spinner or skeleton.
-//  - A Showroom that reports its own status says it isn't loading.
+//  - A request for data or a page that the action started (within its first second) is in
+//    flight. Requests the page was already making again and again before the action (a
+//    playing video's chunks, analytics pings, polling), streams, and requests open for over
+//    5s don't count. Later requests are the page's own business: a sidebar filling in, an
+//    ad starting, stats being sent.
+//  - Something on screen says so: aria-busy, a progress bar, a spinner or skeleton that is
+//    moving, words like "Loading..." or "Please wait", or a loader image.
+//  - A Showroom that reports its own status says it's loading.
 //
-// After `cap` it gives up waiting and says what was still going, so a page with a spinner
-// that never stops is filmed and noted rather than waited on forever. When nothing is
-// loading (no navigation, no request in flight, nothing saying it's busy) it gives up after
-// 3s: the page is only moving, not loading.
+// Moving, waited for up to 3s: the screen (screen.ts) changed in the last 300ms; a timer the
+// action scheduled in its first second hasn't fired ("do this in a moment": a debounce, a
+// delayed navigation), for up to 2s; an animation that will end is running; fonts or images
+// on screen are still loading. Changes that don't count: where the
+// screen was already changing before the action, where a video is playing, and anywhere that
+// has changed over and over for 1.5s (an animated thumbnail, a looping illustration), unless
+// the page says it's loading.
+//
+// At the cap it gives up waiting and says what was still going, so a page with a spinner
+// that never stops is filmed and noted rather than waited on forever.
 
 const QUIET_MS = 300
 /** How long before an action something has to keep changing to count as always changing. */
 const BEFORE_MS = 2000
+/** A request the action started: sent within this long of it. */
+const STARTED_MS = 1000
+/** Changed this many times in 1.5s: an animation, not the page responding. */
+const LOOPING = 4
 const MOVING_CAP_MS = 3000
 const LONG_REQUEST_MS = 5000
 const STREAMS = new Set(['websocket', 'eventsource', 'media'])
+const DATA = new Set(['document', 'xhr', 'fetch'])
 
 export interface Settled {
   settled: boolean
@@ -48,16 +53,18 @@ export interface Settler {
   settled(options?: { beat?: number; cap?: number }): Promise<Settled>
 }
 
-/** Watches a page's requests for as long as it lives. */
+/** Watches a page's requests and screen for as long as it lives. */
 export function watch(page: Page): Settler {
-  const inFlight = new Map<Request, { at: number; address: string }>()
-  let lastNetwork = performance.now()
+  const inFlight = new Map<Request, { at: number; address: string; data: boolean }>()
   let marked = performance.now()
   let navigatedAt = 0
   // Addresses asked for, recently, and those the page kept asking for before the action.
   let asked: { address: string; at: number }[] = []
   let repeating = new Set<string>()
   const addressOf = (request: Request) => request.url().split(/[?#]/)[0] ?? ''
+  const screen = watchScreen(page)
+  // Cells that were already changing before the action.
+  let restless = new Set<number>()
 
   page.on('request', (request) => {
     if (STREAMS.has(request.resourceType())) return
@@ -65,16 +72,12 @@ export function watch(page: Page): Settler {
     const address = addressOf(request)
     asked = asked.filter((a) => now - a.at < BEFORE_MS)
     asked.push({ address, at: now })
-    inFlight.set(request, { at: now, address })
+    inFlight.set(request, { at: now, address, data: DATA.has(request.resourceType()) })
     if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
       navigatedAt = performance.now()
     }
   })
-  const done = (request: Request) => {
-    const sent = inFlight.get(request)
-    inFlight.delete(request)
-    if (sent && !repeating.has(sent.address)) lastNetwork = performance.now()
-  }
+  const done = (request: Request) => inFlight.delete(request)
   page.on('requestfinished', done)
   page.on('requestfailed', done)
   void page.addInitScript(watchPage)
@@ -87,27 +90,68 @@ export function watch(page: Page): Settler {
         if (marked - at < BEFORE_MS) counts.set(address, (counts.get(address) ?? 0) + 1)
       }
       repeating = new Set([...counts].filter(([, n]) => n >= 2).map(([address]) => address))
-      await page.evaluate(markPage, BEFORE_MS).catch(() => {})
+      const changes = new Map<number, number>()
+      for (const sample of screen.samples) {
+        if (marked - sample.at > BEFORE_MS) continue
+        for (const cell of sample.changed) changes.set(cell, (changes.get(cell) ?? 0) + 1)
+      }
+      restless = new Set([...changes].filter(([, n]) => n >= 2).map(([cell]) => cell))
+      await page.evaluate(markPage).catch(() => {})
     },
     settled: async ({ beat = 0, cap = 10_000 } = {}) => {
       const start = performance.now()
       let waitingOn: string[] = []
+      let lastMoved = start
+      let loadedAt = start
       for (;;) {
         waitingOn = []
         const now = performance.now()
-        const navigated = navigatedAt >= marked
-        if (navigated) await page.waitForLoadState('load', { timeout: cap }).catch(() => {})
+        if (navigatedAt >= marked)
+          await page.waitForLoadState('load', { timeout: cap }).catch(() => {})
         const pending = [...inFlight.values()].filter(
-          (sent) => now - sent.at < LONG_REQUEST_MS && !repeating.has(sent.address),
+          (sent) =>
+            sent.data &&
+            sent.at >= marked &&
+            sent.at - marked < STARTED_MS &&
+            now - sent.at < LONG_REQUEST_MS &&
+            !repeating.has(sent.address),
         )
         if (pending.length > 0) waitingOn.push(`${pending.length} requests`)
-        else if (now - lastNetwork < QUIET_MS) waitingOn.push('requests just finished')
-        const screen = await page.evaluate(lookAtScreen, QUIET_MS).catch(() => ['a page loading'])
-        waitingOn.push(...screen)
+        const look = await page
+          .evaluate(lookAtScreen)
+          .catch(() => ({ loading: ['a page loading'], moving: [], videos: [], says: false }))
+        waitingOn.push(...look.loading, ...look.moving)
+        const loading = pending.length > 0 || look.loading.length > 0
+
+        // The screen: which cells changed since the action, and which of those count.
+        const ignored = new Set([
+          ...restless,
+          ...look.videos.flatMap((box) => cellsIn(box, screen.cols, screen.rows)),
+        ])
+        const recent = screen.samples.filter((s) => s.at > marked && now - s.at < 1500)
+        // Looping: changed again and again, for over a second. A slide or a fade ends sooner.
+        const times = new Map<number, { count: number; first: number }>()
+        for (const sample of recent) {
+          for (const cell of sample.changed) {
+            const seen = times.get(cell)
+            times.set(cell, { count: (seen?.count ?? 0) + 1, first: seen?.first ?? sample.at })
+          }
+        }
+        const looping = (cell: number) => {
+          const seen = times.get(cell)
+          return seen !== undefined && seen.count >= LOOPING && now - seen.first > 1200
+        }
+        const counts = (cell: number) => !ignored.has(cell) && (look.says || !looping(cell))
+        for (const sample of recent) {
+          if (sample.at > lastMoved && [...sample.changed].some(counts)) lastMoved = sample.at
+        }
+        if (now - lastMoved < QUIET_MS) waitingOn.push('the screen changing')
+
         if (waitingOn.length === 0) break
-        const loading =
-          pending.length > 0 || screen.some((s) => s.includes('loading') || s.includes('busy'))
-        if (performance.now() - start >= (loading ? cap : Math.min(cap, MOVING_CAP_MS))) break
+        // Loading is waited for up to the cap; what moves after it, up to 3s more.
+        if (loading) loadedAt = now
+        const waited = performance.now()
+        if (waited - start >= cap || (!loading && waited - loadedAt >= MOVING_CAP_MS)) break
         await page.waitForTimeout(100)
       }
       if (beat > 0) await page.waitForTimeout(beat)
@@ -121,17 +165,11 @@ interface Timer {
 }
 
 type Watched = Window & {
-  __pdLastChange?: number
   __pdMark?: number
   __pdTimers?: Map<number, Timer>
-  __pdChanges?: { node: Node; at: number }[]
-  __pdRepeating?: Set<Node>
 }
 
-/**
- * Runs in the page before its own scripts: keeps a list of the timers it has pending, and
- * when the page last changed.
- */
+/** Runs in the page before its own scripts: keeps a list of the timers it has pending. */
 function watchPage(): void {
   const view: Watched = window
   if (view.__pdTimers) return
@@ -172,56 +210,47 @@ function watchPage(): void {
     forget(id)
     stop(id)
   })
-
-  // Every change, kept for a few seconds, so the moment before an action can tell what was
-  // already changing over and over. Those changes don't count as the page changing.
-  const changes: { node: Node; at: number }[] = []
-  view.__pdChanges = changes
-  view.__pdLastChange = performance.now()
-  new MutationObserver((records) => {
-    const now = performance.now()
-    for (const record of records) {
-      const node = record.target
-      const element = node instanceof Element ? node : node.parentElement
-      if (element?.closest('[data-product-demo]')) continue
-      changes.push({ node, at: now })
-      if (!view.__pdRepeating?.has(node)) view.__pdLastChange = now
-    }
-    const old = changes.findIndex((c) => now - c.at < 5000)
-    changes.splice(0, old === -1 ? changes.length : old)
-  }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true })
 }
 
-/** Runs in the page just before an action: notes the time, and what keeps changing. */
-function markPage(beforeMs: number): void {
+/** Runs in the page just before an action: notes the time, for the timers it schedules. */
+function markPage(): void {
   const view: Watched = window
-  const now = performance.now()
-  view.__pdMark = now
-  view.__pdLastChange = now
-  const counts = new Map<Node, number>()
-  for (const { node, at } of view.__pdChanges ?? []) {
-    if (now - at < beforeMs) counts.set(node, (counts.get(node) ?? 0) + 1)
-  }
-  view.__pdRepeating = new Set([...counts].filter(([, n]) => n >= 2).map(([node]) => node))
+  view.__pdMark = performance.now()
 }
 
-/** Runs in the page: what on screen is still going. Empty when nothing is. */
-function lookAtScreen(quietMs: number): string[] {
+/** What the page says is going on, from inside it. */
+interface Look {
+  /** Loading: waited for up to the cap. */
+  loading: string[]
+  /** Still arriving: waited for up to 3s. */
+  moving: string[]
+  /** Boxes of the videos playing on screen, whose changes don't count. */
+  videos: number[][]
+  /** Whether words or an image on screen say it's loading. */
+  says: boolean
+}
+
+/** Runs in the page: what's still going, by its own account. */
+function lookAtScreen(): Look {
   const view: Watched = window
-  const going: string[] = []
-  if (document.readyState !== 'complete') going.push('the page loading')
-  if (performance.now() - (view.__pdLastChange ?? 0) < quietMs) going.push('the page changing')
-  if (document.fonts.status !== 'loaded') going.push('fonts')
+  const loading: string[] = []
+  const moving: string[] = []
+  if (document.readyState !== 'complete') loading.push('the page loading')
 
   const mark = view.__pdMark ?? 0
+  // A timer counts for its first 2s: long enough for any "in a moment", and an interval that
+  // never stops (a clock) stops counting.
   const scheduled = [...(view.__pdTimers?.values() ?? [])].filter(
-    (timer) => timer.created >= mark && timer.created <= mark + 1000,
+    (timer) =>
+      timer.created >= mark &&
+      timer.created <= mark + 1000 &&
+      performance.now() - timer.created < 2000,
   )
-  if (scheduled.length > 0) going.push(`${scheduled.length} timers`)
+  if (scheduled.length > 0) moving.push(`${scheduled.length} timers`)
 
-  // Only what a viewer could see holds the page up: on screen, big enough to notice, and
-  // not hidden by visibility or opacity anywhere up its tree. GitHub keeps its spinners in
-  // the page after loading, out of sight; they mustn't count.
+  // Only what a viewer could see counts: on screen, big enough to notice, and not hidden by
+  // visibility or opacity anywhere up its tree. GitHub keeps its spinners in the page after
+  // loading, out of sight; they mustn't count.
   const onScreen = (el: Element) => {
     const box = el.getBoundingClientRect()
     return (
@@ -238,12 +267,10 @@ function lookAtScreen(quietMs: number): string[] {
     const label = el.getAttribute('aria-label') ?? el.getAttribute('class') ?? ''
     return `${el.tagName.toLowerCase()}${label ? ` "${label.slice(0, 40)}"` : ''}`
   }
-  const images = Array.from(document.images).filter((img) => !img.complete && onScreen(img))
-  if (images.length > 0) going.push(`${images.length} images`)
-
-  // Only animations on the page's clock that will end. A scroll-driven one (a fade tied to
-  // a scroll position) reports "running" forever, and an endless one never finishes.
-  const running = document.getAnimations().filter((animation) => {
+  if (document.fonts.status !== 'loaded') moving.push('fonts')
+  // An animation or transition that will end: a slide, a fade. Endless ones and ones tied to
+  // scrolling never finish, so don't count.
+  const ending = document.getAnimations().filter((animation) => {
     const timing = animation.effect?.getComputedTiming()
     const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null
     return (
@@ -254,21 +281,14 @@ function lookAtScreen(quietMs: number): string[] {
       (!target || onScreen(target))
     )
   })
-  if (running.length > 0) {
-    const names = running.map((a) =>
-      a instanceof CSSAnimation
-        ? a.animationName
-        : a instanceof CSSTransition
-          ? a.transitionProperty
-          : 'script',
-    )
-    going.push(`animations (${[...new Set(names)].slice(0, 3).join(', ')})`)
-  }
+  if (ending.length > 0) moving.push('animations')
+  const images = Array.from(document.images).filter((img) => !img.complete && onScreen(img))
+  if (images.length > 0) moving.push(`${images.length} images`)
 
   // The app saying it's busy: aria-busy, or a progress bar with no value. A class like
   // "spinner" or "skeleton" only counts when something in it is visibly moving: GitHub keeps
   // a SpinnerVisible container on screen whose spinner is long gone.
-  const moving = document
+  const moved = document
     .getAnimations()
     .map((a) => (a.effect instanceof KeyframeEffect ? a.effect.target : null))
     .filter((target): target is Element => target !== null && onScreen(target))
@@ -277,9 +297,45 @@ function lookAtScreen(quietMs: number): string[] {
   ).filter(onScreen)
   const looksBusy = Array.from(
     document.querySelectorAll('[class*="spinner" i],[class*="skeleton" i],[class*="shimmer" i]'),
-  ).filter((el) => onScreen(el) && moving.some((target) => el === target || el.contains(target)))
+  ).filter((el) => onScreen(el) && moved.some((target) => el === target || el.contains(target)))
   const busy = declared[0] ?? looksBusy[0]
-  if (busy) going.push(`something on screen saying it is busy (${named(busy)})`)
+  if (busy) loading.push(`something on screen saying it is busy (${named(busy)})`)
+
+  // Words that say it's loading, as short text on screen, or an image named as a loader: a
+  // page whose only sign of loading is an animated picture says so in words or in its name.
+  let says = ''
+  const walker = document.createTreeWalker(
+    document.body ?? document.documentElement,
+    NodeFilter.SHOW_TEXT,
+  )
+  for (let node = walker.nextNode(); node && !says; node = walker.nextNode()) {
+    const text = node.textContent?.trim() ?? ''
+    if (
+      text.length < 40 &&
+      /^(loading|please wait|wait for it|one moment|fetching|searching)\b|\b(loading|searching)(\.\.\.|…)$/i.test(
+        text,
+      ) &&
+      node.parentElement &&
+      // Not code on the page, or text someone is editing: "loading" there is a word.
+      !node.parentElement.closest('code, pre, kbd, samp, textarea, [contenteditable]') &&
+      onScreen(node.parentElement)
+    ) {
+      says = text
+    }
+  }
+  const loader = Array.from(document.images).find(
+    (img) =>
+      /(^|[\W_])(load|loading|loader|spinner|spin|busy)([\W_]|$)/i.test(img.src) && onScreen(img),
+  )
+  if (says) loading.push(`"${says}" on screen`)
+  else if (loader) loading.push('a loader image on screen')
+
+  const videos = Array.from(document.querySelectorAll('video'))
+    .filter((video) => !video.paused && !video.ended && onScreen(video))
+    .map((video) => {
+      const box = video.getBoundingClientRect()
+      return [box.x, box.y, box.width, box.height]
+    })
 
   const showroom: unknown = Reflect.get(window, '__SHOWROOM__')
   if (
@@ -288,7 +344,7 @@ function lookAtScreen(quietMs: number): string[] {
     'status' in showroom &&
     showroom.status === 'loading'
   ) {
-    going.push('the Showroom loading')
+    loading.push('the Showroom loading')
   }
-  return going
+  return { loading, moving, videos, says: Boolean(says || loader) }
 }
