@@ -1,14 +1,5 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
-import {
-  CURSORS,
-  DISPLAYS,
-  soundSchema,
-  voiceSchema,
-  type Cursor,
-  type Display,
-  type Sound,
-} from './config.ts'
 import type { Fingerprint } from './similo.ts'
 
 /**
@@ -95,16 +86,6 @@ export interface Film {
   app: string
   /** What the film is for and what it has to show. Read by people and agents, never run. */
   notes?: string | undefined
-  /** How the app is shown, when it isn't the config's way. */
-  display?: Display | undefined
-  /** The cursor's colour in the video, when it isn't the config's. */
-  cursor?: Cursor | undefined
-  /** The video's sounds, when they aren't the config's. */
-  sound?: Sound | undefined
-  /** Who speaks the voiceover, when it isn't the config's voice. */
-  voice?:
-    | { provider?: string | undefined; voice?: string | undefined; model?: string | undefined }
-    | undefined
   steps: Step[]
   ending?: { hold: number } | undefined
 }
@@ -224,10 +205,6 @@ export const stepSchema: z.ZodType<Step> = z.union([
 const film: z.ZodType<Film> = z.strictObject({
   app: z.url(),
   notes: z.string().optional(),
-  display: z.enum(DISPLAYS).optional(),
-  cursor: z.enum(CURSORS).optional(),
-  sound: soundSchema.optional(),
-  voice: voiceSchema.partial().optional(),
   steps: z.array(stepSchema),
   ending: z.strictObject({ hold: z.number().nonnegative() }).optional(),
 })
@@ -244,8 +221,19 @@ export async function readJson(path: string): Promise<unknown> {
   }
 }
 
+/** How the video looks and sounds: the project's choice, in its config, never a film's. */
+const LOOK = ['backdrop', 'display', 'cursor', 'sound', 'voice']
+
 export async function readFilm(path: string): Promise<Film> {
-  const parsed = film.safeParse(await readJson(path))
+  const json = await readJson(path)
+  const look =
+    json && typeof json === 'object' ? LOOK.filter((key) => Object.hasOwn(json, key)) : []
+  if (look.length > 0) {
+    throw new Error(
+      `${path} sets ${look.join(', ')}. How the video looks and sounds is set for the project in .product-demo/config.json, not in a film: remove it from the film to use the config.`,
+    )
+  }
+  const parsed = film.safeParse(json)
   if (!parsed.success) {
     throw new Error(`${path} is not a valid film:\n${z.prettifyError(parsed.error)}`)
   }

@@ -1,15 +1,22 @@
 # Directing the cut
 
-What the video looks like, as opposed to what happens in the app. These are set in
-`film.json` and drawn by `product-demo cut`, so changing one never means shooting again:
-edit the film, run `cut`, and the new video is ready in seconds.
+What the video looks like and sounds like, as opposed to what happens in the app. Two kinds:
+
+- **The project's look**: the backdrop, the display, the cursor, the sounds and the voice. These
+  are the user's choice for every video of the project, set in `.product-demo/config.json`,
+  never in a film (a film that sets one is refused). Leave them as they are unless the user
+  asks for a different look; then change the config.
+- **The film's direction**: the voiceover lines and the highlights, written into `film.json`.
+
+Both are drawn by `product-demo cut`, so changing one never means shooting again: change it, run
+`cut`, and the new video is ready in seconds. Only the voice is needed to shoot, since the shoot
+is paced by the spoken lines.
 
 ## Display
 
 `"display": "browser"` puts the app in a browser window: frosted glass over the backdrop, with
 an address bar that follows the page's address. `"none"`, the default, shows the app on its
-own. Use the browser for a web product a viewer should recognise as a site, or when the
-address matters to the story. Set it at the film's top level, or in the config for every film.
+own.
 
 ## The cursor
 
@@ -20,19 +27,14 @@ arrow with a white edge that dips as it clicks. It comes in three colours:
 - `pink`.
 - `lime`.
 
-Set it for one film at its top level, `"cursor": "pink"`, or for every film in
-`.product-demo/config.json`. Black reads on almost any app. Choose pink or lime when the app
-is dark or the cursor should stand out more: pink on most, lime when the app is pink, red or
-warm-coloured, where pink gets lost. Keep one colour
-for a whole film, and the same one across a set of films made together.
+Black reads on almost any app. Pink or lime stand out more, on a dark app for instance: lime
+where pink gets lost, on a pink, red or warm-coloured app.
 
 ## Sound
 
 The video sounds like the shot: a click on every click, and a key on every key typed, with
-space and Enter their own sounds. Both are on by default. Set `"sound"` at the film's top
-level, or in `.product-demo/config.json` for every film: `false` for none, or
-`{ "click": true, "typing": false }` to choose each. Leave sound on unless the video will
-have music or a voiceover that it would fight with.
+space and Enter their own sounds. Both are on by default. `"sound": false` in the config turns
+them off, or `{ "click": true, "typing": false }` chooses each.
 
 ## Voiceover
 
@@ -64,9 +66,9 @@ Run `product-demo voice film.json` to see how long each line is and when each wo
 then rehearse. If rehearse says an action `landed 0.7s after "drag" was said`, add a few words
 before that word and rehearse again. Keep lines plain and short, about 2.6 words a second.
 
-The voice is Emma, from ElevenLabs. Choose another in the config or the film:
-`"voice": { "provider": "elevenlabs", "voice": "<voice id>" }`. It needs `ELEVENLABS_API_KEY`
-in the environment or a `.env` file in the project.
+The voice is Emma, from ElevenLabs, unless the config chooses another:
+`"voice": { "provider": "elevenlabs", "voice": "<voice id>" }`. It needs an ElevenLabs key
+(`product-demo init` says whether there is one).
 
 ## Highlights
 

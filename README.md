@@ -80,7 +80,7 @@ Everything has a default, so no config is needed. To change one, add
 | `keep`     | `10`                  | How many rehearsals and shoots of each film to keep.                                                           |
 | `review`   | `false`               | Whether `cut` also makes the review image.                                                                     |
 
-A film can set its own `display`, `cursor`, `sound` and `voice`.
+These apply to every video of the project. A film can't override them.
 
 ## Good to know
 

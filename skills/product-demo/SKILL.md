@@ -9,7 +9,7 @@ allowed-tools: Bash(product-demo:*)
 Explore the app to learn how to do what was asked, write the film from what you learnt, rehearse it until it's right, then shoot it and cut the video. Every stage can be repeated, and each has one job:
 
 - **Explore** is for learning: how the app works, what's on each screen, which elements are the real ones. Nothing about how the video looks is decided here.
-- **Writing the film** is where every decision is made: the steps, and the effects the video should have (what to highlight, the cursor's colour).
+- **Writing the film** is where every decision about this video is made: the steps, the voiceover, and what to highlight. How every video of the project looks (backdrop, frame, cursor, sounds, voice) is the user's, in the config.
 - **Rehearse and shoot** record that flow, as written.
 - **Cut** draws the effects the film asked for. Changing how an effect looks only needs another cut.
 
@@ -71,7 +71,7 @@ Then:
 - Add `"notes"` to the film: what it's for, who it's for, what it has to prove.
 - Add a `"note"` to any step whose purpose isn't obvious, or that is fragile or odd. Notes are never run; they're for whoever reads the film next, you included.
 - Set how long the last screen holds, in seconds: `"ending": { "hold": 2 }` (2 if you leave it out).
-- Decide the effects now: the voiceover and the words each action lands on, what to highlight, and the cursor's colour. Read [directing.md](directing.md) for each.
+- Decide the effects now: the voiceover and the words each action lands on, and what to highlight. Read [directing.md](directing.md) for each. Don't set the look (backdrop, display, cursor, sound, voice) in the film: it's the project's, in the config, and a film that sets it is refused.
 - Leave each step's `locator`, `selector` and `fingerprint` as they are.
 - A `hover` on the way to another pointer step (to open what the next step uses, like a menu or a slider) flows straight into it: leave its `seconds` off, even if exploring needed `--for`. Give a hover `seconds` only when it should stop and show something.
 - Don't add `wait` steps for loading. Every step already waits for the page to finish what it started (a search, a page opening), so a `wait` after one only adds dead air. Use `wait` with text for something slow the page doesn't show as loading, and seconds only for a moment the viewer should watch, kept short.

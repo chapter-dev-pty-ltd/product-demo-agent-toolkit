@@ -41,8 +41,8 @@ export async function cut(
   const length = videoLength(footage)
   const look = {
     backdrop: config.backdrop,
-    cursor: film.cursor ?? config.cursor,
-    display: film.display ?? config.display,
+    cursor: config.cursor,
+    display: config.display,
   }
   const title = film.notes?.split(/(?<=\.)\s/)[0] ?? ''
   // How each highlight looks comes from the film as it is now; when it held, from the shoot.
@@ -79,14 +79,12 @@ export async function cut(
       [
         {
           files: CLICKS,
-          times: soundOn('click', film.sound, config.sound)
-            ? footage.clicks.map((c) => c.at - start)
-            : [],
+          times: soundOn('click', config.sound) ? footage.clicks.map((c) => c.at - start) : [],
           volume: 1,
         },
         ...Object.entries(KEYS).map(([kind, files]) => ({
           files,
-          times: soundOn('typing', film.sound, config.sound)
+          times: soundOn('typing', config.sound)
             ? (footage.keys ?? []).filter((k) => keyKind(k.key) === kind).map((k) => k.at - start)
             : [],
           volume: 0.7,

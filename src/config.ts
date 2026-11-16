@@ -22,10 +22,9 @@ export const soundSchema: z.ZodType<Sound> = z.union([
   z.strictObject({ click: z.boolean().optional(), typing: z.boolean().optional() }),
 ])
 
-/** Whether a sound is on, given the film's setting over the config's. Each is on by default. */
-export function soundOn(kind: 'click' | 'typing', ...settings: (Sound | undefined)[]): boolean {
-  const setting = settings.find((s) => s !== undefined)
-  return typeof setting === 'object' ? (setting[kind] ?? true) : (setting ?? true)
+/** Whether a sound is on, by the config: all of them, or each on its own (on by default). */
+export function soundOn(kind: 'click' | 'typing', setting: Sound): boolean {
+  return typeof setting === 'object' ? (setting[kind] ?? true) : setting
 }
 
 /** Emma, an ElevenLabs voice. */

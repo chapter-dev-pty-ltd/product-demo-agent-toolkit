@@ -157,10 +157,9 @@ try {
   } else if (command === 'voice' && input) {
     const config = await readConfig()
     const film = await readFilm(input)
-    const given = Object.fromEntries(Object.entries(film.voice ?? {}).filter(([, v]) => v))
     const spoken = await speakLines(
       film.steps.flatMap((s) => (s.say ? [s.say] : [])),
-      { ...config.voice, ...given },
+      config.voice,
     )
     // Each line, how long it runs, and when each step's word lands in it.
     let current: Spoken | undefined

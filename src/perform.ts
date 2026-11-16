@@ -165,10 +165,9 @@ async function perform(
 }> {
   await mkdir(dir, { recursive: true })
   // The lines are spoken first: the shoot is paced by them.
-  const given = Object.fromEntries(Object.entries(film.voice ?? {}).filter(([, v]) => v))
   const spoken = await speakLines(
     film.steps.flatMap((s) => (s.say ? [s.say] : [])),
-    { ...config.voice, ...given },
+    config.voice,
   )
   const browser = await launchBrowser()
   try {
