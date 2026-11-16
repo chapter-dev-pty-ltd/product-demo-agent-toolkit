@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { SHOWCASE } from './cut/showcase.ts'
 import {
   cut,
   explore,
@@ -82,7 +81,6 @@ const { values, positionals } = parseArgs({
     out: { type: 'string', short: 'o' },
     version: { type: 'boolean', short: 'v' },
     help: { type: 'boolean', short: 'h' },
-    showcase: { type: 'boolean' },
   },
 })
 const [command, ...args] = exploring ? raw : positionals
@@ -133,7 +131,7 @@ try {
     const config = await readConfig()
     const from = input ?? (await latestRun('footage', 'footage.json'))
     const out = values.out ?? join(from, 'video.mp4')
-    const seconds = await cut(from, out, config, values.showcase ? SHOWCASE : '')
+    const seconds = await cut(from, out, config)
     console.log(`Cut ${out} (${seconds.toFixed(1)}s)`)
     if (config.review) console.log(`Review it: ${await review(out, seconds)}`)
   } else if (command === 'review') {
