@@ -55,7 +55,7 @@ const config: z.ZodType<Config> = z.strictObject({
     .describe('Whether cut also makes a review image of the video, for the agent to check it.'),
   mode: z
     .enum(['ask', 'just_do_it'])
-    .default('ask')
+    .default('just_do_it')
     .describe(
       'ask: when something is unclear (which element, what the user meant), stop and ask the user. just_do_it: make the best choice and note it.',
     ),

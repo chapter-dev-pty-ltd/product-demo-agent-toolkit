@@ -87,11 +87,11 @@ product-demo cut               # cuts the latest footage into video.mp4 and prin
 
 Give the user the video from there, or pass `--out` to `cut`. Lines starting `Check:` are things it chose or waited on that you should look at. To check the video itself before handing it over, use the `product-demo-review` skill.
 
-## When something is unclear, ask
+## When something is unclear
 
-If the request could mean two things, a still doesn't look like what was asked for, or a run says several elements match a step, ask the user before going on. Show them the still. Don't guess.
+If the request could mean two things, a still doesn't look like what was asked for, or a run says several elements match a step, make the best choice and carry on: runs print what they chose (`Check:` lines), so tell the user what you decided when you hand over the video. If `.product-demo/config.json` sets `"mode": "ask"`, stop and ask the user instead, showing them the still.
 
-`.product-demo/config.json` can set `"mode": "just_do_it"` to make the best choice instead (runs then print what they chose), the `backdrop` (`halo`, the default, `sky` or `violet`), the `cursor` (`pink`, the default, or `lime`), its `sound` (`true` by default, or `{ "click": false }`), how many runs of each film to `keep` (default 10), and `"review": true` to have `cut` make a review image every time.
+`.product-demo/config.json` can also set the `backdrop` (`halo`, the default, `sky` or `violet`), the `cursor` (`pink`, the default, or `lime`), its `sound` (`true` by default, or `{ "click": false }`), how many runs of each film to `keep` (default 10), and `"review": true` to have `cut` make a review image every time.
 
 ## What makes a good film
 

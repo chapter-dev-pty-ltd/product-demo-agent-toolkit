@@ -49,7 +49,7 @@ const USAGE = `product-demo ${version}
   product-demo cut [footage] [--out video.mp4]
   product-demo review [footage]      An image of frames from across the video, to check it by
 
-Settings live in .product-demo/config.json: mode (ask | just_do_it), backdrop (halo | sky | violet),
+Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (halo | sky | violet),
 cursor (pink | lime), sound (true | false | { click }, default true),
 keep (rehearsals and shoots kept per film, default 10), review (cut also makes the review image, default false).`
 
