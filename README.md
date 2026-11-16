@@ -21,11 +21,11 @@ You need Node 22.18 or later, pnpm 11 and git.
    If `pnpm add -g` says the global bin directory isn't in `PATH`, run `pnpm setup`, open a new
    shell, and run it again.
 
-2. Install the skills. In Claude Code, copy them into your skills folder and start a new
+2. Install the skills. In Claude Code, copy them into your skills folder, then start a new
    session so they load:
 
    ```bash
-   mkdir -p ~/.claude/skills && cp -R ~/product-demo-agent-toolkit/skills/* ~/.claude/skills/
+   product-demo skills
    ```
 
    Other agents: read `skills/product-demo/SKILL.md` before starting, and follow it.
