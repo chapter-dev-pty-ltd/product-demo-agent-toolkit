@@ -91,7 +91,7 @@ Give the user the video from there, or pass `--out` to `cut`. Lines starting `Ch
 
 If the request could mean two things, a still doesn't look like what was asked for, or a run says several elements match a step, ask the user before going on. Show them the still. Don't guess.
 
-`.product-demo/config.json` can set `"mode": "just_do_it"` to make the best choice instead (runs then print what they chose), the `backdrop` (`halo`, the default, `sky` or `violet`), the `cursor` (`pink`, the default, or `lime`), how many runs of each film to `keep` (default 10), and `"review": true` to have `cut` make a review image every time.
+`.product-demo/config.json` can set `"mode": "just_do_it"` to make the best choice instead (runs then print what they chose), the `backdrop` (`halo`, the default, `sky` or `violet`), the `cursor` (`pink`, the default, or `lime`), whether there's a click `sound` (on by default), how many runs of each film to `keep` (default 10), and `"review": true` to have `cut` make a review image every time.
 
 ## What makes a good film
 

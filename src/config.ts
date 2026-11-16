@@ -13,6 +13,7 @@ export interface Config {
   mode: 'ask' | 'just_do_it'
   backdrop: (typeof BACKDROPS)[number]
   cursor: Cursor
+  sound: boolean
   keep: number
   review: boolean
 }
@@ -23,6 +24,10 @@ const config: z.ZodType<Config> = z.strictObject({
     .enum(CURSORS)
     .default('pink')
     .describe("The cursor's colour in the video. A film can choose its own."),
+  sound: z
+    .boolean()
+    .default(true)
+    .describe('Whether the video has a click sound on every click. A film can choose its own.'),
   keep: z
     .number()
     .int()

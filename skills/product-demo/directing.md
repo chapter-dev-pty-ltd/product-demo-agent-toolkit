@@ -17,6 +17,12 @@ Set it for one film at its top level, `"cursor": "lime"`, or for every film in
 apps, lime when the app is pink, red or warm-coloured, where pink gets lost. Keep one colour
 for a whole film, and the same one across a set of films made together.
 
+## Sound
+
+Every click has a click sound, on by default. Turn it off for one film with `"sound": false`
+at its top level, or for every film in `.product-demo/config.json`. Leave it on unless the
+video will have music or a voiceover that the clicks would fight with.
+
 ## Highlights
 
 Point the viewer at one thing, with the camera zooming toward it. Two styles:

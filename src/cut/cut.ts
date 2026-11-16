@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { once } from 'node:events'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Config } from '../config.ts'
 import { readFilm } from '../film.ts'
 import type { Footage } from '../perform.ts'
@@ -69,11 +70,20 @@ export async function cut(
       extra,
     )
     const camera = await page.context().newCDPSession(page)
+    const start = footage.frames[0]?.at ?? 0
+    const sound =
+      (film.sound ?? config.sound)
+        ? clickSounds(
+            footage.clicks.map((c) => c.at - start),
+            length,
+          )
+        : []
     const encoder = spawn(
       await findFfmpeg(),
       // prettier-ignore
       ['-loglevel', 'error', '-y',
         '-f', 'image2pipe', '-vcodec', 'mjpeg', '-framerate', String(FPS), '-i', '-',
+        ...sound,
         '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart', resolve(out)],
       { stdio: ['pipe', 'inherit', 'inherit'] },
@@ -96,4 +106,16 @@ export async function cut(
     await browser.close()
   }
   return length
+}
+
+/** ffmpeg's arguments for the sound: a click at each of these times, for the video's length. */
+function clickSounds(times: number[], length: number): string[] {
+  if (times.length === 0) return []
+  const click = fileURLToPath(new URL('../library/sounds/click.wav', import.meta.url))
+  const each = times.map((t, i) => `[c${i}]adelay=${Math.round(t * 1000)}:all=1[d${i}]`)
+  const split = `[1:a]asplit=${times.length}${times.map((_, i) => `[c${i}]`).join('')}`
+  const mix = `${times.map((_, i) => `[d${i}]`).join('')}amix=inputs=${times.length}:normalize=0,apad=whole_dur=${length.toFixed(3)}[a]`
+  // prettier-ignore
+  return ['-i', click, '-filter_complex', [split, ...each, mix].join(';'),
+    '-map', '0:v', '-map', '[a]', '-c:a', 'aac', '-b:a', '160k']
 }
