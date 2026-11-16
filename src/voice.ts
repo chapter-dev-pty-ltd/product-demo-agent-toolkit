@@ -25,10 +25,16 @@ export interface VoiceChoice {
 
 /** Something that turns text into speech, with when each word is spoken. */
 export interface VoiceProvider {
+  /** Its name, as people know it. */
+  name: string
+  /** The environment variable its key is kept in. */
+  key: string
+  /** Why a key doesn't work, or nothing when it does. */
+  check(key: string): Promise<string | undefined>
   speak(text: string, choice: VoiceChoice): Promise<{ audio: Buffer; words: Word[] }>
 }
 
-const PROVIDERS: Record<string, VoiceProvider> = { elevenlabs }
+export const PROVIDERS: Record<string, VoiceProvider> = { elevenlabs }
 
 /** A line, spoken: its audio file, how long it runs, and its words. */
 export interface Spoken {

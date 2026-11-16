@@ -13,6 +13,14 @@ Explore the app to learn how to do what was asked, write the film from what you 
 - **Rehearse and shoot** record that flow, as written.
 - **Cut** draws the effects the film asked for. Changing how an effect looks only needs another cut.
 
+## 0. Get ready
+
+```bash
+product-demo init
+```
+
+Run it first, in the project. It gets the browser and ffmpeg ready and says what's missing. If it says there's no voiceover key, ask the user for one in your first reply, once, and keep going while you wait. If they give it to you, save it with `product-demo key elevenlabs <key>`. It's kept for every project, so you won't need to ask again. Without a key, make the film without a voiceover and say so when you hand it over.
+
 ## 1. Explore: learn the app
 
 ```bash

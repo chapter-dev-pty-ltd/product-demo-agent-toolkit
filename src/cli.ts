@@ -7,7 +7,11 @@ import { parseArgs } from 'node:util'
 import {
   cut,
   explore,
+  init,
+  loadKeys,
   readFootage,
+  readSecret,
+  saveKey,
   review,
   videoLength,
   latestRun,
@@ -27,6 +31,10 @@ import {
 } from './index.ts'
 
 const USAGE = `product-demo ${version}
+
+0. Get the project ready, and see what's missing (run it first):
+  product-demo init
+  product-demo key elevenlabs [key]   Save a voice provider's key for every project (asks for it, hidden, if not given)
 
 1. Explore the app, off camera, to learn it and find the path. Every action is logged, pinned.
    Name an element by its ref from look (@e12), or by a point on look's screenshot (640,320):
@@ -62,10 +70,8 @@ Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (h
 cursor (pink | lime), sound (true | false | { click }, default true),
 keep (rehearsals and shoots kept per film, default 10), review (cut also makes the review image, default false).`
 
-// Keys, such as ELEVENLABS_API_KEY, can live in a .env in the project.
-try {
-  process.loadEnvFile()
-} catch {}
+// Keys, such as ELEVENLABS_API_KEY: the environment, then the project's .env, then ~/.product-demo/.env.
+loadKeys()
 
 const EXPLORE = new Set([
   'look',
@@ -172,6 +178,11 @@ try {
         )
       }
     }
+  } else if (command === 'init') {
+    for (const line of await init()) console.log(line)
+  } else if (command === 'key' && input) {
+    const key = args[1] ?? (await readSecret(`Paste your ${input} key (it won't show): `))
+    console.log(await saveKey(input, key))
   } else if (command === 'skills') {
     const to = input ?? join(homedir(), '.claude', 'skills')
     await cp(fileURLToPath(new URL('../skills', import.meta.url)), to, { recursive: true })

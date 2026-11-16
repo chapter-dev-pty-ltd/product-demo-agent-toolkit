@@ -30,14 +30,21 @@ You need Node 22.18 or later, pnpm 11 and git.
 
    Other agents: read `skills/product-demo/SKILL.md` before starting, and follow it.
 
-3. In the project you're making a video of, add `.product-demo/` and `.env` to `.gitignore`.
+3. For a voiceover, save an ElevenLabs key once, for every project. It asks for the key
+   without showing it:
+
+   ```bash
+   product-demo key elevenlabs
+   ```
+
+   A project can also set `ELEVENLABS_API_KEY` in its own `.env`, which wins.
+
+4. In the project you're making a video of, run `product-demo init`. It adds `.product-demo/`
+   and `.env` to `.gitignore`, gets the browser and ffmpeg ready, and says if a key is missing.
    `.product-demo/` holds the explore log, voice lines, rehearsals, footage and videos.
 
-4. For a voiceover, put an ElevenLabs key in the project's `.env`:
-   `ELEVENLABS_API_KEY=...`
-
-The first run downloads a headless Chromium, and an ffmpeg if the one on `PATH` can't write
-H.264. Nothing else needs installing.
+`init` downloads a headless Chromium, and an ffmpeg if the one on `PATH` can't write H.264.
+Nothing else needs installing.
 
 ## Making a video
 
@@ -45,6 +52,7 @@ Ask your agent for a demo video ("make a 20 second video of creating an invoice"
 `product-demo` skill walks it through each stage:
 
 ```bash
+product-demo init                            # get the project ready; says what's missing
 product-demo explore http://localhost:3000   # learn the app; every action is logged
 product-demo voice film.json                 # speak the voiceover; when each action's word lands
 product-demo rehearse film.json              # a full run with a still after every step

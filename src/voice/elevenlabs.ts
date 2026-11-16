@@ -8,9 +8,19 @@ const BASE = process.env.ELEVENLABS_BASE_URL ?? 'https://api.elevenlabs.io'
 const SETTINGS = { stability: 0.85, similarity_boost: 0.8, style: 0 }
 
 export const elevenlabs: VoiceProvider = {
+  name: 'ElevenLabs',
+  key: 'ELEVENLABS_API_KEY',
+  async check(key) {
+    const response = await fetch(`${BASE}/v1/user`, { headers: { 'xi-api-key': key } })
+    if (response.ok) return undefined
+    const why = await response.text()
+    // A key limited to some things is still a key: this only asks who it belongs to.
+    if (why.includes('missing_permissions')) return undefined
+    return `ElevenLabs said ${response.status}: ${why.slice(0, 200)}`
+  },
   async speak(text, choice) {
     const key = process.env.ELEVENLABS_API_KEY
-    if (!key) throw new Error('Set ELEVENLABS_API_KEY, in the environment or a .env file here.')
+    if (!key) throw new Error('No ElevenLabs key. Save one with: product-demo key elevenlabs')
     const url = `${BASE}/v1/text-to-speech/${choice.voice}/with-timestamps?output_format=mp3_44100_128`
     const body = JSON.stringify({
       text,
