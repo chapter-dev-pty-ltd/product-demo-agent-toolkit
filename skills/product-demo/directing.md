@@ -25,6 +25,30 @@ level, or in `.product-demo/config.json` for every film: `false` for none, or
 `{ "click": true, "typing": false }` to choose each. Leave sound on unless the video will
 have music or a voiceover that it would fight with.
 
+## Voiceover
+
+Give a step a line with `"say"`, and name the word its action lands on with `"on"`. The shoot
+performs to the voice: the line starts with its step, the hand gets there early and presses
+(or starts typing) as the word is said, and the film moves on once the line has finished. One
+line can carry several actions: the next steps give their own `"on"` and no `"say"`.
+
+```json
+{ "fill": …, "text": "Book flights", "say": "First, I'll add booking our flights, and then press enter.", "on": "add" },
+{ "press": "Enter", "on": "enter" },
+{ "click": …, "say": "Now I'll show only what's left.", "on": "show" }
+```
+
+- Run `product-demo voice film.json` after writing the lines: it speaks them (once; a line
+  that hasn't changed isn't spoken again), says how long each runs, and when each `on` lands.
+- Leave room before each `on`: an action can't start until the one before it has finished
+  (typing a long name, a page loading). If one lands late, rehearse says so with a `Check:`
+  line; add words before it, or split the line.
+- About 2.6 words a second. Short, plain lines: full stops and commas, no em dashes, an
+  exclamation mark only in a greeting. Talk about what the viewer is seeing, as "you" or "we".
+- The voice is Emma, from ElevenLabs. Choose another in the config or the film:
+  `"voice": { "provider": "elevenlabs", "voice": "<voice id>" }`. It needs `ELEVENLABS_API_KEY`
+  in the environment or a `.env` file in the project.
+
 ## Highlights
 
 Point the viewer at one thing, with the camera zooming toward it. Three styles:

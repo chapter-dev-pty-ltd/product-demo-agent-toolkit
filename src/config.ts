@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import type { VoiceChoice } from './voice.ts'
 
 /** The backdrops in library/backdrops, by name. */
 export const BACKDROPS = ['halo', 'sky', 'violet'] as const
@@ -23,11 +24,21 @@ export function soundOn(kind: 'click' | 'typing', ...settings: (Sound | undefine
   return typeof setting === 'object' ? (setting[kind] ?? true) : (setting ?? true)
 }
 
+/** Emma, an ElevenLabs voice. */
+const EMMA = '56bWURjYFHyYyVf490Dp'
+
+export const voiceSchema: z.ZodObject<{
+  provider: z.ZodString
+  voice: z.ZodString
+  model: z.ZodOptional<z.ZodString>
+}> = z.strictObject({ provider: z.string(), voice: z.string(), model: z.string().optional() })
+
 export interface Config {
   mode: 'ask' | 'just_do_it'
   backdrop: (typeof BACKDROPS)[number]
   cursor: Cursor
   sound: Sound
+  voice: VoiceChoice
   keep: number
   review: boolean
 }
@@ -42,6 +53,11 @@ const config: z.ZodType<Config> = z.strictObject({
     .default(true)
     .describe(
       'The video\'s sounds: true or false for all of them, or { "click": false } to choose each. A film can choose its own.',
+    ),
+  voice: voiceSchema
+    .default({ provider: 'elevenlabs', voice: EMMA })
+    .describe(
+      "Who speaks the film's lines: a provider, one of its voice ids, and optionally a model.",
     ),
   keep: z
     .number()

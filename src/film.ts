@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
-import { CURSORS, soundSchema, type Cursor, type Sound } from './config.ts'
+import { CURSORS, soundSchema, voiceSchema, type Cursor, type Sound } from './config.ts'
 import type { Fingerprint } from './similo.ts'
 
 /**
@@ -47,6 +47,10 @@ export type Step = (
   note?: string | undefined
   /** Points at something once the step is done: a red box, with the camera zoomed toward it. */
   highlight?: Highlight | undefined
+  /** A line of voiceover, spoken from the start of this step. */
+  say?: string | undefined
+  /** The word or phrase, in this step's line or one still being spoken, that the action lands on. */
+  on?: string | undefined
 }
 
 /**
@@ -87,6 +91,10 @@ export interface Film {
   cursor?: Cursor | undefined
   /** The video's sounds, when they aren't the config's. */
   sound?: Sound | undefined
+  /** Who speaks the voiceover, when it isn't the config's voice. */
+  voice?:
+    | { provider?: string | undefined; voice?: string | undefined; model?: string | undefined }
+    | undefined
   steps: Step[]
   ending?: { hold: number } | undefined
 }
@@ -121,6 +129,8 @@ const target: z.ZodType<Target> = z.union([
 ])
 
 const note = z.string().optional()
+const line = z.string().min(1).optional()
+const word = z.string().min(1).optional()
 const highlight = z
   .strictObject({
     style: z.enum(['box', 'magnify', 'cursor']).optional(),
@@ -137,7 +147,7 @@ const highlight = z
 const point = z.strictObject({ x: z.number(), y: z.number() }).optional()
 
 export const stepSchema: z.ZodType<Step> = z.union([
-  z.strictObject({ visit: z.string(), note, highlight }),
+  z.strictObject({ visit: z.string(), note, highlight, say: line, on: word }),
   z.strictObject({
     click: target,
     at: point,
@@ -146,27 +156,49 @@ export const stepSchema: z.ZodType<Step> = z.union([
     modifiers: z.array(z.enum(KEYS)).optional(),
     note,
     highlight,
+    say: line,
+    on: word,
   }),
-  z.strictObject({ fill: target, text: z.string(), note, highlight }),
-  z.strictObject({ select: target, option: z.string(), note, highlight }),
-  z.strictObject({ type: z.string(), note, highlight }),
-  z.strictObject({ press: z.string(), note, highlight }),
+  z.strictObject({ fill: target, text: z.string(), note, highlight, say: line, on: word }),
+  z.strictObject({ select: target, option: z.string(), note, highlight, say: line, on: word }),
+  z.strictObject({ type: z.string(), note, highlight, say: line, on: word }),
+  z.strictObject({ press: z.string(), note, highlight, say: line, on: word }),
   z.strictObject({
     hover: target,
     at: point,
     seconds: z.number().positive().optional(),
     note,
     highlight,
+    say: line,
+    on: word,
   }),
-  z.strictObject({ drag: target, at: point, to: target, toAt: point, note, highlight }),
+  z.strictObject({
+    drag: target,
+    at: point,
+    to: target,
+    toAt: point,
+    note,
+    highlight,
+    say: line,
+    on: word,
+  }),
   z.strictObject({
     scroll: z.enum(['up', 'down']),
     in: target.optional(),
     pixels: z.number().positive().optional(),
     note,
     highlight,
+    say: line,
+    on: word,
   }),
-  z.strictObject({ upload: z.string(), into: target.optional(), note, highlight }),
+  z.strictObject({
+    upload: z.string(),
+    into: target.optional(),
+    note,
+    highlight,
+    say: line,
+    on: word,
+  }),
   z.strictObject({
     wait: z.union([
       z.strictObject({ text: z.string(), gone: z.boolean().optional() }),
@@ -174,6 +206,8 @@ export const stepSchema: z.ZodType<Step> = z.union([
     ]),
     note,
     highlight,
+    say: line,
+    on: word,
   }),
 ])
 
@@ -182,6 +216,7 @@ const film: z.ZodType<Film> = z.strictObject({
   notes: z.string().optional(),
   cursor: z.enum(CURSORS).optional(),
   sound: soundSchema.optional(),
+  voice: voiceSchema.partial().optional(),
   steps: z.array(stepSchema),
   ending: z.strictObject({ hold: z.number().nonnegative() }).optional(),
 })

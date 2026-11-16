@@ -15,6 +15,7 @@ import {
 import { watch } from './settle.ts'
 import { decide, fingerprint, rank } from './similo.ts'
 import { launchBrowser } from './tools.ts'
+import { speakLines, wordAt, type Spoken } from './voice.ts'
 
 export const VIEWPORT = { width: 1440, height: 900 }
 
@@ -42,6 +43,8 @@ export interface Footage {
   clicks: { at: number; x: number; y: number }[]
   /** Each key pressed, typing included, and when: the cut plays a key sound for each. */
   keys: { at: number; key: string }[]
+  /** Each line of voiceover, its audio file, and when the shoot started it. */
+  lines: { at: number; file: string; text: string }[]
   /** When each highlighted step held, and its element's box in screen pixels. */
   highlights: { step: number; at: number; until: number; box: number[] }[]
   end: number
@@ -79,7 +82,7 @@ export async function shoot(
   const writes: Promise<void>[] = []
   let started = 0
   let end = 0
-  const { warnings, trail, keys, highlights } = await perform(film, dir, config, {
+  const { warnings, trail, keys, lines, highlights } = await perform(film, dir, config, {
     camera: async (page) => {
       started = performance.now()
       const session = await page.context().newCDPSession(page)
@@ -116,6 +119,7 @@ export async function shoot(
     pointer,
     clicks,
     keys: keys.filter((k) => k.t >= started).map((k) => ({ at: since(k.t), key: k.key })),
+    lines: lines.map((l) => ({ ...l, at: since(l.at) })),
     highlights: highlights.map((h) => ({ ...h, at: since(h.at), until: since(h.until) })),
     end,
     warnings,
@@ -144,9 +148,16 @@ async function perform(
   warnings: string[]
   trail: Hand['trail']
   keys: Hand['keys']
+  lines: Footage['lines']
   highlights: Footage['highlights']
 }> {
   await mkdir(dir, { recursive: true })
+  // The lines are spoken first: the shoot is paced by them.
+  const given = Object.fromEntries(Object.entries(film.voice ?? {}).filter(([, v]) => v))
+  const spoken = await speakLines(
+    film.steps.flatMap((s) => (s.say ? [s.say] : [])),
+    { ...config.voice, ...given },
+  )
   const browser = await launchBrowser()
   try {
     const page = await browser.newPage({ viewport: VIEWPORT })
@@ -160,13 +171,41 @@ async function perform(
 
     const warnings: string[] = []
     const highlights: Footage['highlights'] = []
+    const lines: Footage['lines'] = []
+    // The line being spoken, and when it started.
+    let line: { spoken: Spoken; at: number } | undefined
     for (const [index, step] of film.steps.entries()) {
       const label = `Step ${index + 1} (${describeStep(step)})`
       const finder: Finder = (target) =>
         find(page, target, config, (warning) => warnings.push(`${label}: ${warning}`))
       try {
+        if (step.say) {
+          const said = spoken.get(step.say)
+          if (!said) throw new Error('Its line was never spoken.')
+          line = { spoken: said, at: performance.now() }
+          lines.push({ at: line.at, file: said.file, text: said.text })
+        }
+        // An action with a word lands on it: the hand arrives early and presses as it's said.
+        hand.due = undefined
+        if (step.on) {
+          if (!line) throw new Error(`"on" needs a line: give this step or one before it "say".`)
+          const word = wordAt(line.spoken, step.on)
+          if (word === undefined) throw new Error(`"${step.on}" isn't in "${line.spoken.text}".`)
+          hand.due = line.at + word * 1000
+        }
+        hand.landed = undefined
         await settler.mark()
         await act(page, hand, film.app, step, finder)
+        // Late on its word: the line gave the action too little time after the one before it.
+        if (hand.due !== undefined && step.on && hand.landed !== undefined) {
+          const late = (hand.landed - hand.due) / 1000
+          if (late > 0.2) {
+            warnings.push(
+              `${label}: landed ${late.toFixed(1)}s after "${step.on}" was said. Give it more words before it, or less to do before it.`,
+            )
+          }
+        }
+        hand.due = undefined
         const settled = await settler.settled({ beat: 400 })
         if (!settled.settled) {
           warnings.push(
@@ -176,6 +215,13 @@ async function perform(
         await watchers.still?.(page, label, index + 1)
         if (step.highlight)
           highlights.push({ step: index, ...(await highlight(page, step, finder)) })
+        // A line finishes before the film moves on, unless the next step lands on one of its words.
+        const next = film.steps[index + 1]
+        if (line && !(next?.on && !next.say)) {
+          const left = line.at + line.spoken.seconds * 1000 + 350 - performance.now()
+          if (left > 0) await page.waitForTimeout(left)
+          line = undefined
+        }
       } catch (error) {
         const failed = join(dir, 'failed.png')
         await page.screenshot({ path: failed }).catch(() => {})
@@ -185,7 +231,7 @@ async function perform(
       }
     }
     await stopCamera?.()
-    return { warnings, trail: hand.trail, keys: hand.keys, highlights }
+    return { warnings, trail: hand.trail, keys: hand.keys, lines, highlights }
   } finally {
     await browser.close()
   }
@@ -201,19 +247,26 @@ export async function act(
   step: Step,
   find: Finder,
 ): Promise<void> {
+  if ('visit' in step || 'wait' in step) await hand.onTime()
   if ('visit' in step) {
     await page.goto(new URL(step.visit, app).href)
     await hand.rest(hand.x, hand.y)
   } else if ('click' in step) {
     await hand.click(await find(step.click), step)
   } else if ('fill' in step) {
+    // On a word, the typing starts on it: the field is clicked a beat before.
+    const due = hand.due
+    if (due !== undefined) hand.due = due - 400
     await hand.click(await find(step.fill))
+    hand.due = due
+    hand.landed = undefined
     await fill(page, hand, step.text)
   } else if ('select' in step) {
     // A native select's list is drawn outside the page and swallows the next click, so the
     // hand goes to it and the option is chosen by its label, as Playwright's selectOption does.
     const select = await find(step.select)
     await hand.reach(select)
+    await hand.onTime()
     await hand.pause(200)
     await select.selectOption({ label: step.option }, { timeout: 5000 }).catch(() => {
       throw new Error(`It has no option "${step.option}", or it isn't a <select>.`)
@@ -224,6 +277,7 @@ export async function act(
     await hand.key(step.press)
   } else if ('hover' in step) {
     await hand.reach(await find(step.hover), step.at)
+    await hand.onTime()
     await hand.pause((step.seconds ?? 1.2) * 1000)
   } else if ('drag' in step) {
     // The drop is found before the press: once something is held, what's dragged can cover it.
@@ -403,6 +457,8 @@ export class Hand {
   quick: boolean
   /** Every move and click, with its time, for the cut to draw the cursor from. */
   trail: { t: number; x: number; y: number; click?: true }[] = []
+  /** When the action must land, on a word of the voiceover; the hand arrives early and waits. */
+  due: number | undefined
   /** Each key pressed and when, for the cut's key sounds. */
   keys: { t: number; key: string }[] = []
   constructor(page: Page, quick = false) {
@@ -427,11 +483,26 @@ export class Hand {
     this.y = y
   }
 
+  /** When the action due on a word actually landed. */
+  landed: number | undefined
+
+  /** Waits for the moment the action is due, if it has one, and notes when it lands. */
+  async onTime(): Promise<void> {
+    const wait = this.due === undefined ? 0 : this.due - performance.now()
+    if (wait > 0) await this.page.waitForTimeout(wait)
+    if (this.due !== undefined) this.landed ??= performance.now()
+  }
+
+  /** How long a glide to there takes, in ms: longer for further, up to 0.9s. */
+  travel(x: number, y: number): number {
+    return Math.min(900, 250 + Math.hypot(x - this.x, y - this.y) * 0.5)
+  }
+
   async glide(x: number, y: number): Promise<void> {
     if (this.quick) return this.rest(x, y)
     const fromX = this.x
     const fromY = this.y
-    const ms = Math.min(900, 250 + Math.hypot(x - fromX, y - fromY) * 0.5)
+    const ms = this.travel(x, y)
     for (let t = 0; t <= ms; t += 16) {
       const k = ease(t / ms)
       await this.move(fromX + (x - fromX) * k, fromY + (y - fromY) * k)
@@ -443,6 +514,11 @@ export class Hand {
   /** Moves onto an element, to a point on it (its middle unless told). */
   async reach(target: Locator, at?: Point): Promise<{ x: number; y: number }> {
     const spot = await spotOn(target, at)
+    // Due on a word: set off so as to arrive a moment before it.
+    if (this.due !== undefined) {
+      const wait = this.due - performance.now() - this.travel(spot.x, spot.y) - 250
+      if (wait > 0) await this.page.waitForTimeout(wait)
+    }
     await this.glide(spot.x, spot.y)
     return spot
   }
@@ -458,6 +534,7 @@ export class Hand {
   ): Promise<void> {
     await this.reach(target, how.at)
     await this.pause(120)
+    await this.onTime()
     const button = how.right ? 'right' : 'left'
     const held = how.modifiers ?? []
     for (const key of held) await this.page.keyboard.down(key)
@@ -491,6 +568,7 @@ export class Hand {
     const start = await this.reach(from, at)
     const end = await spotOn(to, toAt)
     await this.pause(120)
+    await this.onTime()
     const mouse = this.page.mouse
     await mouse.down()
     await this.page.waitForTimeout(this.quick ? 80 : 200)
@@ -513,6 +591,7 @@ export class Hand {
   /** Types at a person's pace and rhythm, a key at a time, keeping when each was pressed. */
   async type(text: string): Promise<void> {
     if (this.quick) return this.page.keyboard.type(text)
+    await this.onTime()
     for (const character of text) {
       await this.page.keyboard.type(character)
       this.keys.push({ t: performance.now(), key: character })
@@ -523,12 +602,14 @@ export class Hand {
 
   /** Presses a key or a combination, like Enter or Meta+K. */
   async key(key: string): Promise<void> {
+    await this.onTime()
     await this.page.keyboard.press(key)
     if (!this.quick) this.keys.push({ t: performance.now(), key })
   }
 
   /** Turns the wheel where the pointer is, eased in and out. */
   async scroll(pixels: number): Promise<void> {
+    await this.onTime()
     const ticks = 15
     const curve = (t: number) => (1 - Math.cos(Math.PI * t)) / 2
     for (let tick = 0; tick < ticks; tick++) {

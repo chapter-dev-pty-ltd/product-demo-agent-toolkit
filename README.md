@@ -30,8 +30,11 @@ You need Node 22.18 or later, pnpm 11 and git.
 
    Other agents: read `skills/product-demo/SKILL.md` before starting, and follow it.
 
-3. In the project you're making a video of, add `.product-demo/` to `.gitignore`. It holds the
-   explore log, rehearsals, footage and videos.
+3. In the project you're making a video of, add `.product-demo/` and `.env` to `.gitignore`.
+   `.product-demo/` holds the explore log, voice lines, rehearsals, footage and videos.
+
+4. For a voiceover, put an ElevenLabs key in the project's `.env`:
+   `ELEVENLABS_API_KEY=...`
 
 The first run downloads a headless Chromium, and an ffmpeg if the one on `PATH` can't write
 H.264. Nothing else needs installing.
@@ -43,6 +46,7 @@ Ask your agent for a demo video ("make a 20 second video of creating an invoice"
 
 ```bash
 product-demo explore http://localhost:3000   # learn the app; every action is logged
+product-demo voice film.json                 # speak the voiceover; when each action's word lands
 product-demo rehearse film.json              # a full run with a still after every step
 product-demo shoot film.json                 # the same run, filmed
 product-demo cut                             # the mp4, printed with its path
@@ -50,23 +54,24 @@ product-demo review                          # frames from across the video, to 
 ```
 
 `product-demo --help` lists every command. `skills/product-demo/directing.md` covers the
-cursor, sound and highlights.
+voiceover, cursor, sound and highlights.
 
 ## Settings
 
 Everything has a default, so no config is needed. To change one, add
 `.product-demo/config.json` to the project:
 
-| Setting    | Default        | What it does                                                                                 |
-| ---------- | -------------- | -------------------------------------------------------------------------------------------- |
-| `mode`     | `"just_do_it"` | When something is unclear, make the best choice and note it. `"ask"` stops and asks instead. |
-| `backdrop` | `"halo"`       | What the app sits on: `halo`, `sky` or `violet`.                                             |
-| `cursor`   | `"pink"`       | The cursor's colour: `pink` or `lime`.                                                       |
-| `sound`    | `true`         | Click and typing sounds. `false` for none, or `{ "click": true, "typing": false }`.          |
-| `keep`     | `10`           | How many rehearsals and shoots of each film to keep.                                         |
-| `review`   | `false`        | Whether `cut` also makes the review image.                                                   |
+| Setting    | Default               | What it does                                                                                 |
+| ---------- | --------------------- | -------------------------------------------------------------------------------------------- |
+| `mode`     | `"just_do_it"`        | When something is unclear, make the best choice and note it. `"ask"` stops and asks instead. |
+| `backdrop` | `"halo"`              | What the app sits on: `halo`, `sky` or `violet`.                                             |
+| `cursor`   | `"pink"`              | The cursor's colour: `pink` or `lime`.                                                       |
+| `sound`    | `true`                | Click and typing sounds. `false` for none, or `{ "click": true, "typing": false }`.          |
+| `voice`    | Emma, from ElevenLabs | Who speaks the voiceover: `{ \"provider\": \"elevenlabs\", \"voice\": \"<voice id>\" }`.     |
+| `keep`     | `10`                  | How many rehearsals and shoots of each film to keep.                                         |
+| `review`   | `false`               | Whether `cut` also makes the review image.                                                   |
 
-A film can set its own `cursor` and `sound`.
+A film can set its own `cursor`, `sound` and `voice`.
 
 ## Good to know
 

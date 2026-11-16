@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { once } from 'node:events'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { soundOn, type Config } from '../config.ts'
 import { readFilm } from '../film.ts'
@@ -87,6 +87,13 @@ export async function cut(
             : [],
           volume: 0.7,
         })),
+        // The voiceover, each line where the shoot started it, as spoken.
+        ...(footage.lines ?? []).map((l) => ({
+          files: [l.file],
+          times: [l.at - start],
+          volume: 1,
+          vary: false,
+        })),
       ],
       length,
     )
@@ -135,11 +142,12 @@ const KEYS: Record<'key' | 'space' | 'enter', string[]> = {
 const keyKind = (key: string): keyof typeof KEYS =>
   key === ' ' || key === 'Space' ? 'space' : key.split('+').at(-1) === 'Enter' ? 'enter' : 'key'
 
-/** A set of sounds, the times to play one of them, and how loud. */
+/** A set of sounds, the times to play one of them, how loud, and whether each play varies. */
 interface Track {
   files: string[]
   times: number[]
   volume: number
+  vary?: boolean
 }
 
 /** Random, but seeded by the time, so cutting the same footage again sounds the same. */
@@ -175,7 +183,10 @@ function soundArgs(tracks: Track[], length: number): string[] {
     // Each sound is split into as many copies as it plays, then each copy varied a little and
     // delayed to its time.
     for (const [k, file] of track.files.entries()) {
-      inputs.push('-i', fileURLToPath(new URL(`../library/sounds/${file}`, import.meta.url)))
+      const path = isAbsolute(file)
+        ? file
+        : fileURLToPath(new URL(`../library/sounds/${file}`, import.meta.url))
+      inputs.push('-i', path)
       const input = inputs.length / 2
       const mine = track.times.flatMap((_, i) => (picks[i] === k ? [`[s${n}_${i}]`] : []))
       graph.push(
@@ -185,10 +196,12 @@ function soundArgs(tracks: Track[], length: number): string[] {
       )
     }
     for (const [i, t] of track.times.entries()) {
+      // A little higher or lower and louder or softer each time (the sounds are 48kHz).
       const pitch = 1 + (chance(t + 0.1) - 0.5) * 0.06
       const gain = (chance(t + 0.2) - 0.5) * 4
+      const varied = `asetrate=${Math.round(48000 * pitch)},aresample=48000,volume=${gain.toFixed(2)}dB,`
       graph.push(
-        `[s${n}_${i}]asetrate=${Math.round(48000 * pitch)},aresample=48000,volume=${gain.toFixed(2)}dB,adelay=${Math.round(t * 1000)}:all=1[p${n}_${i}]`,
+        `[s${n}_${i}]${(track.vary ?? true) ? varied : ''}adelay=${Math.max(0, Math.round(t * 1000))}:all=1[p${n}_${i}]`,
       )
       played.push(`[p${n}_${i}]`)
     }
@@ -196,7 +209,9 @@ function soundArgs(tracks: Track[], length: number): string[] {
   if (played.length === 0) return []
   // A silent track the video's length leads the mix, so the sound runs to the end.
   graph.push(`anullsrc=r=48000:cl=mono:d=${length.toFixed(3)}[q]`)
-  graph.push(`[q]${played.join('')}amix=inputs=${played.length + 1}:normalize=0:duration=first[a]`)
+  graph.push(
+    `[q]${played.join('')}amix=inputs=${played.length + 1}:normalize=0:duration=first,alimiter=limit=0.89[a]`,
+  )
   // prettier-ignore
   return [...inputs, '-filter_complex', graph.join(';'),
     '-map', '0:v', '-map', '[a]', '-c:a', 'aac', '-b:a', '160k']

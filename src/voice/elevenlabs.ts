@@ -1,0 +1,72 @@
+import type { VoiceProvider, Word } from '../voice.ts'
+
+// ElevenLabs, through its text-to-speech with-timestamps endpoint: the audio, and when each
+// character is spoken, from which the words are put together. Its key is ELEVENLABS_API_KEY.
+
+const BASE = process.env.ELEVENLABS_BASE_URL ?? 'https://api.elevenlabs.io'
+/** Steady delivery: Chapter found lower stability over-acted. */
+const SETTINGS = { stability: 0.85, similarity_boost: 0.8, style: 0 }
+
+export const elevenlabs: VoiceProvider = {
+  async speak(text, choice) {
+    const key = process.env.ELEVENLABS_API_KEY
+    if (!key) throw new Error('Set ELEVENLABS_API_KEY, in the environment or a .env file here.')
+    const url = `${BASE}/v1/text-to-speech/${choice.voice}/with-timestamps?output_format=mp3_44100_128`
+    const body = JSON.stringify({
+      text,
+      model_id: choice.model ?? 'eleven_v4',
+      voice_settings: SETTINGS,
+    })
+    // Busy or rate-limited: wait and try again, a little longer each time.
+    for (const wait of [2000, 6000, 15000, 0]) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'xi-api-key': key, 'content-type': 'application/json' },
+        body,
+      })
+      if (response.ok) return read(await response.json())
+      const retry = response.status === 429 || response.status >= 500
+      if (!retry || wait === 0) {
+        const why = (await response.text()).slice(0, 300)
+        const voice =
+          response.status === 404
+            ? ` The voice ${choice.voice} isn't in this account: add it from the Voice Library, or set another.`
+            : ''
+        throw new Error(`ElevenLabs said ${response.status}: ${why}${voice}`)
+      }
+      await new Promise((done) => setTimeout(done, wait))
+    }
+    throw new Error('ElevenLabs did not answer.')
+  },
+}
+
+interface Answer {
+  audio_base64: string
+  alignment: {
+    characters: string[]
+    character_start_times_seconds: number[]
+    character_end_times_seconds: number[]
+  }
+}
+
+function read(answer: Answer): { audio: Buffer; words: Word[] } {
+  const {
+    characters,
+    character_start_times_seconds: starts,
+    character_end_times_seconds: ends,
+  } = answer.alignment
+  const words: Word[] = []
+  let current: Word | undefined
+  characters.forEach((character, i) => {
+    if (/\s/.test(character)) {
+      if (current) words.push(current)
+      current = undefined
+      return
+    }
+    current ??= { text: '', start: starts[i] ?? 0, end: 0 }
+    current.text += character
+    current.end = ends[i] ?? current.end
+  })
+  if (current) words.push(current)
+  return { audio: Buffer.from(answer.audio_base64, 'base64'), words }
+}

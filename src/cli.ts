@@ -19,6 +19,9 @@ import {
   send,
   serve,
   shoot,
+  speakLines,
+  wordAt,
+  type Spoken,
   version,
   type Footage,
 } from './index.ts'
@@ -45,6 +48,7 @@ const USAGE = `product-demo ${version}
   product-demo end                    Close the browser
 
 2. Write film.json from the log (.product-demo/explore/log.json), then rehearse it until it's right:
+  product-demo voice <film.json>      Speak the film's lines, and show when each step's word lands
   product-demo rehearse <film.json>   A full run without the camera, with a still after each step
 
 3. Shoot it, and cut the footage into a video:
@@ -57,6 +61,11 @@ Set up: product-demo skills [dir]   Copy the skills into ~/.claude/skills (or di
 Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (halo | sky | violet),
 cursor (pink | lime), sound (true | false | { click }, default true),
 keep (rehearsals and shoots kept per film, default 10), review (cut also makes the review image, default false).`
+
+// Keys, such as ELEVENLABS_API_KEY, can live in a .env in the project.
+try {
+  process.loadEnvFile()
+} catch {}
 
 const EXPLORE = new Set([
   'look',
@@ -139,6 +148,30 @@ try {
     const seconds = await cut(from, out, config)
     console.log(`Cut ${out} (${seconds.toFixed(1)}s)`)
     if (config.review) console.log(`Review it: ${await review(out, seconds)}`)
+  } else if (command === 'voice' && input) {
+    const config = await readConfig()
+    const film = await readFilm(input)
+    const given = Object.fromEntries(Object.entries(film.voice ?? {}).filter(([, v]) => v))
+    const spoken = await speakLines(
+      film.steps.flatMap((s) => (s.say ? [s.say] : [])),
+      { ...config.voice, ...given },
+    )
+    // Each line, how long it runs, and when each step's word lands in it.
+    let current: Spoken | undefined
+    for (const [i, step] of film.steps.entries()) {
+      if (step.say) {
+        current = spoken.get(step.say)
+        console.log(`Step ${i + 1} says (${current?.seconds.toFixed(1)}s): ${step.say}`)
+      }
+      if (step.on) {
+        const at = current ? wordAt(current, step.on) : undefined
+        console.log(
+          at === undefined
+            ? `Check: step ${i + 1} lands on "${step.on}", which isn't in the line being spoken.`
+            : `Step ${i + 1} lands on "${step.on}" at ${at.toFixed(2)}s`,
+        )
+      }
+    }
   } else if (command === 'skills') {
     const to = input ?? join(homedir(), '.claude', 'skills')
     await cp(fileURLToPath(new URL('../skills', import.meta.url)), to, { recursive: true })
