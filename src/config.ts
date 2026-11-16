@@ -67,7 +67,7 @@ const config: z.ZodType<Config> = z.strictObject({
   sound: soundSchema
     .default(true)
     .describe(
-      'The video\'s sounds: true or false for all of them, or { "click": false } to choose each. A film can choose its own.',
+      'The video\'s sounds: true or false for all of them, or { "click": false } to choose each.',
     ),
   voice: voiceSchema
     .default({ provider: 'elevenlabs', voice: EMMA })
