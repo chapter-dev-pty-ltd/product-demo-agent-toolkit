@@ -206,7 +206,10 @@ async function perform(
           }
         }
         hand.due = undefined
-        const settled = await settler.settled({ beat: 400 })
+        // Within a line, the voice paces the film: only the page is waited for, not a beat too.
+        const next = film.steps[index + 1]
+        const carriesOn = Boolean(line && next?.on && !next.say)
+        const settled = await settler.settled({ beat: carriesOn ? 0 : 400 })
         if (!settled.settled) {
           warnings.push(
             `${label}: went on before the page settled (${settled.waitingOn.join(', ')}).`,
@@ -216,8 +219,7 @@ async function perform(
         if (step.highlight)
           highlights.push({ step: index, ...(await highlight(page, step, finder)) })
         // A line finishes before the film moves on, unless the next step lands on one of its words.
-        const next = film.steps[index + 1]
-        if (line && !(next?.on && !next.say)) {
+        if (line && !carriesOn) {
           const left = line.at + line.spoken.seconds * 1000 + 350 - performance.now()
           if (left > 0) await page.waitForTimeout(left)
           line = undefined
