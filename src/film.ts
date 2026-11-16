@@ -45,6 +45,30 @@ export type Step = (
 ) & {
   /** Why the step is there, or anything odd about it. Read by people and agents, never run. */
   note?: string | undefined
+  /** Points at something once the step is done: a red box, with the camera zoomed toward it. */
+  highlight?: Highlight | undefined
+}
+
+/**
+ * What a step highlights: its own element, or `box` (x, y, width, height in the screen's
+ * pixels). `zoom` runs from 0, none, to 1, the box filling the view. It holds for `seconds`.
+ */
+export interface Highlight {
+  box?: number[] | undefined
+  zoom?: number | undefined
+  seconds?: number | undefined
+}
+
+/** The element a step acts on, if it has one: what a highlight points at by default. */
+export function stepTarget(step: Step): Target | undefined {
+  if ('click' in step) return step.click
+  if ('fill' in step) return step.fill
+  if ('select' in step) return step.select
+  if ('hover' in step) return step.hover
+  if ('drag' in step) return step.to
+  if ('scroll' in step) return step.in
+  if ('upload' in step) return step.into
+  return undefined
 }
 
 /** A demo to perform: the app to open, the steps to take on it, and how long to hold the ending. */
@@ -88,11 +112,18 @@ const target: z.ZodType<Target> = z.union([
 ])
 
 const note = z.string().optional()
+const highlight = z
+  .strictObject({
+    box: z.array(z.number()).length(4).optional(),
+    zoom: z.number().min(0).max(1).optional(),
+    seconds: z.number().positive().optional(),
+  })
+  .optional()
 
 const point = z.strictObject({ x: z.number(), y: z.number() }).optional()
 
 export const stepSchema: z.ZodType<Step> = z.union([
-  z.strictObject({ visit: z.string(), note }),
+  z.strictObject({ visit: z.string(), note, highlight }),
   z.strictObject({
     click: target,
     at: point,
@@ -100,31 +131,35 @@ export const stepSchema: z.ZodType<Step> = z.union([
     right: z.boolean().optional(),
     modifiers: z.array(z.enum(KEYS)).optional(),
     note,
+    highlight,
   }),
-  z.strictObject({ fill: target, text: z.string(), note }),
-  z.strictObject({ select: target, option: z.string(), note }),
-  z.strictObject({ type: z.string(), note }),
-  z.strictObject({ press: z.string(), note }),
+  z.strictObject({ fill: target, text: z.string(), note, highlight }),
+  z.strictObject({ select: target, option: z.string(), note, highlight }),
+  z.strictObject({ type: z.string(), note, highlight }),
+  z.strictObject({ press: z.string(), note, highlight }),
   z.strictObject({
     hover: target,
     at: point,
     seconds: z.number().positive().optional(),
     note,
+    highlight,
   }),
-  z.strictObject({ drag: target, at: point, to: target, toAt: point, note }),
+  z.strictObject({ drag: target, at: point, to: target, toAt: point, note, highlight }),
   z.strictObject({
     scroll: z.enum(['up', 'down']),
     in: target.optional(),
     pixels: z.number().positive().optional(),
     note,
+    highlight,
   }),
-  z.strictObject({ upload: z.string(), into: target.optional(), note }),
+  z.strictObject({ upload: z.string(), into: target.optional(), note, highlight }),
   z.strictObject({
     wait: z.union([
       z.strictObject({ text: z.string(), gone: z.boolean().optional() }),
       z.number().positive(),
     ]),
     note,
+    highlight,
   }),
 ])
 

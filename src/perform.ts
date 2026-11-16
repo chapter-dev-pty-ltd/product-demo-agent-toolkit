@@ -3,7 +3,15 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
 import type { Config } from './config.ts'
-import { describeStep, type Film, type Key, type Point, type Step, type Target } from './film.ts'
+import {
+  describeStep,
+  stepTarget,
+  type Film,
+  type Key,
+  type Point,
+  type Step,
+  type Target,
+} from './film.ts'
 import { watch } from './settle.ts'
 import { decide, fingerprint, rank } from './similo.ts'
 import { launchBrowser } from './tools.ts'
@@ -32,6 +40,8 @@ export interface Footage {
   pointer: { at: number; x: number; y: number }[]
   /** Where and when the pointer clicked. */
   clicks: { at: number; x: number; y: number }[]
+  /** What the film highlighted, and when: the box in screen pixels, and how far to zoom. */
+  highlights: { at: number; until: number; box: number[]; zoom: number }[]
   end: number
   /** Choices made without asking (`just_do_it`), recoveries, and steps that never settled. */
   warnings: string[]
@@ -67,7 +77,7 @@ export async function shoot(
   const writes: Promise<void>[] = []
   let started = 0
   let end = 0
-  const { warnings, trail } = await perform(film, dir, config, {
+  const { warnings, trail, highlights } = await perform(film, dir, config, {
     camera: async (page) => {
       started = performance.now()
       const session = await page.context().newCDPSession(page)
@@ -97,7 +107,16 @@ export async function shoot(
   const clicks = trail
     .filter((m) => m.click && m.t >= started)
     .map((m) => ({ at: since(m.t), x: m.x, y: m.y }))
-  const footage: Footage = { film, source, frames, pointer, clicks, end, warnings }
+  const footage: Footage = {
+    film,
+    source,
+    frames,
+    pointer,
+    clicks,
+    highlights: highlights.map((h) => ({ ...h, at: since(h.at), until: since(h.until) })),
+    end,
+    warnings,
+  }
   await writeFile(join(dir, 'footage.json'), JSON.stringify(footage, null, 2))
   return footage
 }
@@ -118,7 +137,7 @@ async function perform(
   dir: string,
   config: Config,
   watchers: Watchers,
-): Promise<{ warnings: string[]; trail: Hand['trail'] }> {
+): Promise<{ warnings: string[]; trail: Hand['trail']; highlights: Footage['highlights'] }> {
   await mkdir(dir, { recursive: true })
   const browser = await launchBrowser()
   try {
@@ -132,6 +151,7 @@ async function perform(
     await watchers.still?.(page, 'the opening screen', 0)
 
     const warnings: string[] = []
+    const highlights: Footage['highlights'] = []
     for (const [index, step] of film.steps.entries()) {
       const label = `Step ${index + 1} (${describeStep(step)})`
       const finder: Finder = (target) =>
@@ -146,6 +166,7 @@ async function perform(
           )
         }
         await watchers.still?.(page, label, index + 1)
+        if (step.highlight) highlights.push(await highlight(page, step, finder))
       } catch (error) {
         const failed = join(dir, 'failed.png')
         await page.screenshot({ path: failed }).catch(() => {})
@@ -155,7 +176,7 @@ async function perform(
       }
     }
     await stopCamera?.()
-    return { warnings, trail: hand.trail }
+    return { warnings, trail: hand.trail, highlights }
   } finally {
     await browser.close()
   }
@@ -217,6 +238,29 @@ export async function act(
   } else {
     await page.getByText(step.wait.text).first().waitFor({ timeout: 30_000 })
   }
+}
+
+/**
+ * A step's highlight: the box of its element (or the box it gives), then a hold while the cut
+ * draws it. Times are the clock's; the shoot makes them the video's.
+ */
+async function highlight(
+  page: Page,
+  step: Step,
+  find: Finder,
+): Promise<Footage['highlights'][number]> {
+  const given = step.highlight?.box
+  const target = stepTarget(step)
+  let box = given
+  if (!box) {
+    if (!target) throw new Error('Its highlight needs a box: the step has no element to point at.')
+    const bounds = await (await find(target)).boundingBox()
+    if (!bounds) throw new Error('The element to highlight has no size on screen.')
+    box = [bounds.x, bounds.y, bounds.width, bounds.height]
+  }
+  const at = performance.now()
+  await page.waitForTimeout((step.highlight?.seconds ?? 2) * 1000)
+  return { at, until: performance.now(), box, zoom: step.highlight?.zoom ?? 0 }
 }
 
 /** Types into the focused field, replacing what's in it. */

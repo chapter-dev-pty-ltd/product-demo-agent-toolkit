@@ -23,6 +23,7 @@ interface StageData {
   frames: { file: string; at: number }[]
   pointer: { at: number; x: number; y: number }[]
   clicks: { at: number; x: number; y: number }[]
+  highlights: { at: number; until: number; box: number[]; zoom: number }[]
   title: string
 }
 
@@ -43,6 +44,7 @@ export async function openStage(
     frames: footage.frames.map(time),
     pointer: footage.pointer.map(time),
     clicks: footage.clicks.map(time),
+    highlights: footage.highlights.map((h) => ({ ...h, at: h.at - start, until: h.until - start })),
     title,
   }
   const library = (path: string) => new URL(`../library/${path}`, import.meta.url)
@@ -93,6 +95,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 /* Everything that moves with the camera: the app and the cursor. */
 #camera { position: absolute; inset: 0; transform-origin: 0 0; }
 #shot { position: absolute; inset: 0; width: 100%; height: 100%; }
+#highlight { position: absolute; box-sizing: border-box; border: 3px solid #ff3b30; border-radius: 8px; opacity: 0; }
 #cursor { position: absolute; left: -5px; top: -5px; width: 36px; height: 36px; color: ${COLOURS[look.cursor]}; }
 #cursor svg { display: block; transform-origin: 5px 5px; animation: dip 250ms linear paused; }
 /* A click: the arrow pressed in, then springing back past its size and settling. */
@@ -104,11 +107,38 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 }
 </style></head><body>
 <div id="backdrop"></div>
-<div id="window"><div id="camera"><img id="shot" alt=""><div id="cursor">${arrow}</div></div></div>
+<div id="window"><div id="camera"><img id="shot" alt=""><div id="highlight"></div><div id="cursor">${arrow}</div></div></div>
 <script>
 const data = ${JSON.stringify(data)};
 const shot = document.getElementById('shot');
 const cursor = document.getElementById('cursor');
+const camera = document.getElementById('camera');
+const box = document.getElementById('highlight');
+const W = ${VIEWPORT.width}, H = ${VIEWPORT.height};
+const ease = (k) => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2);
+
+// A highlight at t: the red box fades in, and the camera zooms toward the box by its zoom
+// (1 is the box filling the view), centred on it but never past the app's edges.
+const highlightAt = (t) => {
+  const h = data.highlights.find((h) => t >= h.at && t < h.until);
+  if (!h) {
+    box.style.opacity = 0;
+    camera.style.transform = '';
+    return;
+  }
+  const [x, y, w, h2] = h.box;
+  const pad = 8;
+  Object.assign(box.style, { left: x - pad + 'px', top: y - pad + 'px', width: w + pad * 2 + 'px', height: h2 + pad * 2 + 'px' });
+  const span = h.until - h.at, inOut = Math.min(0.6, span / 3);
+  const e = ease(Math.min(1, (t - h.at) / inOut, (h.until - t) / inOut));
+  box.style.opacity = Math.min(1, (t - h.at) / 0.25, (h.until - t) / 0.25);
+  const full = Math.min(W / (w + 96), H / (h2 + 96));
+  const scale = 1 + (Math.max(1, full) - 1) * h.zoom * e;
+  const fx = W / 2 + (x + w / 2 - W / 2) * e, fy = H / 2 + (y + h2 / 2 - H / 2) * e;
+  const tx = Math.min(0, Math.max(W - W * scale, W / 2 - fx * scale));
+  const ty = Math.min(0, Math.max(H - H * scale, H / 2 - fy * scale));
+  camera.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+};
 const dip = () => cursor.querySelector('svg').getAnimations()[0];
 
 // The last of a list timed by 'at' that has started by t.
@@ -137,6 +167,7 @@ window.stage = {
       const x = b ? a.x + (b.x - a.x) * k : a.x, y = b ? a.y + (b.y - a.y) * k : a.y;
       cursor.style.transform = 'translate(' + x + 'px,' + y + 'px)';
     }
+    highlightAt(t);
     const click = data.clicks[lastBy(data.clicks, t)];
     const press = dip();
     if (press) press.currentTime = click ? Math.min(250, (t - click.at) * 1000) : 250;

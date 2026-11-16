@@ -6,7 +6,12 @@ allowed-tools: Bash(product-demo:*)
 
 # product-demo
 
-Explore the app to learn how to do what was asked, write the film from what you learnt, rehearse it until it's right, then shoot it and cut the video. Every stage can be repeated.
+Explore the app to learn how to do what was asked, write the film from what you learnt, rehearse it until it's right, then shoot it and cut the video. Every stage can be repeated, and each has one job:
+
+- **Explore** is for learning: how the app works, what's on each screen, which elements are the real ones. Nothing about how the video looks is decided here.
+- **Writing the film** is where every decision is made: the steps, and the effects the video should have (what to highlight, the cursor's colour).
+- **Rehearse and shoot** record that flow, as written.
+- **Cut** draws the effects the film asked for. Changing how an effect looks only needs another cut.
 
 ## 1. Explore: learn the app
 
@@ -58,7 +63,7 @@ Then:
 - Add `"notes"` to the film: what it's for, who it's for, what it has to prove.
 - Add a `"note"` to any step whose purpose isn't obvious, or that is fragile or odd. Notes are never run; they're for whoever reads the film next, you included.
 - Set how long the last screen holds, in seconds: `"ending": { "hold": 2 }` (2 if you leave it out).
-- To change how the video looks (the cursor's colour), read [directing.md](directing.md).
+- Decide the effects now: what to highlight, and the cursor's colour. Read [directing.md](directing.md) for each.
 - Leave each step's `locator`, `selector` and `fingerprint` as they are.
 
 A step you add by hand names its element as `{ "role": "button", "name": "Save" }`, `{ "text": "Save" }` or `{ "css": "#save" }`. Steps: `visit`, `click` (with `double`, `right`, `modifiers`, `at`), `fill` (with `text`), `select` (with `option`), `type`, `press`, `hover` (with `seconds`), `drag` (with `to`), `scroll` (`up` or `down`, with `in` and `pixels`), `upload` (a file path, with `into`), `wait` (`{ "text": "..." }`, `{ "text": "...", "gone": true }` or seconds). `at` is where on the element, as fractions of its box: `{ "x": 0.9, "y": 0.5 }`. A step written by hand has no pin: prefer exploring it and copying it from the log.
