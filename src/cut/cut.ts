@@ -118,8 +118,12 @@ function clickSounds(times: number[], length: number): string[] {
     fileURLToPath(new URL(`../library/sounds/${file}`, import.meta.url)),
   ])
   // Random, but seeded by the click's time, so cutting the same footage again sounds the same.
-  const pick = (t: number) =>
-    (Math.imul(Math.round(t * 1000) + 1, 2654435761) >>> 0) % CLICKS.length
+  const pick = (t: number) => {
+    let h = Math.round(t * 1000)
+    h = Math.imul(h ^ (h >>> 16), 0x7feb352d)
+    h = Math.imul(h ^ (h >>> 15), 0x846ca68b)
+    return ((h ^ (h >>> 16)) >>> 0) % CLICKS.length
+  }
   // Each sound is split into as many copies as it plays, then each copy is delayed to its time.
   const splits = CLICKS.map((_, k) => {
     const mine = times.flatMap((t, i) => (pick(t) === k ? [`[c${i}]`] : []))
