@@ -107,7 +107,7 @@ export async function cut(
   return length
 }
 
-/** The clicks, taken in turn, so one click never sounds exactly like the last. */
+/** The clicks, one picked at random for each, so they don't all sound the same. */
 const CLICKS = ['click-1.wav', 'click-2.wav']
 
 /** ffmpeg's arguments for the sound: a click at each of these times, for the video's length. */
@@ -117,9 +117,12 @@ function clickSounds(times: number[], length: number): string[] {
     '-i',
     fileURLToPath(new URL(`../library/sounds/${file}`, import.meta.url)),
   ])
+  // Random, but seeded by the click's time, so cutting the same footage again sounds the same.
+  const pick = (t: number) =>
+    (Math.imul(Math.round(t * 1000) + 1, 2654435761) >>> 0) % CLICKS.length
   // Each sound is split into as many copies as it plays, then each copy is delayed to its time.
   const splits = CLICKS.map((_, k) => {
-    const mine = times.flatMap((_, i) => (i % CLICKS.length === k ? [`[c${i}]`] : []))
+    const mine = times.flatMap((t, i) => (pick(t) === k ? [`[c${i}]`] : []))
     return mine.length
       ? `[${k + 1}:a]asplit=${mine.length}${mine.join('')}`
       : `[${k + 1}:a]anullsink`
