@@ -10,7 +10,7 @@ export const BACKDROPS = ['halo', 'sky', 'violet'] as const
 export const DISPLAYS = ['none', 'browser'] as const
 export type Display = (typeof DISPLAYS)[number]
 
-/** The cursor's colours, as the cut draws it. */
+/** The cursors the cut can draw: the rounded arrow in three colours, or a Mac's pointer. */
 export const CURSORS = ['black', 'pink', 'lime', 'macos'] as const
 export type Cursor = (typeof CURSORS)[number]
 
@@ -41,6 +41,7 @@ export interface Config {
   backdrop: (typeof BACKDROPS)[number]
   display: Display
   cursor: Cursor
+  cursorSize: number
   sound: Sound
   voice: VoiceChoice
   keep: number
@@ -56,7 +57,13 @@ const config: z.ZodType<Config> = z.strictObject({
   cursor: z
     .enum(CURSORS)
     .default('black')
-    .describe("The cursor's colour in the video. A film can choose its own."),
+    .describe('The cursor in the video: the rounded arrow in black, pink or lime, or macos.'),
+  cursorSize: z
+    .number()
+    .min(0.5)
+    .max(3)
+    .default(1)
+    .describe('How big the cursor is: 1 is its own size, 1.5 half as big again, 0.75 smaller.'),
   sound: soundSchema
     .default(true)
     .describe(

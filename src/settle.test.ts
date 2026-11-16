@@ -178,10 +178,16 @@ test('is not fooled by "loading" in a code sample on the page', async () => {
 })
 
 test('is not held up long by an animation the action starts that never ends', async () => {
+  const page: Page = await browser.newPage()
+  const settler = watch(page)
+  await page.goto(base + '/looping')
+  await settler.settled()
+  await settler.mark()
+  await page.getByRole('button').click()
   const start = performance.now()
-  const { result } = await pressAndSettle('/looping')
+  const result = await settler.settled()
   expect(result.settled).toBe(true)
-  expect(performance.now() - start).toBeLessThan(2500)
+  expect(performance.now() - start).toBeLessThan(2200)
 })
 
 test('is not held up by what was already moving on screen', async () => {

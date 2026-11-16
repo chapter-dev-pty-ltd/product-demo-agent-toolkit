@@ -42,6 +42,7 @@ export async function cut(
   const look = {
     backdrop: config.backdrop,
     cursor: config.cursor,
+    cursorSize: config.cursorSize,
     display: config.display,
   }
   const title = film.notes?.split(/(?<=\.)\s/)[0] ?? ''

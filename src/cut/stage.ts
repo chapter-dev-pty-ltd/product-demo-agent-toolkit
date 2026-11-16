@@ -27,7 +27,7 @@ const CURSOR_LOOKS: Record<
   black: { file: 'arrow.svg', width: 28.8, height: 28.8, tip: 4, colour: '#111111' },
   pink: { file: 'arrow.svg', width: 28.8, height: 28.8, tip: 4, colour: '#ff7ccb' },
   lime: { file: 'arrow.svg', width: 28.8, height: 28.8, tip: 4, colour: '#b6f24f' },
-  macos: { file: 'macos.svg', width: 22, height: 31, tip: 1.5, colour: '#000000' },
+  macos: { file: 'macos.svg', width: 27.5, height: 38.75, tip: 1.875, colour: '#000000' },
 }
 
 /** A highlight as the stage draws it, timed from the footage's start. */
@@ -58,7 +58,12 @@ export async function openStage(
   footageDir: string,
   footage: Footage,
   highlights: Highlighted[],
-  look: { backdrop: Config['backdrop']; cursor: Config['cursor']; display: Config['display'] },
+  look: {
+    backdrop: Config['backdrop']
+    cursor: Config['cursor']
+    cursorSize: number
+    display: Config['display']
+  },
   length: number,
   title: string,
   extra = '',
@@ -128,11 +133,18 @@ const RIM = 10
 function html(
   data: StageData,
   arrow: string,
-  look: { cursor: Config['cursor']; display: Config['display'] },
+  look: { cursor: Config['cursor']; cursorSize: number; display: Config['display'] },
   extra: string,
 ): string {
   const browser = look.display === 'browser'
-  const pointer = CURSOR_LOOKS[look.cursor]
+  // The cursor at its own size, times the config's.
+  const own = CURSOR_LOOKS[look.cursor]
+  const pointer = {
+    ...own,
+    width: own.width * look.cursorSize,
+    height: own.height * look.cursorSize,
+    tip: own.tip * look.cursorSize,
+  }
   // In a browser it's the whole window, toolbar and all, that's centred.
   const app = {
     x: (CANVAS.width - VIEWPORT.width) / 2,
