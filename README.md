@@ -1,9 +1,9 @@
 # <img src="docs/logo.svg" alt="Chapter" height="36" align="absmiddle"> product-demo-agent-toolkit
 
-### A toolkit to make beautiful product videos locally with your own agent
+### A toolkit to make beautiful product videos with your own agent
 
-A toolkit for your agent to create videos of your product that customers love, all on your own
-subscription, completely locally.
+Create product videos that your customers love, with your own AI agent, and let the toolkit
+handle all of the common issues that agents run into while creating demos.
 
 <!--
   Looping demo video goes here. GitHub doesn't autoplay <video> in a README, so for a loop use a
