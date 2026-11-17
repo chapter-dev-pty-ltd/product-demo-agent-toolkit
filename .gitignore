@@ -3,3 +3,4 @@ dist
 .product-demo
 .DS_Store
 .env
+*.tgz
