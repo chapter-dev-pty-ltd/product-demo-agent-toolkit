@@ -38,9 +38,6 @@ such as:
 - **Unnatural narratives.** Left to itself, an agent makes up scenarios no real user would
   go through, with made-up data and steps that don't match how your product is used. The
   toolkit has it explore your app first, then write a script you can read and edit.
-- **It has no cursor, sound or framing.** A raw recording is a bare screen. The toolkit draws
-  a cursor that dips on every click, plays real click and keyboard sounds, and frames the app
-  on a backdrop or in a browser window.
 - **Voiceovers are out of sync.** Narration added afterwards never lines up. Here, the
   lines are spoken first and every click, keystroke and drag lands on its word.
 
@@ -48,16 +45,18 @@ such as:
 
 ![The cursors (macOS, black, pink, lime, and any hex colour with an Agent label) and the backgrounds (halo, sky, violet and more)](docs/defaults.webp)
 
+As well as:
+
 - Background music that doesn't put your audience to sleep.
 - Frames (browser, rounded borders).
 - Cursor movement that feels like a real human.
 - Real clicking & typing sounds.
 - 1080p at 60fps.
 
-## Config
+## Easily Customizable
 
-Everything has a default, so no config is needed. To change one, add
-`.product-demo/config.json` to the project:
+The toolkit is ready to roll by default, but if you want to customize it, you can do that too!
+Add `.product-demo/config.json` to the project:
 
 | Setting    | Default                  | What it does                                                                                                                                                          |
 | ---------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -69,8 +68,6 @@ Everything has a default, so no config is needed. To change one, add
 | `voice`    | Jessica, from ElevenLabs | Who speaks the voiceover: `{ "provider": "elevenlabs", "voice": "<voice id>" }`.                                                                                      |
 | `keep`     | `10`                     | How many rehearsals and shoots of each film to keep.                                                                                                                  |
 | `review`   | `false`                  | Whether `cut` also makes the review image.                                                                                                                            |
-
-These apply to every video of the project. A film can't override them.
 
 ## Features
 
