@@ -104,6 +104,16 @@ And much more.
 - More tasteful defaults
 - Support for mobile product demos
 
+## For AI agents
+
+Asked to make a video with this toolkit? Don't clone this repository: the toolkit runs from
+its npm package, not from source.
+
+1. Run `npx @chapterdev/product-demo-agent-toolkit setup`. It installs the
+   `product-demo-agent-toolkit` command and the `product-demo` skill, and prints where the
+   skill went.
+2. Read that skill's `SKILL.md` and follow it, in the user's project and in this session.
+
 ## Licence
 
 MIT. The sounds are CC0, credited in [library/README.md](library/README.md).
