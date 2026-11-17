@@ -12,7 +12,7 @@ You need Node 22.18 or later, on macOS or Linux.
 1. Install the command:
 
    ```bash
-   npm install -g product-demo-agent-toolkit
+   npm install -g @chapterdev/product-demo-agent-toolkit
    ```
 
 2. Install the skills, so your agent knows how to use it. In Claude Code, this copies them into
@@ -85,7 +85,7 @@ These apply to every video of the project. A film can't override them.
   behind a sign-in has to be signed into by the film's own steps.
 - The app's data isn't reset between runs. A film that creates a record creates another each
   time it's rehearsed or shot.
-- To update: `npm install -g product-demo-agent-toolkit@latest`, then run
+- To update: `npm install -g @chapterdev/product-demo-agent-toolkit@latest`, then run
   `product-demo-agent-toolkit skills` again for the latest skills.
 
 ## Licence

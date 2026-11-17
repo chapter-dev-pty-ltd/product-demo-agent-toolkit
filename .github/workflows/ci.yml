@@ -31,5 +31,5 @@ jobs:
       - name: Install the packed package and run it
         working-directory: ${{ runner.temp }}
         run: |
-          npm install -g ./product-demo-agent-toolkit-*.tgz
+          npm install -g ./*.tgz
           product-demo-agent-toolkit --version

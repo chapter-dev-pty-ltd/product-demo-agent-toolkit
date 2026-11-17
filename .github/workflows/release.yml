@@ -47,7 +47,7 @@ jobs:
             *-*) tag=next ;;
             *) tag=latest ;;
           esac
-          npm publish ./product-demo-agent-toolkit-*.tgz --tag "$tag" --access public --provenance
+          npm publish ./*.tgz --tag "$tag" --access public --provenance
       - name: GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
