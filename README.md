@@ -1,5 +1,7 @@
 # <img src="docs/logo.svg" alt="Chapter" height="36" align="absmiddle"> product-demo-agent-toolkit
 
+[![npm version](https://img.shields.io/npm/v/@chapterdev/product-demo-agent-toolkit)](https://www.npmjs.com/package/@chapterdev/product-demo-agent-toolkit) [![License: MIT](https://img.shields.io/npm/l/@chapterdev/product-demo-agent-toolkit)](LICENSE)
+
 ### A toolkit to make beautiful product videos with your own agent
 
 Create product videos that your customers love, with your own AI agent, and let the toolkit
