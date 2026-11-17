@@ -23,9 +23,11 @@ Now ask your agent to create a product demo for you:
 
 > Make a 20 second demo video of creating an invoice.
 
-## Why not just ask your agent to record the screen?
+## Why do I need a toolkit?
 
-An agent can already drive a browser. What comes out isn't a video anyone wants to watch:
+Although your agent can drive your browser and navigate your product, we've found that it makes
+certain decisions that just aren't acceptable if you want to send these videos to customers,
+such as:
 
 - **It moves like a robot.** The pointer jumps from place to place, text appears all at once,
   and nothing pauses for the viewer. The toolkit moves the pointer the way a hand does, types
@@ -33,15 +35,14 @@ An agent can already drive a browser. What comes out isn't a video anyone wants 
 - **It doesn't know when the page is ready.** It either waits too long, filling the video
   with dead air, or acts too early, mid-load. The toolkit watches the screen itself, so it
   waits for what's loading and not a moment longer.
+- **Unnatural narratives.** Left to itself, an agent makes up scenarios no real user would
+  go through, with made-up data and steps that don't match how your product is used. The
+  toolkit has it explore your app first, then write a script you can read and edit.
 - **It has no cursor, sound or framing.** A raw recording is a bare screen. The toolkit draws
   a cursor that dips on every click, plays real click and keyboard sounds, and frames the app
   on a backdrop or in a browser window.
-- **Its voiceover can't keep time.** Narration added afterwards never lines up. Here, the
+- **Voiceovers are out of sync.** Narration added afterwards never lines up. Here, the
   lines are spoken first and every click, keystroke and drag lands on its word.
-- **Every change means starting again.** Here, the look is drawn after shooting, so changing
-  the cursor, a highlight or the framing is a re-cut in seconds, not another take.
-
-And it runs locally: your agent, your app, your machine. Nothing is uploaded.
 
 ## Tasteful Defaults
 
