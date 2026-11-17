@@ -6,7 +6,9 @@ import {
   cut,
   explore,
   init,
+  copySkills,
   installSkills,
+  installedSkills,
   setup,
   loadKeys,
   readFootage,
@@ -64,8 +66,8 @@ const USAGE = `product-demo-agent-toolkit ${version}
   product-demo-agent-toolkit cut [footage] [--out video.mp4]
   product-demo-agent-toolkit review [footage | video.mp4]  An image of frames from across the video, to check it by
 
-Set up, once: product-demo-agent-toolkit setup   Install the command for good, and the skills for Claude Code
-             product-demo-agent-toolkit skills [dir]   Copy just the skills into ~/.claude/skills (or dir)
+Set up, once: product-demo-agent-toolkit setup   Install the command for good, and the skills for every agent on this machine
+             product-demo-agent-toolkit skills [dir]   Just the skills: for every agent found (Claude Code, Codex, Cursor, Gemini CLI, Copilot, OpenCode), or into dir
 
 Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (sky, any of the 22 in library/backdrops, a hex, or a path to your own .jpg/.png/.webp), display (none | browser),
 cursor (black | pink | lime | macos | a hex | a path to your own .svg, or { style, size, label, tip }), sound (true | false | { click }, default true),
@@ -204,8 +206,12 @@ try {
   } else if (command === 'setup') {
     for (const line of await setup()) console.log(line)
   } else if (command === 'skills') {
-    const to = await installSkills(input)
-    console.log(`Copied the product-demo skills into ${to}. Start a new session to load them.`)
+    console.log(
+      input
+        ? `Copied the skills into ${await copySkills(input)}.`
+        : installedSkills(await installSkills()),
+    )
+    console.log('Start a new session with your agent to load them.')
   } else if (command === 'review') {
     if (input?.endsWith('.mp4')) {
       if (!existsSync(input)) throw new Error(`There's no video at ${input}.`)

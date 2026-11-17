@@ -34,12 +34,52 @@ export function loadKeys(): void {
 
 const COMMAND = 'product-demo-agent-toolkit'
 
-/** Copies the skills into an agent's skills folder: Claude Code's, unless told another. */
-export async function installSkills(
-  to: string = join(homedir(), '.claude', 'skills'),
-): Promise<string> {
+/**
+ * The agents a user might have, by the folder each keeps in their home. Most read skills from
+ * the shared ~/.agents/skills; those with `skills` read only their own folder.
+ */
+const AGENTS: { name: string; home: string; skills?: string }[] = [
+  { name: 'Claude Code', home: '.claude', skills: join('.claude', 'skills') },
+  { name: 'Codex', home: '.codex', skills: join('.codex', 'skills') },
+  {
+    name: 'OpenCode',
+    home: join('.config', 'opencode'),
+    skills: join('.config', 'opencode', 'skills'),
+  },
+  { name: 'Cursor', home: '.cursor' },
+  { name: 'Gemini CLI', home: '.gemini' },
+  { name: 'GitHub Copilot', home: '.copilot' },
+]
+
+/** Copies the skills into one folder. */
+export async function copySkills(to: string): Promise<string> {
   await cp(fileURLToPath(new URL('../skills', import.meta.url)), to, { recursive: true })
   return to
+}
+
+/**
+ * Installs the skills for every agent on this machine: into the shared ~/.agents/skills, and
+ * into the own folder of each agent found that reads only that. Says which agents it found.
+ */
+export async function installSkills(
+  home: string = homedir(),
+): Promise<{ agents: string[]; folders: string[] }> {
+  const found = AGENTS.filter((agent) => existsSync(join(home, agent.home)))
+  const folders = [
+    join(home, '.agents', 'skills'),
+    ...found.flatMap((agent) => (agent.skills ? [join(home, agent.skills)] : [])),
+  ]
+  for (const folder of folders) await copySkills(folder)
+  return { agents: found.map((agent) => agent.name), folders }
+}
+
+/** What installing the skills did, for people. */
+export function installedSkills({ agents }: { agents: string[] }): string {
+  const named =
+    agents.length > 1 ? `${agents.slice(0, -1).join(', ')} and ${agents.at(-1)}` : agents[0]
+  return named
+    ? `Installed the skills for ${named}, and in ~/.agents/skills for any other agent that reads it. For an agent that keeps skills somewhere else: ${COMMAND} skills <its skills folder>.`
+    : `Installed the skills in ~/.agents/skills. If your agent keeps skills somewhere else: ${COMMAND} skills <its skills folder>.`
 }
 
 /**
@@ -73,7 +113,7 @@ export async function setup(): Promise<string[]> {
     }
     said.push(`Installed the ${COMMAND} command (${pkg.version}).`)
   }
-  said.push(`Copied the skills into ${await installSkills()}.`)
+  said.push(installedSkills(await installSkills()))
   said.push(
     'Ready. Start a new session with your agent in your project, and ask it for a video of your app: "make a 20 second demo of creating an invoice".',
   )

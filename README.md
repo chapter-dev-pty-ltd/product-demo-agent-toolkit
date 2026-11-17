@@ -21,6 +21,10 @@ handle all of the common issues that agents run into while creating demos.
 npx @chapterdev/product-demo-agent-toolkit setup
 ```
 
+It installs the command, and the skills for whichever of these agents you have: Claude Code,
+Codex, Cursor, Gemini CLI, GitHub Copilot and OpenCode. For any other agent that reads Agent
+Skills, copy them into its skills folder: `product-demo-agent-toolkit skills <folder>`.
+
 Now ask your favorite agent to:
 
 > Make me a walkthrough video of my product running locally, showcasing the sign up flow.

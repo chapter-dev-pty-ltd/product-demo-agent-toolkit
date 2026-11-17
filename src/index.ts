@@ -7,6 +7,15 @@ export { review } from './review.ts'
 export { latestRun, newRun } from './footage.ts'
 export { explore, send, serve } from './explore.ts'
 export { readFilm } from './film.ts'
-export { init, installSkills, loadKeys, readSecret, saveKey, setup } from './setup.ts'
+export {
+  copySkills,
+  init,
+  installSkills,
+  installedSkills,
+  loadKeys,
+  readSecret,
+  saveKey,
+  setup,
+} from './setup.ts'
 export { NeedsDecision, rehearse, shoot, type Footage } from './perform.ts'
 export { speakLines, wordAt, type Spoken } from './voice.ts'
