@@ -17,17 +17,52 @@ const CANVAS = { width: 1920, height: 1080 }
 const ORIGIN = 'https://stage.product-demo'
 /**
  * Each cursor: its drawing, its size on the stage, where its tip is (from its top left, in
- * stage pixels) and its colour. The rounded arrow comes in colours; `macos` is a classic
- * pointer, black with a white edge.
+ * stage pixels), its colour, and where its label sits and the label's text colour. The rounded
+ * arrow comes in colours; `macos` is a classic pointer, black with a white edge.
  */
 const CURSOR_LOOKS: Record<
   Config['cursor']['style'],
-  { file: string; width: number; height: number; tip: number; colour: string }
+  {
+    file: string
+    width: number
+    height: number
+    tip: number
+    colour: string
+    label: { x: number; y: number; text: string }
+  }
 > = {
-  black: { file: 'arrow.svg', width: 28.8, height: 28.8, tip: 4, colour: '#111111' },
-  pink: { file: 'arrow.svg', width: 28.8, height: 28.8, tip: 4, colour: '#ff7ccb' },
-  lime: { file: 'arrow.svg', width: 28.8, height: 28.8, tip: 4, colour: '#b6f24f' },
-  macos: { file: 'macos.svg', width: 27.5, height: 38.75, tip: 1.875, colour: '#000000' },
+  black: {
+    file: 'arrow.svg',
+    width: 28.8,
+    height: 28.8,
+    tip: 4,
+    colour: '#111111',
+    label: { x: 22.75, y: 20.5, text: '#ffffff' },
+  },
+  pink: {
+    file: 'arrow.svg',
+    width: 28.8,
+    height: 28.8,
+    tip: 4,
+    colour: '#ff7ccb',
+    label: { x: 22.75, y: 20.5, text: '#ffffff' },
+  },
+  lime: {
+    file: 'arrow.svg',
+    width: 28.8,
+    height: 28.8,
+    tip: 4,
+    colour: '#b6f24f',
+    label: { x: 22.75, y: 20.5, text: '#111111' },
+  },
+  macos: {
+    file: 'macos.svg',
+    width: 27.5,
+    height: 38.75,
+    tip: 1.875,
+    colour: '#000000',
+    label: { x: 24, y: 26, text: '#ffffff' },
+  },
 }
 
 /** A highlight as the stage draws it, timed from the footage's start. */
@@ -144,6 +179,10 @@ function html(
     height: own.height * look.cursor.size,
     tip: own.tip * look.cursor.size,
   }
+  const k = look.cursor.size
+  const label = look.cursor.label
+    ? `<div id="label">${look.cursor.label.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</div>`
+    : ''
   // In a browser it's the whole window, toolbar and all, that's centred.
   const app = {
     x: (CANVAS.width - VIEWPORT.width) / 2,
@@ -201,6 +240,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 #cursor { position: absolute; left: -${pointer.tip}px; top: -${pointer.tip}px; width: ${pointer.width}px; height: ${pointer.height}px; color: ${pointer.colour}; }
 #cursor svg { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: ${pointer.tip}px ${pointer.tip}px; animation: dip 250ms linear paused;
   filter: drop-shadow(0 1.5px 2.5px rgb(0 0 0 / .28)); }
+/* The cursor's label: a pill in its colour, below and right of the arrow. */
+#label { position: absolute; left: ${own.label.x * k}px; top: ${own.label.y * k}px; padding: ${4 * k}px ${8.25 * k}px;
+  border-radius: 999px; background: ${own.colour}; color: ${own.label.text}; white-space: nowrap;
+  font: 600 ${13.5 * k}px/${16.5 * k}px Inter, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.01em;
+  box-shadow: 0 ${2 * k}px ${4 * k}px rgb(0 0 0 / .18); }
 /* A click: the arrow pressed in, then springing back past its size and settling. */
 @keyframes dip {
   0% { transform: scale(1); animation-timing-function: cubic-bezier(.2,.7,.3,1); }
@@ -211,7 +255,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 </style></head><body>
 <div id="backdrop"></div>
 ${browser ? toolbar() : ''}
-<div id="window"><div id="camera"><img id="shot" alt=""><div id="highlight"></div><div id="dim"></div><div id="lift"><img alt=""></div><div id="cursor">${arrow}</div></div></div>
+<div id="window"><div id="camera"><img id="shot" alt=""><div id="highlight"></div><div id="dim"></div><div id="lift"><img alt=""></div><div id="cursor">${arrow}${label}</div></div></div>
 <script>
 const data = ${JSON.stringify(data)};
 const shot = document.getElementById('shot');

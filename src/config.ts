@@ -13,10 +13,11 @@ export type Display = (typeof DISPLAYS)[number]
 /** The cursors the cut can draw: the rounded arrow in three colours, or a Mac's pointer. */
 export const CURSORS = ['black', 'pink', 'lime', 'macos'] as const
 
-/** The cursor: which one, and how big (1 is its own size). */
+/** The cursor: which one, how big (1 is its own size), and a label beside it. */
 export interface Cursor {
   style: (typeof CURSORS)[number]
   size: number
+  label?: string | undefined
 }
 
 /** `"macos"` for one at its own size, or `{ "style": "macos", "size": 1.5 }`. */
@@ -26,6 +27,7 @@ const cursorSchema: z.ZodType<Cursor, unknown> = z
     z.strictObject({
       style: z.enum(CURSORS).default('black'),
       size: z.number().min(0.5).max(3).default(1),
+      label: z.string().trim().min(1).max(30).optional(),
     }),
   ])
   .transform((cursor) => (typeof cursor === 'string' ? { style: cursor, size: 1 } : cursor))
@@ -72,7 +74,7 @@ const config: z.ZodType<Config> = z.strictObject({
   cursor: cursorSchema
     .default({ style: 'black', size: 1 })
     .describe(
-      'The cursor in the video: its style (the rounded arrow in black, pink or lime, or macos) and size (1 is its own size, 1.5 half as big again). A style alone is fine: "macos".',
+      'The cursor in the video: its style (the rounded arrow in black, pink or lime, or macos) and size (1 is its own size, 1.5 half as big again), and optionally a label shown beside it, like "Agent". A style alone is fine: "macos".',
     ),
   sound: soundSchema
     .default(true)
