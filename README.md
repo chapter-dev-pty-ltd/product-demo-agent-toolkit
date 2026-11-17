@@ -47,14 +47,11 @@ And it runs locally: your agent, your app, your machine. Nothing is uploaded.
 
 ![The cursors (macOS, black, pink, lime, and any hex colour with an Agent label) and the backgrounds (halo, sky, violet and more)](docs/defaults.webp)
 
-Every video looks finished with no setup:
-
-- 1080p at 60fps, the app crisp on a soft backdrop.
-- A drawn cursor that glides between targets and dips as it clicks.
-- Real click and keyboard sounds on every click and keystroke, with space and Enter their own.
-- Highlights that zoom in smoothly on what matters.
-- An optional browser window, frosted over the backdrop, with an address bar that follows the
-  page.
+- Background music that doesn't put your audience to sleep.
+- Frames (browser, rounded borders).
+- Cursor movement that feels like a real human.
+- Real clicking & typing sounds.
+- 1080p at 60fps.
 
 ## Config
 
