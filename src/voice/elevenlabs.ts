@@ -16,7 +16,7 @@ export const elevenlabs: VoiceProvider = {
     const why = await response.text()
     // A key limited to some things is still a key: this only asks who it belongs to.
     if (why.includes('missing_permissions')) return undefined
-    return `ElevenLabs said ${response.status}: ${why.slice(0, 200)}`
+    return refusal(response.status, why)
   },
   async speak(text, choice) {
     const key = process.env.ELEVENLABS_API_KEY
@@ -38,17 +38,36 @@ export const elevenlabs: VoiceProvider = {
       if (response.ok) return read(await response.json())
       const retry = response.status === 429 || response.status >= 500
       if (!retry || wait === 0) {
-        const why = (await response.text()).slice(0, 300)
-        const voice =
+        const why = refusal(response.status, await response.text())
+        const next =
           response.status === 404
             ? ` The voice ${choice.voice} isn't in this account: add it from the Voice Library, or set another.`
-            : ''
-        throw new Error(`ElevenLabs said ${response.status}: ${why}${voice}`)
+            : response.status === 401
+              ? ' Save a key that works with: product-demo-agent-toolkit key elevenlabs'
+              : ''
+        throw new Error(`${why}.${next}`)
       }
       await new Promise((done) => setTimeout(done, wait))
     }
     throw new Error('ElevenLabs did not answer.')
   },
+}
+
+/**
+ * What ElevenLabs said was wrong, in a line: its own message when it sends one
+ * ({"detail":{"message":"Invalid API key",…}}), not the JSON around it.
+ */
+export function refusal(status: number, body: string): string {
+  let message: unknown
+  try {
+    const { detail }: { detail?: unknown } = JSON.parse(body)
+    message =
+      typeof detail === 'object' && detail !== null && 'message' in detail ? detail.message : detail
+  } catch {
+    // Not JSON, so it's said as it came.
+  }
+  const said = typeof message === 'string' && message ? message : body.slice(0, 300)
+  return `ElevenLabs said ${status}: ${said.trim().replace(/\.$/, '')}`
 }
 
 interface Answer {

@@ -17,18 +17,27 @@ const HOME_ENV = join(homedir(), '.product-demo', '.env')
 
 /**
  * Loads the voice providers' keys from the project's .env, then the home one. Only those keys:
- * the rest of an app's .env stays out of the browser and ffmpeg. Neither overrides what's set.
+ * the rest of an app's .env stays out of the browser and ffmpeg. Neither overrides what's set,
+ * and a file that doesn't name a key, or leaves it blank, leaves it to the next.
  */
-export function loadKeys(): void {
+export function loadKeys(
+  files: string[] = ['.env', HOME_ENV],
+  env: NodeJS.ProcessEnv = process.env,
+): void {
   const keys = Object.values(PROVIDERS).map((provider) => provider.key)
-  for (const file of ['.env', HOME_ENV]) {
+  for (const file of files) {
     let found: Record<string, string | undefined>
     try {
       found = parseEnv(readFileSync(file, 'utf8'))
     } catch {
       continue
     }
-    for (const key of keys) process.env[key] ??= found[key]
+    for (const key of keys) {
+      // Only a key that's there: process.env keeps undefined as the word "undefined", which
+      // then counts as a key, is sent to the provider and is turned down.
+      const value = found[key]
+      if (value && !env[key]) env[key] = value
+    }
   }
 }
 
@@ -144,22 +153,33 @@ export async function init(): Promise<string[]> {
     said.push(`Voiceover: there's no provider called ${voice.provider}.`)
   } else if (!key) {
     said.push(
-      `Voiceover: no ${provider.name} key, so films can't have a voiceover. Ask the user for one, ` +
-        `once, and carry on meanwhile. They can save it in their own terminal with ` +
-        `\`product-demo-agent-toolkit key ${voice.provider}\` (it asks for it, hidden). If they give it ` +
-        `to you, pipe it in, so it stays out of the command line: ` +
-        `\`printf %s '<key>' | product-demo-agent-toolkit key ${voice.provider}\`. Without one, make the film without a voiceover and say so.`,
+      `Voiceover: no ${provider.name} key, so films can't have a voiceover. ` +
+        askForKey(voice.provider, 'one'),
     )
   } else {
     const problem = await provider.check(key)
     said.push(
       problem
-        ? `Voiceover: the ${provider.name} key doesn't work (${problem}). Ask the user for a new one: ` +
-            `\`product-demo-agent-toolkit key ${voice.provider}\` saves it.`
+        ? `Voiceover: the ${provider.name} key doesn't work (${problem}), so films can't have ` +
+            `a voiceover. ${askForKey(voice.provider, 'a new one')}`
         : `Voiceover: ready, with ${provider.name}.`,
     )
   }
   return said
+}
+
+/**
+ * What the agent does when there's no key that works: a voiceover is the user's to choose, so
+ * it asks once and gets on with the film, rather than stopping or trying the key again.
+ */
+function askForKey(provider: string, which: 'one' | 'a new one'): string {
+  return (
+    `A voiceover is optional: ask the user for ${which}, once, and carry on meanwhile. They can ` +
+    `save it in their own terminal with \`${COMMAND} key ${provider}\` (it asks for it, hidden). ` +
+    `If they give it to you, pipe it in, so it stays out of the command line: ` +
+    `\`printf %s '<key>' | ${COMMAND} key ${provider}\`. Without one, make the film without a ` +
+    `voiceover and say so.`
+  )
 }
 
 /** Checks a provider's key and saves it in ~/.product-demo/.env, for every project. */
@@ -175,8 +195,9 @@ export async function saveKey(id: string, key: string): Promise<string> {
   // Readable only by the user, from the moment it's made (and if it was made before, from now).
   await writeFile(HOME_ENV, [...kept, `${provider.key}=${key}`].join('\n') + '\n', { mode: 0o600 })
   await chmod(HOME_ENV, 0o600)
+  // A blank one in the project's .env doesn't count: loadKeys passes over it.
   const shadowed =
-    existsSync('.env') && (await readFile('.env', 'utf8')).includes(`${provider.key}=`)
+    existsSync('.env') && Boolean(parseEnv(await readFile('.env', 'utf8'))[provider.key])
   return `Saved the ${provider.name} key in ${HOME_ENV}, for every project.${
     shadowed ? ` This project's .env sets its own ${provider.key}, which is used here instead.` : ''
   }`
