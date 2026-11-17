@@ -69,7 +69,7 @@ Run `product-demo-agent-toolkit voice film.json` to see how long each line is an
 then rehearse. If rehearse says an action `landed 0.7s after "drag" was said`, add a few words
 before that word and rehearse again. Keep lines plain and short, about 2.6 words a second.
 
-The voice is Emma, from ElevenLabs, unless the config chooses another:
+The voice is Jessica, from ElevenLabs, unless the config chooses another:
 `"voice": { "provider": "elevenlabs", "voice": "<voice id>" }`. It needs an ElevenLabs key
 (`product-demo-agent-toolkit init` says whether there is one).
 

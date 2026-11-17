@@ -43,8 +43,8 @@ export function soundOn(kind: 'click' | 'typing', setting: Sound): boolean {
   return typeof setting === 'object' ? (setting[kind] ?? true) : setting
 }
 
-/** Emma, an ElevenLabs voice. */
-const EMMA = '56bWURjYFHyYyVf490Dp'
+/** Jessica, one of ElevenLabs' own voices: every account has her. */
+const JESSICA = 'cgSgspJ2msm6clMCkdW9'
 
 export const voiceSchema: z.ZodObject<{
   provider: z.ZodString
@@ -80,7 +80,7 @@ const config: z.ZodType<Config> = z.strictObject({
       'The video\'s sounds: true or false for all of them, or { "click": false } to choose each.',
     ),
   voice: voiceSchema
-    .default({ provider: 'elevenlabs', voice: EMMA })
+    .default({ provider: 'elevenlabs', voice: JESSICA })
     .describe(
       "Who speaks the film's lines: a provider, one of its voice ids, and optionally a model.",
     ),
