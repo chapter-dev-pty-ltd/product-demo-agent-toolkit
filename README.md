@@ -1,4 +1,4 @@
-# <img src="docs/logo.svg" alt="Chapter" width="40" align="center"> product-demo-agent-toolkit
+# <img src="docs/logo.svg" alt="Chapter" height="36" align="absmiddle"> product-demo-agent-toolkit
 
 ### A toolkit to make beautiful product videos locally with your own agent
 
