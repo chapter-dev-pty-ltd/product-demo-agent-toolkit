@@ -19,9 +19,9 @@ handle all of the common issues that agents run into while creating demos.
 npx @chapterdev/product-demo-agent-toolkit setup
 ```
 
-Now ask your agent to create a product demo for you:
+Now ask your favorite agent to:
 
-> Make a 20 second demo video of creating an invoice.
+> Make me a walkthrough video of my product running locally, showcasing the sign up flow.
 
 ## Why do I need a toolkit?
 
