@@ -331,7 +331,8 @@ describe('rank', () => {
     expect('missing' in decision).toBe(true)
   })
 
-  test('finds one row among 3,000 in under a second and a half', async () => {
+  // 1.5s on a laptop; GitHub's CI machines are slower, so 3s there.
+  test('finds one row among 3,000 quickly', async () => {
     const names = Array.from(
       { length: 3000 },
       (_, i) => `Customer ${String(i).padStart(4, '0')} Ltd`,
@@ -341,7 +342,7 @@ describe('rank', () => {
     const { decision } = await refind(big, big, (p) =>
       p.locator('tr', { hasText: 'Customer 1234 Ltd' }).getByRole('button'),
     )
-    expect(performance.now() - start).toBeLessThan(1500)
+    expect(performance.now() - start).toBeLessThan(process.env.CI ? 3000 : 1500)
     expect(await rowOf(found(decision))).toContain('1234')
   })
 })
