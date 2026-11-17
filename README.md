@@ -1,20 +1,17 @@
-<h1 align="center">product-demo-agent-toolkit</h1>
+# product-demo-agent-toolkit
 
-<hr>
+### A toolkit to make beautiful product videos locally with your own agent
 
-<h2 align="center">A toolkit to make beautiful product videos locally with your own agent</h2>
-
-<p align="center">
-  A toolkit for your agent to create videos of your product that customers love, all on your
-  own subscription, completely locally.
-</p>
+A toolkit for your agent to create videos of your product that customers love, all on your own
+subscription, completely locally.
 
 <!--
   Looping demo video goes here. GitHub doesn't autoplay <video> in a README, so for a loop use a
   GIF (or an animated WebP), kept under 10MB:
-  <p align="center"><img src="docs/demo.gif" alt="A demo video made with the toolkit" width="900"></p>
+  ![A demo video made with the toolkit](docs/demo.gif)
 -->
-<p align="center"><img src="docs/hero.webp" alt="A product video made with the toolkit" width="900"></p>
+
+![A product video made with the toolkit](docs/hero.webp)
 
 ## Quickstart
 
