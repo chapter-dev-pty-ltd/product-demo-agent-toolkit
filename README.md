@@ -55,7 +55,7 @@ As well as:
 - Real clicking & typing sounds.
 - 1080p at 60fps.
 
-## Easily Customizable
+## Customizable Config
 
 The toolkit is ready to roll by default, but if you want to customize it, you can do that too!
 Add `.product-demo/config.json` to the project:
