@@ -41,6 +41,8 @@ such as:
 - **Voiceovers are out of sync.** Narration added afterwards never lines up. Here, the
   lines are spoken first and every click, keystroke and drag lands on its word.
 
+So we built a toolkit to address these issues and much more.
+
 ## Tasteful Defaults
 
 ![The cursors (macOS, black, pink, lime, and any hex colour with an Agent label) and the backgrounds (halo, sky, violet and more)](docs/defaults.webp)
