@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { extname, resolve } from 'node:path'
 import type { Browser, Page } from 'playwright-core'
-import type { Config } from '../config.ts'
+import { isHex, type Config, type CURSORS } from '../config.ts'
 import { VIEWPORT, type Footage } from '../perform.ts'
 
 // The stage: a web page that is the finished video. The footage's screenshots are the
@@ -20,17 +20,16 @@ const ORIGIN = 'https://stage.product-demo'
  * stage pixels), its colour, and where its label sits and the label's text colour. The rounded
  * arrow comes in colours; `macos` is a classic pointer, black with a white edge.
  */
-const CURSOR_LOOKS: Record<
-  Config['cursor']['style'],
-  {
-    file: string
-    width: number
-    height: number
-    tip: number
-    colour: string
-    label: { x: number; y: number; text: string }
-  }
-> = {
+interface CursorLook {
+  file: string
+  width: number
+  height: number
+  tip: number
+  colour: string
+  label: { x: number; y: number; text: string }
+}
+
+const CURSOR_LOOKS: Record<(typeof CURSORS)[number], CursorLook> = {
   black: {
     file: 'arrow.svg',
     width: 28.8,
@@ -63,6 +62,15 @@ const CURSOR_LOOKS: Record<
     colour: '#000000',
     label: { x: 24, y: 26, text: '#ffffff' },
   },
+}
+
+/** A named cursor, or the rounded arrow in a hex colour, its label's text dark on a light one. */
+function cursorLook(style: Config['cursor']['style']): CursorLook {
+  if (!isHex(style)) return CURSOR_LOOKS[style]
+  const channel = (at: number) => parseInt(style.slice(at, at + 2), 16) / 255
+  const light = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5) > 0.8
+  const text = light ? '#111111' : '#ffffff'
+  return { ...CURSOR_LOOKS.black, colour: style, label: { ...CURSOR_LOOKS.black.label, text } }
 }
 
 /** A highlight as the stage draws it, timed from the footage's start. */
@@ -117,7 +125,7 @@ export async function openStage(
   const files: Record<string, () => Promise<Buffer>> = {
     '/backdrop.jpg': () => readFile(library(`backdrops/${look.backdrop}.jpg`)),
   }
-  const arrow = await readFile(library(`cursors/${CURSOR_LOOKS[look.cursor.style].file}`), 'utf8')
+  const arrow = await readFile(library(`cursors/${cursorLook(look.cursor.style).file}`), 'utf8')
 
   const page = await browser.newPage({ viewport: CANVAS, deviceScaleFactor: 1 })
   // Served from one made-up origin: the page, the library's pictures and the footage.
@@ -172,7 +180,7 @@ function html(
 ): string {
   const browser = look.display === 'browser'
   // The cursor at its own size, times the config's.
-  const own = CURSOR_LOOKS[look.cursor.style]
+  const own = cursorLook(look.cursor.style)
   const pointer = {
     ...own,
     width: own.width * look.cursor.size,

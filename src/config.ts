@@ -13,19 +13,34 @@ export type Display = (typeof DISPLAYS)[number]
 /** The cursors the cut can draw: the rounded arrow in three colours, or a Mac's pointer. */
 export const CURSORS = ['black', 'pink', 'lime', 'macos'] as const
 
+/** A colour as hex, like `#8fd3ff`. */
+export type Hex = `#${string}`
+
+export function isHex(value: string): value is Hex {
+  return /^#[0-9a-f]{6}$/i.test(value)
+}
+
+/** One of the cursors, or the rounded arrow in any colour. */
+const styleSchema = z.union([
+  z.enum(CURSORS),
+  z.custom<Hex>((value) => typeof value === 'string' && isHex(value), {
+    message: `a cursor (${CURSORS.join(', ')}) or a hex colour like "#8fd3ff"`,
+  }),
+])
+
 /** The cursor: which one, how big (1 is its own size), and a label beside it. */
 export interface Cursor {
-  style: (typeof CURSORS)[number]
+  style: (typeof CURSORS)[number] | Hex
   size: number
   label?: string | undefined
 }
 
-/** `"macos"` for one at its own size, or `{ "style": "macos", "size": 1.5 }`. */
+/** `"macos"` or `"#8fd3ff"` for one at its own size, or `{ "style": "macos", "size": 1.5 }`. */
 const cursorSchema: z.ZodType<Cursor, unknown> = z
   .union([
-    z.enum(CURSORS),
+    styleSchema,
     z.strictObject({
-      style: z.enum(CURSORS).default('black'),
+      style: styleSchema.default('black'),
       size: z.number().min(0.5).max(3).default(1),
       label: z.string().trim().min(1).max(30).optional(),
     }),
@@ -74,7 +89,7 @@ const config: z.ZodType<Config> = z.strictObject({
   cursor: cursorSchema
     .default({ style: 'black', size: 1 })
     .describe(
-      'The cursor in the video: its style (the rounded arrow in black, pink or lime, or macos) and size (1 is its own size, 1.5 half as big again), and optionally a label shown beside it, like "Agent". A style alone is fine: "macos".',
+      'The cursor in the video: its style (the rounded arrow in black, pink or lime, or in any hex colour like "#8fd3ff", or macos) and size (1 is its own size, 1.5 half as big again), and optionally a label shown beside it, like "Agent". A style alone is fine: "macos".',
     ),
   sound: soundSchema
     .default(true)

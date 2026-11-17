@@ -101,7 +101,7 @@ Give the user the video from there, or pass `--out` to `cut`. Lines starting `Ch
 
 If the request could mean two things, a still doesn't look like what was asked for, or a run says several elements match a step, make the best choice and carry on: runs print what they chose (`Check:` lines), so tell the user what you decided when you hand over the video. If `.product-demo/config.json` sets `"mode": "ask"`, stop and ask the user instead, showing them the still.
 
-`.product-demo/config.json` can also set the `backdrop` (`halo`, the default, `sky` or `violet`), the `display` (`none`, the default, or `browser`), the `cursor` (`black`, the default, `pink`, `lime` or `macos`, or with a size and a label beside it: `{ "style": "pink", "size": 1.5, "label": "Agent" }`), its `sound` (`true` by default, or `{ "click": false }`), how many runs of each film to `keep` (default 10), and `"review": true` to have `cut` make a review image every time.
+`.product-demo/config.json` can also set the `backdrop` (`halo`, the default, `sky` or `violet`), the `display` (`none`, the default, or `browser`), the `cursor` (`black`, the default, `pink`, `lime`, `macos` or any hex colour like `"#8fd3ff"`, or with a size and a label beside it: `{ "style": "#8fd3ff", "size": 1.5, "label": "Agent" }`), its `sound` (`true` by default, or `{ "click": false }`), how many runs of each film to `keep` (default 10), and `"review": true` to have `cut` make a review image every time.
 
 ## What makes a good film
 
