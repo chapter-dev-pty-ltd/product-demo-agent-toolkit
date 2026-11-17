@@ -73,20 +73,22 @@ Add `.product-demo/config.json` to the project:
 
 ## Features
 
-1. Explores your app first, then films it from a script you can read and edit.
-2. Moves, types and waits like a person, not a robot.
-3. Voiceover timed to the word.
-4. Highlights, zoom, cursors, sounds and a browser frame, drawn after shooting.
-5. Works on canvas apps like Excalidraw, tldraw and draw.io.
+- Human feeling movement and navigation
+- Voiceovers sync naturally to actions
+- Highlight specific DOM elements
+- Smooth camera zoom and panning
+- Tasteful cursors, backdrops and audio defaults
+- Handcrafted skills for how to produce great videos
+- Built-in review infrastructure
+- High definition recording functionality
 
-## Coming soon
+And much more.
 
-- Speed ramps: play a stretch at 2x, with a badge so viewers know.
-- Captions, and a badge for keyboard shortcuts as they're pressed.
-- Background music.
-- GIF and poster exports for docs and social posts.
-- Staying signed in between runs, for apps behind a login.
-- Windows support.
+Coming soon:
+
+- Local Studio (web application for editing)
+- Support for Safari and Firefox (currently only Chrome)
+- More tasteful defaults
 
 ## Licence
 
