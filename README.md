@@ -25,6 +25,14 @@ Now ask your favorite agent to:
 
 > Make me a walkthrough video of my product running locally, showcasing the sign up flow.
 
+#### If you're the agent
+
+Sent this page and asked for a video? Don't clone this repository: the toolkit runs from its
+npm package, not from this source. Run the command above yourself. It installs the
+`product-demo-agent-toolkit` command and the `product-demo` skill, and says where it put the
+skill. Read that skill's `SKILL.md` and follow it in the user's project. The command ends by
+suggesting a new session, which is for people: carry on in the one you're in.
+
 ## Why do I need a toolkit?
 
 Although your agent can drive your browser and navigate your product, we've found that it makes
