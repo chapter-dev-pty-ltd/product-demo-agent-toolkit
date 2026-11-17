@@ -1,0 +1,69 @@
+{
+  "name": "@chapterdev/product-demo-agent-toolkit",
+  "version": "0.1.0",
+  "description": "Lets your coding agent make polished demo videos of your real web app.",
+  "keywords": [
+    "demo",
+    "video",
+    "screen-recording",
+    "product-demo",
+    "agent",
+    "claude-code",
+    "playwright"
+  ],
+  "homepage": "https://github.com/chapter-dev-pty-ltd/product-demo-agent-toolkit#readme",
+  "bugs": "https://github.com/chapter-dev-pty-ltd/product-demo-agent-toolkit/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chapter-dev-pty-ltd/product-demo-agent-toolkit.git"
+  },
+  "author": "Chapter Dev Pty Ltd",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "product-demo-agent-toolkit": "./dist/cli.mjs"
+  },
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "library"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.6.0",
+      "onFail": "error"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc",
+    "test": "vitest run",
+    "lint": "oxlint",
+    "format": "prettier --write .",
+    "prepublishOnly": "pnpm build"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "oxlint": "^1.93.0",
+    "prettier": "^3.10.1",
+    "tsdown": "^0.23.7",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "playwright-core": "^1.65.0",
+    "zod": "^4.6.7"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
