@@ -45,7 +45,7 @@ So we built a toolkit to address these issues and much more.
 
 ## Tasteful Defaults
 
-![The cursors (macOS, black, pink, lime, and any hex colour with an Agent label) and the backgrounds (halo, sky, violet and more)](docs/defaults.webp)
+![The cursors (macOS, black, pink, lime, and any hex colour with an Agent label) and some of the backgrounds (dusk corners, sky, halo, citrus corners, peach dawn and glacier wave)](docs/defaults.webp)
 
 As well as:
 
@@ -60,16 +60,16 @@ As well as:
 The toolkit is ready to roll by default, but if you want to customize it, you can do that too!
 Add `.product-demo/config.json` to the project:
 
-| Setting    | Default                  | What it does                                                                                                                                                          |
-| ---------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mode`     | `"just_do_it"`           | When something is unclear, make the best choice and note it. `"ask"` stops and asks instead.                                                                          |
-| `backdrop` | `"halo"`                 | What the app sits on: `halo`, `sky` or `violet`.                                                                                                                      |
-| `display`  | `"none"`                 | How the app is shown: `none`, on the backdrop as it is, or `browser`, in a browser window with an address bar.                                                        |
-| `cursor`   | `"black"`                | The cursor: `black`, `pink`, `lime`, `macos` or any hex colour like `"#8fd3ff"`, or with a size and a label: `{ "style": "#8fd3ff", "size": 1.5, "label": "Agent" }`. |
-| `sound`    | `true`                   | Click and typing sounds. `false` for none, or `{ "click": true, "typing": false }`.                                                                                   |
-| `voice`    | Jessica, from ElevenLabs | Who speaks the voiceover: `{ "provider": "elevenlabs", "voice": "<voice id>" }`.                                                                                      |
-| `keep`     | `10`                     | How many rehearsals and shoots of each film to keep.                                                                                                                  |
-| `review`   | `false`                  | Whether `cut` also makes the review image.                                                                                                                            |
+| Setting    | Default                  | What it does                                                                                                                                                                                                                                                                                                                                         |
+| ---------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mode`     | `"just_do_it"`           | When something is unclear, make the best choice and note it. `"ask"` stops and asks instead.                                                                                                                                                                                                                                                         |
+| `backdrop` | `"sky"`                  | What the app sits on: `sky`, `halo`, `violet`, `orchid`, `dusk-halo`, `dusk-mesh`, `dusk-corners`, `dusk-fade`, `glacier-halo`, `glacier-mesh`, `glacier-wave`, `glacier-fade`, `citrus-halo`, `citrus-warp`, `citrus-corners`, `citrus-fade`, `graphite-halo`, `graphite-mesh`, `graphite-sphere`, `graphite-fade`, `candy-clouds` or `peach-dawn`. |
+| `display`  | `"none"`                 | How the app is shown: `none`, on the backdrop as it is, or `browser`, in a browser window with an address bar.                                                                                                                                                                                                                                       |
+| `cursor`   | `"black"`                | The cursor: `black`, `pink`, `lime`, `macos` or any hex colour like `"#8fd3ff"`, or with a size and a label: `{ "style": "#8fd3ff", "size": 1.5, "label": "Agent" }`.                                                                                                                                                                                |
+| `sound`    | `true`                   | Click and typing sounds. `false` for none, or `{ "click": true, "typing": false }`.                                                                                                                                                                                                                                                                  |
+| `voice`    | Jessica, from ElevenLabs | Who speaks the voiceover: `{ "provider": "elevenlabs", "voice": "<voice id>" }`.                                                                                                                                                                                                                                                                     |
+| `keep`     | `10`                     | How many rehearsals and shoots of each film to keep.                                                                                                                                                                                                                                                                                                 |
+| `review`   | `false`                  | Whether `cut` also makes the review image.                                                                                                                                                                                                                                                                                                           |
 
 ## Features
 

@@ -66,7 +66,7 @@ const USAGE = `product-demo-agent-toolkit ${version}
 Set up, once: product-demo-agent-toolkit setup   Install the command for good, and the skills for Claude Code
              product-demo-agent-toolkit skills [dir]   Copy just the skills into ~/.claude/skills (or dir)
 
-Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (halo | sky | violet), display (none | browser),
+Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (sky, or any of the 22 in library/backdrops), display (none | browser),
 cursor (black | pink | lime | macos, or { style, size }), sound (true | false | { click }, default true),
 keep (rehearsals and shoots kept per film, default 10), review (cut also makes the review image, default false).`
 

@@ -4,7 +4,30 @@ import { z } from 'zod'
 import type { VoiceChoice } from './voice.ts'
 
 /** The backdrops in library/backdrops, by name. */
-export const BACKDROPS = ['halo', 'sky', 'violet'] as const
+export const BACKDROPS = [
+  'halo',
+  'sky',
+  'violet',
+  'orchid',
+  'dusk-halo',
+  'dusk-mesh',
+  'dusk-corners',
+  'dusk-fade',
+  'glacier-halo',
+  'glacier-mesh',
+  'glacier-wave',
+  'glacier-fade',
+  'citrus-halo',
+  'citrus-warp',
+  'citrus-corners',
+  'citrus-fade',
+  'graphite-halo',
+  'graphite-mesh',
+  'graphite-sphere',
+  'graphite-fade',
+  'candy-clouds',
+  'peach-dawn',
+] as const
 
 /** How the app is shown: on the backdrop as it is, or in a browser window. */
 export const DISPLAYS = ['none', 'browser'] as const
@@ -81,7 +104,7 @@ export interface Config {
 }
 
 const config: z.ZodType<Config> = z.strictObject({
-  backdrop: z.enum(BACKDROPS).default('halo').describe('What the app is framed on in the video.'),
+  backdrop: z.enum(BACKDROPS).default('sky').describe('What the app is framed on in the video.'),
   display: z
     .enum(DISPLAYS)
     .default('none')
