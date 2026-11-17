@@ -25,16 +25,6 @@ Now ask your favorite agent to:
 
 > Make me a walkthrough video of my product running locally, showcasing the sign up flow.
 
-## For AI agents
-
-Asked to make a video with this toolkit? Don't clone this repository: the toolkit runs from
-its npm package, not from source.
-
-1. Run `npx @chapterdev/product-demo-agent-toolkit setup`. It installs the
-   `product-demo-agent-toolkit` command and the `product-demo` skill, and prints where the
-   skill went.
-2. Read that skill's `SKILL.md` and follow it, in the user's project and in this session.
-
 ## Why do I need a toolkit?
 
 Although your agent can drive your browser and navigate your product, we've found that it makes
@@ -113,6 +103,16 @@ And much more.
 - Support for Safari and Firefox (currently only Chrome)
 - More tasteful defaults
 - Support for mobile product demos
+
+## For AI agents
+
+Asked to make a video with this toolkit? Don't clone this repository: the toolkit runs from
+its npm package, not from source.
+
+1. Run `npx @chapterdev/product-demo-agent-toolkit setup`. It installs the
+   `product-demo-agent-toolkit` command and the `product-demo` skill, and prints where the
+   skill went.
+2. Read that skill's `SKILL.md` and follow it, in the user's project and in this session.
 
 ## Licence
 
