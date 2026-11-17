@@ -19,7 +19,7 @@ Explore the app to learn how to do what was asked, write the film from what you 
 product-demo-agent-toolkit init
 ```
 
-Run it first, in the project. It gets the browser and ffmpeg ready and says what's missing. If it says there's no voiceover key, ask the user for one in your first reply, once, and keep going while you wait. If they give it to you, pipe it in so it stays off the command line: `printf %s '<key>' | product-demo-agent-toolkit key elevenlabs`. It's kept for every project, so you won't need to ask again. Without a key, make the film without a voiceover and say so when you hand it over.
+Run it first, in the project. It gets the browser and ffmpeg ready and says what's missing. A voiceover is optional. If it says there's no voiceover key, or that the key doesn't work, ask the user for one in your first reply, once, and keep going while you wait: don't stop for it, and don't try a key that was turned down again. If they give it to you, pipe it in so it stays off the command line: `printf %s '<key>' | product-demo-agent-toolkit key elevenlabs`. It's kept for every project, so you won't need to ask again. Without a key that works, make the film without a voiceover and say so when you hand it over.
 
 ## 1. Explore: learn the app
 
