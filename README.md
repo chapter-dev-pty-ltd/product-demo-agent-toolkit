@@ -1,66 +1,63 @@
-# Product demo agent toolkit
+<h1 align="center">product-demo-agent-toolkit</h1>
 
-Lets your coding agent make a polished demo video of your real web app. The agent explores the
-app, writes the film (the steps, and what the video should look like), rehearses it, shoots it
-in a real browser, and cuts it into an mp4: the app on a backdrop, a drawn cursor, click and
-typing sounds, and highlights.
+<hr>
 
-## Set up
+<h2 align="center">A toolkit to make beautiful product videos locally with your own agent</h2>
 
-You need Node 22.18 or later, on macOS or Linux.
+<p align="center">
+  A toolkit for your agent to create videos of your product that customers love, all on your
+  own subscription, completely locally.
+</p>
 
-1. Install the command:
+<!--
+  Looping demo video goes here. GitHub doesn't autoplay <video> in a README, so for a loop use a
+  GIF (or an animated WebP), kept under 10MB:
+  <p align="center"><img src="docs/demo.gif" alt="A demo video made with the toolkit" width="900"></p>
+-->
+<p align="center"><img src="docs/hero.webp" alt="A product video made with the toolkit" width="900"></p>
 
-   ```bash
-   npm install -g @chapterdev/product-demo-agent-toolkit
-   ```
-
-2. Install the skills, so your agent knows how to use it. In Claude Code, this copies them into
-   your skills folder; start a new session after, so they load:
-
-   ```bash
-   product-demo-agent-toolkit skills
-   ```
-
-   Other agents: read `skills/product-demo/SKILL.md` in the installed package before starting,
-   and follow it.
-
-3. For a voiceover, save an ElevenLabs key once, for every project. It asks for the key without
-   showing it:
-
-   ```bash
-   product-demo-agent-toolkit key elevenlabs
-   ```
-
-   A project can also set `ELEVENLABS_API_KEY` in its own `.env`, which wins.
-
-4. In the project you're making a video of, run `product-demo-agent-toolkit init`. It adds
-   `.product-demo/` and `.env` to `.gitignore`, gets the browser and ffmpeg ready, and says if a
-   key is missing. `.product-demo/` holds the explore log, voice lines, rehearsals, footage and
-   videos.
-
-`init` downloads a headless Chromium, and an ffmpeg if the one on `PATH` can't write H.264.
-Nothing else needs installing.
-
-## Making a video
-
-Ask your agent for a demo video ("make a 20 second video of creating an invoice"). The
-`product-demo` skill walks it through each stage:
+## Quickstart
 
 ```bash
-product-demo-agent-toolkit init                            # get the project ready; says what's missing
-product-demo-agent-toolkit explore http://localhost:3000   # learn the app; every action is logged
-product-demo-agent-toolkit voice film.json                 # speak the voiceover; when each action's word lands
-product-demo-agent-toolkit rehearse film.json              # a full run with a still after every step
-product-demo-agent-toolkit shoot film.json                 # the same run, filmed
-product-demo-agent-toolkit cut                             # the mp4, printed with its path
-product-demo-agent-toolkit review                          # frames from across the video, to check it
+npx @chapterdev/product-demo-agent-toolkit setup
 ```
 
-`product-demo-agent-toolkit --help` lists every command. `skills/product-demo/directing.md` covers the
-voiceover, cursor, sound and highlights.
+Now ask your agent to create a product demo for you:
 
-## Settings
+> Make a 20 second demo video of creating an invoice.
+
+## Why not just ask your agent to record the screen?
+
+An agent can already drive a browser. What comes out isn't a video anyone wants to watch:
+
+- **It moves like a robot.** The pointer jumps from place to place, text appears all at once,
+  and nothing pauses for the viewer. The toolkit moves the pointer the way a hand does, types
+  at a person's pace, and gives each result a moment on screen.
+- **It doesn't know when the page is ready.** It either waits too long, filling the video
+  with dead air, or acts too early, mid-load. The toolkit watches the screen itself, so it
+  waits for what's loading and not a moment longer.
+- **It has no cursor, sound or framing.** A raw recording is a bare screen. The toolkit draws
+  a cursor that dips on every click, plays real click and keyboard sounds, and frames the app
+  on a backdrop or in a browser window.
+- **Its voiceover can't keep time.** Narration added afterwards never lines up. Here, the
+  lines are spoken first and every click, keystroke and drag lands on its word.
+- **Every change means starting again.** Here, the look is drawn after shooting, so changing
+  the cursor, a highlight or the framing is a re-cut in seconds, not another take.
+
+And it runs locally: your agent, your app, your machine. Nothing is uploaded.
+
+## Good visuals by default
+
+Every video looks finished with no setup:
+
+- 1080p at 60fps, the app crisp on a soft backdrop.
+- A drawn cursor that glides between targets and dips as it clicks.
+- Real click and keyboard sounds on every click and keystroke, with space and Enter their own.
+- Highlights that zoom in smoothly on what matters.
+- An optional browser window, frosted over the backdrop, with an address bar that follows the
+  page.
+
+## Config
 
 Everything has a default, so no config is needed. To change one, add
 `.product-demo/config.json` to the project:
@@ -78,15 +75,22 @@ Everything has a default, so no config is needed. To change one, add
 
 These apply to every video of the project. A film can't override them.
 
-## Good to know
+## Features
 
-- The app has to be running and reachable from this machine, such as on `localhost`.
-- Every rehearsal and shoot starts in a fresh browser: no cookies, nobody signed in. An app
-  behind a sign-in has to be signed into by the film's own steps.
-- The app's data isn't reset between runs. A film that creates a record creates another each
-  time it's rehearsed or shot.
-- To update: `npm install -g @chapterdev/product-demo-agent-toolkit@latest`, then run
-  `product-demo-agent-toolkit skills` again for the latest skills.
+1. Explores your app first, then films it from a script you can read and edit.
+2. Moves, types and waits like a person, not a robot.
+3. Voiceover timed to the word.
+4. Highlights, zoom, cursors, sounds and a browser frame, drawn after shooting.
+5. Works on canvas apps like Excalidraw, tldraw and draw.io.
+
+## Coming soon
+
+- Speed ramps: play a stretch at 2x, with a badge so viewers know.
+- Captions, and a badge for keyboard shortcuts as they're pressed.
+- Background music.
+- GIF and poster exports for docs and social posts.
+- Staying signed in between runs, for apps behind a login.
+- Windows support.
 
 ## Licence
 

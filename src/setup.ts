@@ -1,7 +1,10 @@
+import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { appendFile, chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, chmod, cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import pkg from '../package.json' with { type: 'json' }
 import { readConfig } from './config.ts'
 import { findFfmpeg, launchBrowser } from './tools.ts'
 import { PROVIDERS, type VoiceProvider } from './voice.ts'
@@ -18,6 +21,54 @@ export function loadKeys(): void {
       process.loadEnvFile(file)
     } catch {}
   }
+}
+
+const COMMAND = 'product-demo-agent-toolkit'
+
+/** Copies the skills into an agent's skills folder: Claude Code's, unless told another. */
+export async function installSkills(
+  to: string = join(homedir(), '.claude', 'skills'),
+): Promise<string> {
+  await cp(fileURLToPath(new URL('../skills', import.meta.url)), to, { recursive: true })
+  return to
+}
+
+/**
+ * Everything a new user needs, once: the command installed for good (when this is run with
+ * npx, or an older version is installed), and the skills. The agent runs `init` in each
+ * project itself.
+ */
+export async function setup(): Promise<string[]> {
+  const said: string[] = []
+  // Asked of npm's global packages, not the PATH: under npx, the command is on the PATH only
+  // until npx exits.
+  const listed = spawnSync('npm', ['ls', '-g', '--depth=0', '--json', pkg.name], {
+    encoding: 'utf8',
+  })
+  const globals: unknown = JSON.parse(listed.stdout || '{}')
+  const installed =
+    typeof globals === 'object' && globals !== null && 'dependencies' in globals
+      ? Reflect.get(Reflect.get(globals.dependencies ?? {}, pkg.name) ?? {}, 'version')
+      : undefined
+  if (installed === pkg.version) {
+    said.push(`The ${COMMAND} command is installed (${pkg.version}).`)
+  } else {
+    console.log(`Installing the ${COMMAND} command…`)
+    const npm = spawnSync('npm', ['install', '-g', `${pkg.name}@${pkg.version}`], {
+      stdio: 'inherit',
+    })
+    if (npm.status !== 0) {
+      throw new Error(
+        `Couldn't install it. Run npm install -g ${pkg.name} yourself, then ${COMMAND} skills.`,
+      )
+    }
+    said.push(`Installed the ${COMMAND} command (${pkg.version}).`)
+  }
+  said.push(`Copied the skills into ${await installSkills()}.`)
+  said.push(
+    'Ready. Start a new session with your agent in your project, and ask it for a video of your app: "make a 20 second demo of creating an invoice".',
+  )
+  return said
 }
 
 /** Gets the project ready, and says what it did and what's missing, for the agent to act on. */

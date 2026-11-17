@@ -1,13 +1,12 @@
 #!/usr/bin/env node
-import { cp } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
   cut,
   explore,
   init,
+  installSkills,
+  setup,
   loadKeys,
   readFootage,
   readSecret,
@@ -64,7 +63,8 @@ const USAGE = `product-demo-agent-toolkit ${version}
   product-demo-agent-toolkit cut [footage] [--out video.mp4]
   product-demo-agent-toolkit review [footage | video.mp4]  An image of frames from across the video, to check it by
 
-Set up: product-demo-agent-toolkit skills [dir]   Copy the skills into ~/.claude/skills (or dir) for your agent
+Set up, once: product-demo-agent-toolkit setup   Install the command for good, and the skills for Claude Code
+             product-demo-agent-toolkit skills [dir]   Copy just the skills into ~/.claude/skills (or dir)
 
 Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (halo | sky | violet), display (none | browser),
 cursor (black | pink | lime | macos, or { style, size }), sound (true | false | { click }, default true),
@@ -184,9 +184,10 @@ try {
   } else if (command === 'key' && input) {
     const key = args[1] ?? (await readSecret(`Paste your ${input} key (it won't show): `))
     console.log(await saveKey(input, key))
+  } else if (command === 'setup') {
+    for (const line of await setup()) console.log(line)
   } else if (command === 'skills') {
-    const to = input ?? join(homedir(), '.claude', 'skills')
-    await cp(fileURLToPath(new URL('../skills', import.meta.url)), to, { recursive: true })
+    const to = await installSkills(input)
     console.log(`Copied the product-demo skills into ${to}. Start a new session to load them.`)
   } else if (command === 'review') {
     if (input?.endsWith('.mp4')) {
