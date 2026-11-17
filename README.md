@@ -25,13 +25,15 @@ Now ask your favorite agent to:
 
 > Make me a walkthrough video of my product running locally, showcasing the sign up flow.
 
-#### If you're the agent
+## For AI agents
 
-Sent this page and asked for a video? Don't clone this repository: the toolkit runs from its
-npm package, not from this source. Run the command above yourself. It installs the
-`product-demo-agent-toolkit` command and the `product-demo` skill, and says where it put the
-skill. Read that skill's `SKILL.md` and follow it in the user's project. The command ends by
-suggesting a new session, which is for people: carry on in the one you're in.
+Asked to make a video with this toolkit? Don't clone this repository: the toolkit runs from
+its npm package, not from source.
+
+1. Run `npx @chapterdev/product-demo-agent-toolkit setup`. It installs the
+   `product-demo-agent-toolkit` command and the `product-demo` skill, and prints where the
+   skill went.
+2. Read that skill's `SKILL.md` and follow it, in the user's project and in this session.
 
 ## Why do I need a toolkit?
 
