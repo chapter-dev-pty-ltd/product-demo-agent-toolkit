@@ -89,6 +89,7 @@ And much more.
 - Local Studio (web application for editing)
 - Support for Safari and Firefox (currently only Chrome)
 - More tasteful defaults
+- Support for mobile product demos
 
 ## Licence
 
