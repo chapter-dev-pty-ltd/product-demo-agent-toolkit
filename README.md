@@ -84,7 +84,7 @@ Add `.product-demo/config.json` to the project:
 
 And much more.
 
-Coming soon:
+#### Coming soon
 
 - Local Studio (web application for editing)
 - Support for Safari and Firefox (currently only Chrome)
