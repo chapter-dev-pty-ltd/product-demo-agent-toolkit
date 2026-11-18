@@ -7,13 +7,7 @@
 Create product videos that your customers love, with your own AI agent, and let the toolkit
 handle all of the common issues that agents run into while creating demos.
 
-<!--
-  Looping demo video goes here. GitHub doesn't autoplay <video> in a README, so for a loop use a
-  GIF (or an animated WebP), kept under 10MB:
-  ![A demo video made with the toolkit](docs/demo.gif)
--->
-
-![A product video made with the toolkit](docs/hero.webp)
+![Asking Claude to film a demo of setting a ticket to Done: your agent records the app with the toolkit, and the finished video lands back in the chat](docs/hero.webp)
 
 ## Quickstart
 
