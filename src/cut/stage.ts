@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { extname, resolve } from 'node:path'
+import { extname, resolve, sep } from 'node:path'
 import type { Browser, Page } from 'playwright-core'
 import { isHex, type Config, type CURSORS } from '../config.ts'
 import type { Footage } from '../perform.ts'
@@ -217,12 +217,18 @@ export function stageFiles(
       }
     }
     const { style } = now.cursor
+    // Anything else is one of the footage's own files, never one outside its folder.
+    const asked = resolve(footageDir, decodeURIComponent(path.slice(1)))
+    const inside = asked.startsWith(resolve(footageDir) + sep)
     const file =
       served && picture && path === served
         ? picture
         : path === '/cursor.svg' && typeof style === 'object'
           ? style.file
-          : resolve(footageDir, decodeURIComponent(path.slice(1)))
+          : inside
+            ? asked
+            : undefined
+    if (!file) return undefined
     const body = await readFile(file).catch(() => undefined)
     if (!body) return undefined
     return { contentType: IMAGE_TYPES[extname(path)] ?? 'image/jpeg', body }

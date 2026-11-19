@@ -339,7 +339,10 @@ export async function studio(
       if (!served) return send(404, 'text/plain', 'Not found')
       return send(200, served.contentType, served.body)
     } catch (error) {
-      send(400, 'text/plain', error instanceof Error ? error.message : String(error))
+      // The details go to the server's log, not to whoever asked.
+      console.log(error)
+      if (!res.headersSent)
+        send(400, 'text/plain', `That didn't work. See ${STUDIO_DIR}/server.log`)
     }
   })
   // The page's events and a waiting agent stay open for as long as they need.
