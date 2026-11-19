@@ -71,7 +71,7 @@ look for new videos, and every setting is optional, for example:
 
 ```json
 {
-  "backdrop": "/Users/sam/acme/brand/backdrop.png",
+  "backdrop": "/backdrop.png",
   "display": "browser",
   "cursor": { "style": "#2855DB", "size": 1.25, "label": "Agent" },
   "sound": { "click": true, "typing": false },
