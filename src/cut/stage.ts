@@ -317,7 +317,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
   box-shadow: 0 28px 70px rgb(0 0 0 / .32), 0 8px 20px rgb(0 0 0 / .18); }
 #lift img { position: absolute; width: ${W}px; height: ${H}px; max-width: none; }
 #cursor { position: absolute; left: -${pointer.tip[0]}px; top: -${pointer.tip[1]}px; width: ${pointer.width}px; height: ${pointer.height}px; color: ${pointer.colour}; }
-#cursor > :first-child { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: ${pointer.tip[0]}px ${pointer.tip[1]}px; animation: dip 250ms linear paused;
+#cursor > :first-child { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: ${pointer.tip[0]}px ${pointer.tip[1]}px; animation: dip 250ms linear both paused;
   filter: drop-shadow(0 1.5px 2.5px rgb(0 0 0 / .28)); }
 #label { position: absolute; left: ${own.label.x * k}px; top: ${own.label.y * k}px; padding: ${4 * k}px ${8.25 * k}px;
   border-radius: 999px; background: ${own.colour}; color: ${own.label.text}; white-space: nowrap;
