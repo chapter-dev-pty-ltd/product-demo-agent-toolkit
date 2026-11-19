@@ -4,7 +4,11 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { readJson, stepSchema, type Step } from './film.ts'
 
-export const LOG: string = join('.product-demo', 'explore', 'log.json')
+let DIR = ''
+export function useLogDir(dir: string): void {
+  DIR = dir
+}
+export const logFile = (): string => join(DIR, 'log.json')
 
 export interface LogEntry {
   n: number
@@ -34,7 +38,7 @@ const logSchema: z.ZodType<Log> = z.strictObject({
   ),
 })
 
-export async function readLog(path: string = LOG): Promise<Log> {
+export async function readLog(path: string = logFile()): Promise<Log> {
   if (!existsSync(path))
     throw new Error(
       'There is no explore log yet. Start with `product-demo-agent-toolkit explore <url>`.',
@@ -45,14 +49,14 @@ export async function readLog(path: string = LOG): Promise<Log> {
   return parsed.data
 }
 
-export async function writeLog(log: Log, path: string = LOG): Promise<void> {
+export async function writeLog(log: Log, path: string = logFile()): Promise<void> {
   await writeFile(path, JSON.stringify(log, null, 2))
 }
 
 export async function startLog(app: string): Promise<void> {
-  if (existsSync(LOG)) {
+  if (existsSync(logFile())) {
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
-    await rename(LOG, join('.product-demo', 'explore', `log-${stamp}.json`))
+    await rename(logFile(), join(DIR, `log-${stamp}.json`))
   }
   await writeLog({ app, entries: [] })
 }

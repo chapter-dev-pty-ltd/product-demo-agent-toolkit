@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
+import { HOME } from './home.ts'
 import type { VoiceChoice } from './voice.ts'
 
 export const BACKDROPS = [
@@ -204,8 +205,8 @@ const config: z.ZodType<Config> = z.strictObject({
     .number()
     .int()
     .min(1)
-    .default(10)
-    .describe('How many rehearsals and shoots of each film to keep. Older ones are deleted.'),
+    .default(5)
+    .describe('How many rehearsals and takes of each video to keep. Older ones are deleted.'),
   review: z
     .boolean()
     .default(false)
@@ -218,18 +219,62 @@ const config: z.ZodType<Config> = z.strictObject({
     ),
 })
 
-const CONFIG_FILE: string = join('.product-demo', 'config.json')
+export const CONFIG_FILE: string = join(HOME, 'config.json')
 
-export async function readConfig(): Promise<Config> {
-  let raw: unknown = {}
+export const LOOK_KEYS = ['backdrop', 'display', 'window', 'cursor', 'sound', 'music'] as const
+export type LookSettings = Pick<Config, (typeof LOOK_KEYS)[number]>
+
+export async function readConfig(lookFile?: string): Promise<Config> {
+  const shared = await readRaw(CONFIG_FILE)
+  const look = lookFile ? await readRaw(lookFile) : {}
+  const raw = { ...shared, ...look }
+  const parsed = config.safeParse(raw)
+  if (!parsed.success) {
+    const where = lookFile ? `${CONFIG_FILE} with ${lookFile}` : CONFIG_FILE
+    throw new Error(`${where} is not valid:\n${z.prettifyError(parsed.error)}`)
+  }
+  return parsed.data
+}
+
+export async function readRaw(file: string): Promise<Record<string, unknown>> {
+  let raw: Record<string, unknown> = {}
   try {
-    const { $schema: _, ...rest } = JSON.parse(await readFile(CONFIG_FILE, 'utf8'))
+    const { $schema: _, ...rest } = JSON.parse(await readFile(file, 'utf8'))
     raw = rest
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
-  const parsed = config.safeParse(raw)
-  if (!parsed.success)
-    throw new Error(`${CONFIG_FILE} is not valid:\n${z.prettifyError(parsed.error)}`)
-  return parsed.data
+  const base = dirname(file)
+  const path = (value: unknown) =>
+    typeof value === 'string' && /[/\\]|\.\w+$/.test(value) && !value.startsWith('#')
+      ? resolve(base, value)
+      : value
+  const inside = (value: unknown, key: string) =>
+    value && typeof value === 'object' && key in value
+      ? { ...value, [key]: path((value as Record<string, unknown>)[key]) }
+      : path(value)
+  if ('backdrop' in raw) raw.backdrop = path(raw.backdrop)
+  if ('cursor' in raw) raw.cursor = inside(raw.cursor, 'style')
+  if ('music' in raw) raw.music = inside(raw.music, 'track')
+  return raw
+}
+
+export function lookToRaw(look: LookSettings): Record<string, unknown> {
+  const written = <T>(value: T | ProjectFile): T | string =>
+    typeof value === 'object' && value !== null && 'file' in value ? value.file : value
+  const { size, label, tip } = look.cursor
+  const music = look.music
+  return {
+    backdrop: written(look.backdrop),
+    display: look.display,
+    window: look.window,
+    cursor: {
+      style: written(look.cursor.style),
+      size,
+      ...(label ? { label } : {}),
+      ...(tip ? { tip } : {}),
+    },
+    sound: look.sound,
+    music: music ? { track: written(music.track), volume: music.volume } : false,
+  }
 }

@@ -2,11 +2,12 @@
 
 What the video looks like and sounds like, as opposed to what happens in the app. Two kinds:
 
-- **The project's look**: the backdrop, the display, the cursor, the sounds and the voice. These
-  are the user's choice for every video of the project, set in `.product-demo/config.json`,
-  never in a film (a film that sets one is refused). Leave them as they are unless the user
-  asks for a different look; then change the config.
-- **The film's direction**: the voiceover lines and the highlights, written into `film.json`.
+- **The video's look**: the backdrop, the display, the cursor, the sounds and the music. Each
+  video has its own, in its `look.json` (a copy of the default it was made with), never in a
+  film (a film that sets one is refused). Leave it as it is unless the user asks for a
+  different look; then change the video's `look.json`, or the default for new videos.
+- **The film's direction**: the voiceover lines and the highlights, written into the video's
+  `film.json`.
 
 Both are drawn by `product-demo-agent-toolkit cut`, so changing one never means shooting again: change it, run
 `cut`, and the new video is ready in seconds. Only the voice is needed to shoot, since the shoot
@@ -65,7 +66,7 @@ Excalidraw:
 "Ship it" is typed as she says "ship". "Then, starting at the idea" is there to give the
 pointer time to reach the arrow's start before "drag".
 
-Run `product-demo-agent-toolkit voice film.json` to see how long each line is and when each word comes,
+Run `product-demo-agent-toolkit voice <id>` to see how long each line is and when each word comes,
 then rehearse. If rehearse says an action `landed 0.7s after "drag" was said`, add a few words
 before that word and rehearse again. Keep lines plain and short, about 2.6 words a second.
 

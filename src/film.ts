@@ -205,7 +205,7 @@ export async function readFilm(path: string): Promise<Film> {
     json && typeof json === 'object' ? LOOK.filter((key) => Object.hasOwn(json, key)) : []
   if (look.length > 0) {
     throw new Error(
-      `${path} sets ${look.join(', ')}. How the video looks and sounds is set for the project in .product-demo/config.json, not in a film: remove it from the film to use the config.`,
+      `${path} sets ${look.join(', ')}. How a video looks and sounds is set in its look.json, beside its film: remove it from the film.`,
     )
   }
   const parsed = film.safeParse(json)

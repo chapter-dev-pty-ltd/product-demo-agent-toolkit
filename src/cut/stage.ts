@@ -1,10 +1,10 @@
 import { readFile } from 'node:fs/promises'
-import { extname, resolve } from 'node:path'
+import { extname, resolve, sep } from 'node:path'
 import type { Browser, Page } from 'playwright-core'
 import { isHex, type Config, type CURSORS } from '../config.ts'
 import type { Footage } from '../perform.ts'
 
-const CANVAS = { width: 1920, height: 1080 }
+export const CANVAS = { width: 1920, height: 1080 }
 const ORIGIN = 'https://stage.product-demo'
 interface CursorLook {
   file: string | URL
@@ -125,21 +125,27 @@ interface StageData {
   title: string
 }
 
-export async function openStage(
-  browser: Browser,
+export type Look = Pick<Config, 'backdrop' | 'cursor' | 'display' | 'window'>
+
+export type StageFiles = (
+  path: string,
+) => Promise<{ contentType: string; body: Buffer | string } | undefined>
+
+const IMAGE_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+}
+
+export function stageFiles(
   footageDir: string,
   footage: Footage,
   highlights: Highlighted[],
-  look: {
-    backdrop: Config['backdrop']
-    cursor: Config['cursor']
-    display: Config['display']
-    window: Config['window']
-  },
+  look: () => Look,
   length: number,
   title: string,
   extra = '',
-): Promise<Page> {
+): StageFiles {
   const start = footage.frames[0]?.at ?? 0
   const time = <T extends { at: number }>(item: T): T => ({ ...item, at: item.at - start })
   const data: StageData = {
@@ -151,39 +157,60 @@ export async function openStage(
     addresses: (footage.addresses ?? []).map((a) => ({ at: a.at - start, label: label(a.url) })),
     title,
   }
-  const { backdrop } = look
-  const picture =
-    typeof backdrop === 'object'
-      ? backdrop.file
-      : isHex(backdrop)
-        ? undefined
-        : library(`backdrops/${backdrop}.jpg`)
-  const served =
-    picture && `/backdrop${extname(typeof picture === 'string' ? picture : picture.pathname)}`
-  const files: Record<string, () => Promise<Buffer>> =
-    served && picture ? { [served]: () => readFile(picture) } : {}
-  const background = served ? `url(${served}) center / cover` : String(backdrop)
-  const cursor = await cursorFor(look.cursor)
-  const { style } = look.cursor
-  if (typeof style === 'object') files['/cursor.svg'] = () => readFile(style.file)
+  const view = footage.viewport ?? { width: 1440, height: 900 }
+  return async (path) => {
+    const now = look()
+    const { backdrop } = now
+    const picture =
+      typeof backdrop === 'object'
+        ? backdrop.file
+        : isHex(backdrop)
+          ? undefined
+          : library(`backdrops/${backdrop}.jpg`)
+    const served =
+      picture && `/backdrop${extname(typeof picture === 'string' ? picture : picture.pathname)}`
+    if (path === '/') {
+      const background = served ? `url(${served}) center / cover` : String(backdrop)
+      const cursor = await cursorFor(now.cursor)
+      return {
+        contentType: 'text/html',
+        body: html(data, cursor, background, now, extra, view),
+      }
+    }
+    const { style } = now.cursor
+    const asked = resolve(footageDir, decodeURIComponent(path.slice(1)))
+    const inside = asked.startsWith(resolve(footageDir) + sep)
+    const file =
+      served && picture && path === served
+        ? picture
+        : path === '/cursor.svg' && typeof style === 'object'
+          ? style.file
+          : inside
+            ? asked
+            : undefined
+    if (!file) return undefined
+    const body = await readFile(file).catch(() => undefined)
+    if (!body) return undefined
+    return { contentType: IMAGE_TYPES[extname(path)] ?? 'image/jpeg', body }
+  }
+}
 
+export async function openStage(
+  browser: Browser,
+  footageDir: string,
+  footage: Footage,
+  highlights: Highlighted[],
+  look: Look,
+  length: number,
+  title: string,
+  extra = '',
+): Promise<Page> {
+  const files = stageFiles(footageDir, footage, highlights, () => look, length, title, extra)
   const page = await browser.newPage({ viewport: CANVAS, deviceScaleFactor: 1 })
   await page.route(`${ORIGIN}/**`, async (route) => {
-    const path = new URL(route.request().url()).pathname
-    if (path === '/') {
-      return route.fulfill({
-        contentType: 'text/html',
-        body: html(data, cursor, background, look, extra, footage.viewport),
-      })
-    }
-    const read =
-      files[path] ?? (() => readFile(resolve(footageDir, decodeURIComponent(path.slice(1)))))
-    const body = await read().catch(() => undefined)
-    if (!body) return route.fulfill({ status: 404 })
-    const type =
-      { '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml' }[extname(path)] ??
-      'image/jpeg'
-    return route.fulfill({ contentType: type, body, headers: { 'cache-control': 'no-store' } })
+    const file = await files(new URL(route.request().url()).pathname)
+    if (!file) return route.fulfill({ status: 404 })
+    return route.fulfill({ ...file, headers: { 'cache-control': 'no-store' } })
   })
   await page.goto(`${ORIGIN}/`)
   await page.evaluate(() => document.fonts.ready)

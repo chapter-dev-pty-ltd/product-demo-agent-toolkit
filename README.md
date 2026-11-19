@@ -51,14 +51,26 @@ As well as:
 - Real clicking & typing sounds.
 - 1080p at 60fps.
 
+## Studio
+
+![The studio open in a browser: the video with its timeline of pages, clicks, music and highlights, and a chat where Claude Code changed the cursor to purple without a reshoot](docs/studio.webp)
+
+The toolkit also comes loaded with a lightweight editing studio for you to make quick changes to
+the videos you create. Easily see how configuration changes look without reshooting.
+
+You can also chat with your own local agent and see the changes it makes to the video in real
+time.
+
+Your agent opens it for you, or open it yourself with `product-demo-agent-toolkit studio <video>`.
+
 ## Customizable Config
 
 The toolkit is ready to roll by default, but if you want to customize it, you can do that too!
-Add `.product-demo/config.json` to the project. Every setting is optional, for example:
+For example:
 
 ```json
 {
-  "backdrop": "./brand/backdrop.png",
+  "backdrop": "/backdrop.png",
   "display": "browser",
   "cursor": { "style": "#2855DB", "size": 1.25, "label": "Agent" },
   "sound": { "click": true, "typing": false },
@@ -76,8 +88,13 @@ Add `.product-demo/config.json` to the project. Every setting is optional, for e
 | `music`    | `false`                                          | `"lofi"`, your own `.mp3`, `.m4a`, `.aac`, `.wav`, `.ogg` or `.flac`, or `{ "track": "lofi", "volume": 0.4 }` (0.25 by default). Looped if the video runs longer, faded out at the end. |
 | `voice`    | Jessica, from ElevenLabs                         | Who speaks the voiceover: `{ "provider": "elevenlabs", "voice": "<voice id>" }`, and optionally a `"model"`.                                                                            |
 | `mode`     | `"just_do_it"`                                   | When something is unclear, make the best choice and note it. `"ask"` stops and asks instead.                                                                                            |
-| `keep`     | `10`                                             | How many rehearsals and shoots of each film to keep.                                                                                                                                    |
+| `keep`     | `5`                                              | How many rehearsals and takes of each video to keep.                                                                                                                                    |
 | `review`   | `false`                                          | Whether `cut` also makes the review image.                                                                                                                                              |
+
+Each video is a folder of its own in `~/.product-demo/videos`, named by a short id, with its
+film, its takes, its cut and its studio chat. It takes a copy of the default look into its own
+`look.json` when it's made, so changing the default never changes a video you've already made.
+Paths in a look are relative to the file they're in.
 
 ## Features
 
@@ -94,7 +111,6 @@ And much more.
 
 #### Coming soon
 
-- Local Studio (web application for editing)
 - Support for Safari and Firefox (currently only Chrome)
 - More tasteful defaults
 - Support for mobile product demos

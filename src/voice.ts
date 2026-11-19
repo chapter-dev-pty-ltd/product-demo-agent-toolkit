@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { HOME } from './home.ts'
 import { elevenlabs } from './voice/elevenlabs.ts'
 
 export interface Word {
@@ -32,7 +33,7 @@ export interface Spoken {
   words: Word[]
 }
 
-const DIR = join('.product-demo', 'voice')
+const DIR = join(HOME, 'voice')
 
 export async function speakLines(
   lines: string[],

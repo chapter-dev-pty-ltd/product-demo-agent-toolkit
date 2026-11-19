@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { appendFile, chmod, cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
+import { HOME } from './home.ts'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseEnv } from 'node:util'
@@ -10,7 +11,7 @@ import { readConfig } from './config.ts'
 import { findFfmpeg, launchBrowser } from './tools.ts'
 import { PROVIDERS, type VoiceProvider } from './voice.ts'
 
-const HOME_ENV = join(homedir(), '.product-demo', '.env')
+const HOME_ENV = join(HOME, '.env')
 
 export function loadKeys(
   files: string[] = ['.env', HOME_ENV],
@@ -109,7 +110,7 @@ export async function init(): Promise<string[]> {
   if (existsSync('.git') || existsSync('.gitignore')) {
     const ignore = existsSync('.gitignore') ? await readFile('.gitignore', 'utf8') : ''
     const lines = new Set(ignore.split('\n').map((line) => line.trim().replace(/\/$/, '')))
-    const missing = ['.product-demo/', '.env'].filter((l) => !lines.has(l.replace(/\/$/, '')))
+    const missing = ['.env'].filter((l) => !lines.has(l.replace(/\/$/, '')))
     if (missing.length > 0) {
       const gap = ignore && !ignore.endsWith('\n') ? '\n' : ''
       await appendFile('.gitignore', `${gap}${missing.join('\n')}\n`)
