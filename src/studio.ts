@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { openSync, watch } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { createReadStream, openSync, watch } from 'node:fs'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createServer, request, type IncomingMessage, type ServerResponse } from 'node:http'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
+import { pipeline } from 'node:stream/promises'
 import {
   BACKDROPS,
   CURSORS,
@@ -17,7 +18,8 @@ import {
   type Music,
   type ProjectFile,
 } from './config.ts'
-import { LIMIT, prepare, STEM_GAIN, stems, stemsOf, type Stem } from './cut/cut.ts'
+import { cut, LIMIT, prepare, STEM_GAIN, stems, stemsOf, type Stem } from './cut/cut.ts'
+import { convertExport } from './cut/export.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
 import { filesOf, latestTake, type Video } from './videos.ts'
 
@@ -124,6 +126,7 @@ export async function studio(
   )
   let { settings, mine, extras } = fromConfig(config, hold)
   let saving = Promise.resolve()
+  let exporting = false
   const staged = (lit: typeof highlights) =>
     stageFiles(footageDir, footage, lit, () => settings, length, title)
   let stage = staged(highlights)
@@ -285,6 +288,41 @@ export async function studio(
         saving = saving.then(() => saveLook(lookFile, settings)).catch((e) => void console.log(e))
         await saving
         return send(200, 'application/json', JSON.stringify(toPage(settings)))
+      }
+      if (path === '/studio/export' && req.method === 'POST') {
+        const raw = JSON.parse(await body(req))
+        const format: unknown = raw.format ?? 'mp4'
+        if (format !== 'mp4' && format !== 'webm' && format !== 'gif') {
+          return send(400, 'text/plain', 'Choose MP4, WebM, or GIF.')
+        }
+        if (exporting)
+          return send(
+            409,
+            'text/plain',
+            'An export is already running. Try again when it finishes.',
+          )
+        exporting = true
+        const temporary = join(places.dir, `export-${randomBytes(8).toString('hex')}.mp4`)
+        const converted = `${temporary}.${format}`
+        try {
+          const snapshot = fromPage(raw, settings, mine)
+          await saving
+          await cut(footageDir, temporary, { ...(await readConfig(lookFile)), ...snapshot })
+          if (format !== 'mp4') await convertExport(temporary, converted, format)
+          await rename(temporary, filesOf(video).cut)
+          const output = join(video.dir, `video.${format}`)
+          if (format !== 'mp4') await rename(converted, output)
+          res.writeHead(200, {
+            'content-type': { mp4: 'video/mp4', webm: 'video/webm', gif: 'image/gif' }[format],
+            'content-disposition': `attachment; filename="${video.id}.${format}"`,
+            'cache-control': 'no-store',
+          })
+          await pipeline(createReadStream(output), res)
+        } finally {
+          exporting = false
+          await Promise.all([temporary, converted].map((file) => rm(file, { force: true })))
+        }
+        return
       }
       const thumb = path.match(/^\/studio\/backdrops\/([a-z-]+)\.jpg$/)
       if (thumb?.[1] && (BACKDROPS as readonly string[]).includes(thumb[1])) {
@@ -667,7 +705,38 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
   background: var(--text); color: #fff; font: 500 10px/18px var(--mono); white-space: nowrap; }
 
 aside { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-.video { padding: 12px 24px 0; display: flex; min-width: 0; }
+.video { padding: 12px 24px 0; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.video b { flex: 1; }
+#export-status { color: var(--dim); font-size: 12px; max-width: 240px; }
+#export { height: 32px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); color: var(--dim); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; font-weight: 500; }
+#export:hover { background: var(--muted); color: var(--text); }
+#export:disabled { cursor: wait; }
+#export svg { width: 14px; height: 14px; }
+.export-spinner { display: none; width: 14px; height: 14px; border: 1.5px solid var(--line-strong); border-top-color: var(--dim); border-radius: 50%; animation: export-spin .8s linear infinite; }
+#export[aria-busy=true] svg { display: none; }
+#export[aria-busy=true] .export-spinner { display: block; }
+@keyframes export-spin { to { transform: rotate(360deg); } }
+#export-picker { width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 24px 80px #0002, 0 4px 16px #0001; color: var(--text); }
+#export-picker::backdrop { background: rgb(10 10 10 / .22); backdrop-filter: blur(3px); }
+.export-heading { position: relative; padding: 24px 24px 20px; }
+.export-heading h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; letter-spacing: -.025em; }
+.export-heading p { margin: 0; color: var(--dim); font-size: 12px; }
+#cancel-export { position: absolute; top: 17px; right: 17px; }
+.export-field { padding: 0 24px; }
+.export-field label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 500; }
+.export-select { position: relative; display: flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg); box-shadow: 0 1px 2px #00000004; transition: border-color .15s, box-shadow .15s; }
+.export-select:hover { border-color: #b8b8bc; }
+.export-select:focus-within { border-color: var(--text); box-shadow: 0 0 0 3px #00000008; }
+.export-select svg { position: absolute; pointer-events: none; width: 16px; height: 16px; color: var(--dim); }
+.export-select .file-icon { left: 13px; }
+.export-select .chevron { right: 12px; width: 14px; height: 14px; }
+#export-format { appearance: none; width: 100%; height: 44px; border: 0; border-radius: inherit; background: transparent; padding: 0 36px 0 39px; outline: none; font: 500 13px Inter, sans-serif; color: var(--text); cursor: pointer; }
+#export-hint { margin: 9px 0 0; color: var(--dim); font-size: 12px; }
+#export-description { margin: 20px 24px; padding: 10px 12px; border-radius: 8px; background: var(--soft); color: var(--dim); font-size: 11px; }
+#export-picker footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-top: 1px solid var(--line); background: var(--soft); }
+#export-picker footer small { color: var(--dim); font-size: 11px; }
+#start-export { height: 36px; padding: 0 16px; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .export-spinner { animation: none; } .export-select { transition: none; } }
 .video b { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabs { display: flex; gap: 14px; padding: 0 18px; border-bottom: 1px solid var(--line); }
 .tabs button { border: 0; background: none; padding: 12px 2px 10px; color: var(--dim); font-weight: 500; cursor: pointer; border-bottom: 1.5px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.15s; }
@@ -756,7 +825,7 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
 </style></head><body>
 
 <section class="editor">
-  <div class="video"><b title="${title}">${title}</b></div>
+  <div class="video"><b title="${title}">${title}</b><span id="export-status" role="status"></span><button id="export" aria-haspopup="dialog"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8m-3-3 3 3 3-3M3 10v3h10v-3"/></svg><span class="export-spinner" aria-hidden="true"></span><span id="export-label">Export</span></button></div>
   <div id="viewer"><div id="screen"></div></div>
   <div class="transport">
     <div class="left">
@@ -773,6 +842,20 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
   </div>
 </section>
 
+<dialog id="export-picker" aria-labelledby="export-picker-title">
+  <header class="export-heading"><h2 id="export-picker-title">Export video</h2><p>Download a copy with your current edits.</p><button class="icon" id="cancel-export" aria-label="Close export"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></header>
+  <div class="export-field">
+    <label for="export-format">File format</label>
+    <div class="export-select">
+      <svg class="file-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5.5L9.5 2Z"/><path d="M9 2v4h4M5.5 9h5M5.5 11h3"/></svg>
+      <select id="export-format" aria-describedby="export-hint export-description"><option value="mp4">MP4 · Recommended</option><option value="webm">WebM</option><option value="gif">GIF</option></select>
+      <svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 6.5 3 3 3-3"/></svg>
+    </div>
+    <p id="export-hint">Ready to share. Works almost anywhere.</p>
+  </div>
+  <p id="export-description" aria-live="polite">1080p · 60 fps · Audio included</p>
+  <footer><small>Saved to your downloads</small><button class="primary" id="start-export">Export MP4</button></footer>
+</dialog>
 <aside>
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected="true" data-tab="chat">Agent</button>
@@ -842,6 +925,47 @@ const BOOT = ${JSON.stringify(boot)};
 const fileName = (path) => path.split('/').pop();
 const CURSORS = { black: '#111111', pink: '#ff7ccb', lime: '#b6f24f', macos: 'linear-gradient(135deg,#000 50%,#fff 50%)' };
 const $ = (id) => document.getElementById(id);
+const exportPicker = $('export-picker');
+let downloading = false, refreshAfterExport = false;
+$('export').onclick = () => exportPicker.showModal();
+$('cancel-export').onclick = () => exportPicker.close();
+const exportFormat = () => $('export-format').value;
+$('export-format').onchange = () => {
+  $('export-hint').textContent = { mp4: 'Ready to share. Works almost anywhere.', webm: 'For websites and embeds.', gif: 'A silent, looping preview.' }[exportFormat()];
+  $('export-description').textContent = exportFormat() === 'gif' ? '960 px wide · 15 fps · No audio' : '1080p · 60 fps · Audio included';
+  $('start-export').textContent = 'Export ' + (exportFormat() === 'webm' ? 'WebM' : exportFormat().toUpperCase());
+};
+$('start-export').onclick = async () => {
+  const format = exportFormat();
+  exportPicker.close();
+  downloading = true;
+  const button = $('export'), status = $('export-status');
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  $('export-label').textContent = 'Exporting…';
+  status.textContent = '';
+  try {
+    const res = await fetch('/studio/export', { method: 'POST', body: JSON.stringify({ ...look, format }) });
+    if (!res.ok) throw new Error(await res.text());
+    const url = URL.createObjectURL(await res.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = ${JSON.stringify(video.id)} + '.' + format;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    status.textContent = 'Download ready';
+  } catch (error) {
+    status.textContent = 'Export failed. ' + error.message;
+  } finally {
+    downloading = false;
+    button.disabled = false;
+    button.setAttribute('aria-busy', 'false');
+    $('export-label').textContent = 'Export';
+    if (refreshAfterExport) setTimeout(refresh, 1000);
+  }
+};
 const pretty = (name) => name[0].toUpperCase() + name.slice(1).replace(/-/g, ' ');
 const thumb = (name) => name === 'own' ? 'url(/studio/own/backdrop)' : name.startsWith('#') ? 'linear-gradient(' + name + ',' + name + ')' : 'url(/studio/backdrops/' + name + '.jpg)';
 const backdropName = (name) => name === 'own' ? fileName(OWNED.backdrop) : name.startsWith('#') ? name : pretty(name);
@@ -1118,6 +1242,7 @@ const toggle = () => {
 $('play').onclick = toggle;
 $('restart').onclick = () => { t = 0; seek(); };
 document.addEventListener('keydown', (e) => {
+  if (exportPicker.open || e.target.closest('button')) return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.code === 'Space') { e.preventDefault(); toggle(); }
   if (e.code === 'ArrowLeft') { t = Math.max(0, t - 1); seek(); }
@@ -1327,10 +1452,12 @@ $('draft').value = kept(':draft', '');
 $('draft').oninput = () => keep(':draft', $('draft').value);
 
 const events = new EventSource('/studio/events');
+const refresh = () => location.replace('/studio?t=' + t.toFixed(2) + '&tab=' + openTab());
 events.onmessage = (e) => {
   const event = JSON.parse(e.data);
   if ((event.type === 'hello' && event.boot !== BOOT) || event.type === 'config') {
-    return location.replace('/studio?t=' + t.toFixed(2) + '&tab=' + openTab());
+    if (downloading) { refreshAfterExport = true; return; }
+    return refresh();
   }
   if ('chat' in event) { chat = event.chat; showChat(); }
   if ('agent' in event) { agent = event.agent; showAgent(); showChat(); }
