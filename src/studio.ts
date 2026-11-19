@@ -19,6 +19,7 @@ import {
   type ProjectFile,
 } from './config.ts'
 import { cut, LIMIT, prepare, STEM_GAIN, stems, stemsOf, type Stem } from './cut/cut.ts'
+import { convertExport } from './cut/export.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
 import { filesOf, latestTake, type Video } from './videos.ts'
 
@@ -289,6 +290,11 @@ export async function studio(
         return send(200, 'application/json', JSON.stringify(toPage(settings)))
       }
       if (path === '/studio/export' && req.method === 'POST') {
+        const raw = JSON.parse(await body(req))
+        const format: unknown = raw.format ?? 'mp4'
+        if (format !== 'mp4' && format !== 'webm' && format !== 'gif') {
+          return send(400, 'text/plain', 'Choose MP4, WebM, or GIF.')
+        }
         if (exporting)
           return send(
             409,
@@ -297,21 +303,24 @@ export async function studio(
           )
         exporting = true
         const temporary = join(places.dir, `export-${randomBytes(8).toString('hex')}.mp4`)
+        const converted = `${temporary}.${format}`
         try {
-          const snapshot = fromPage(JSON.parse(await body(req)), settings, mine)
+          const snapshot = fromPage(raw, settings, mine)
           await saving
           await cut(footageDir, temporary, { ...(await readConfig(lookFile)), ...snapshot })
-          const output = filesOf(video).cut
-          await rename(temporary, output)
+          if (format !== 'mp4') await convertExport(temporary, converted, format)
+          await rename(temporary, filesOf(video).cut)
+          const output = join(video.dir, `video.${format}`)
+          if (format !== 'mp4') await rename(converted, output)
           res.writeHead(200, {
-            'content-type': 'video/mp4',
-            'content-disposition': `attachment; filename="${video.id}.mp4"`,
+            'content-type': { mp4: 'video/mp4', webm: 'video/webm', gif: 'image/gif' }[format],
+            'content-disposition': `attachment; filename="${video.id}.${format}"`,
             'cache-control': 'no-store',
           })
           await pipeline(createReadStream(output), res)
         } finally {
           exporting = false
-          await rm(temporary, { force: true })
+          await Promise.all([temporary, converted].map((file) => rm(file, { force: true })))
         }
         return
       }
@@ -699,6 +708,17 @@ aside { border-left: 1px solid var(--line); display: flex; flex-direction: colum
 .video { padding: 12px 24px 0; display: flex; align-items: center; gap: 12px; min-width: 0; }
 .video b { flex: 1; }
 #export-status { color: var(--dim); font-size: 12px; max-width: 240px; }
+#export { height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--dim); cursor: pointer; }
+#export:hover { background: var(--muted); color: var(--text); }
+#export:disabled { opacity: 0.5; cursor: default; }
+#export-picker { width: min(400px, 90vw); padding: 24px; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 80px #0003; }
+#export-picker::backdrop { background: #0005; }
+#export-picker h2 { margin: 0 0 20px; font-size: 18px; }
+#export-picker select { width: 100%; margin: 8px 0; padding: 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+#export-picker p { color: var(--dim); min-height: 36px; }
+#export-picker footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.secondary { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); cursor: pointer; white-space: nowrap; }
+.secondary:hover { background: var(--muted); }
 .video b { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabs { display: flex; gap: 14px; padding: 0 18px; border-bottom: 1px solid var(--line); }
 .tabs button { border: 0; background: none; padding: 12px 2px 10px; color: var(--dim); font-weight: 500; cursor: pointer; border-bottom: 1.5px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.15s; }
@@ -787,7 +807,7 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
 </style></head><body>
 
 <section class="editor">
-  <div class="video"><b title="${title}">${title}</b><span id="export-status" role="status"></span><button class="primary" id="export">Export MP4</button></div>
+  <div class="video"><b title="${title}">${title}</b><span id="export-status" role="status"></span><button id="export" aria-haspopup="dialog">Export</button></div>
   <div id="viewer"><div id="screen"></div></div>
   <div class="transport">
     <div class="left">
@@ -804,6 +824,15 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
   </div>
 </section>
 
+<dialog id="export-picker" aria-labelledby="export-picker-title">
+  <h2 id="export-picker-title">Export video</h2>
+  <label for="export-format">Format</label>
+  <select id="export-format" aria-describedby="export-description">
+    <option value="mp4">MP4</option><option value="webm">WebM</option><option value="gif">GIF</option>
+  </select>
+  <p id="export-description">Full quality with audio. Works in most players and sharing tools.</p>
+  <footer><button class="secondary" id="cancel-export">Cancel</button><button class="primary" id="start-export">Export</button></footer>
+</dialog>
 <aside>
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected="true" data-tab="chat">Agent</button>
@@ -873,18 +902,32 @@ const BOOT = ${JSON.stringify(boot)};
 const fileName = (path) => path.split('/').pop();
 const CURSORS = { black: '#111111', pink: '#ff7ccb', lime: '#b6f24f', macos: 'linear-gradient(135deg,#000 50%,#fff 50%)' };
 const $ = (id) => document.getElementById(id);
-$('export').onclick = async () => {
+const exportPicker = $('export-picker');
+let downloading = false, refreshAfterExport = false;
+$('export').onclick = () => exportPicker.showModal();
+$('cancel-export').onclick = () => exportPicker.close();
+$('export-format').onchange = () => {
+  $('export-description').textContent = {
+    mp4: 'Full quality with audio. Works in most players and sharing tools.',
+    webm: 'Full resolution with audio. Made for playback on the web.',
+    gif: 'Silent, looping animation at 960 px wide and 15 fps.',
+  }[$('export-format').value];
+};
+$('start-export').onclick = async () => {
+  const format = $('export-format').value;
+  exportPicker.close();
+  downloading = true;
   const button = $('export'), status = $('export-status');
   button.disabled = true;
   button.textContent = 'Exporting…';
   status.textContent = 'Rendering your current settings…';
   try {
-    const res = await fetch('/studio/export', { method: 'POST', body: JSON.stringify(look) });
+    const res = await fetch('/studio/export', { method: 'POST', body: JSON.stringify({ ...look, format }) });
     if (!res.ok) throw new Error(await res.text());
     const url = URL.createObjectURL(await res.blob());
     const link = document.createElement('a');
     link.href = url;
-    link.download = ${JSON.stringify(video.id + '.mp4')};
+    link.download = ${JSON.stringify(video.id)} + '.' + format;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -893,8 +936,10 @@ $('export').onclick = async () => {
   } catch (error) {
     status.textContent = 'Export failed. ' + error.message;
   } finally {
+    downloading = false;
     button.disabled = false;
-    button.textContent = 'Export MP4';
+    button.textContent = 'Export';
+    if (refreshAfterExport) setTimeout(refresh, 1000);
   }
 };
 const pretty = (name) => name[0].toUpperCase() + name.slice(1).replace(/-/g, ' ');
@@ -1173,6 +1218,7 @@ const toggle = () => {
 $('play').onclick = toggle;
 $('restart').onclick = () => { t = 0; seek(); };
 document.addEventListener('keydown', (e) => {
+  if (exportPicker.open || e.target.closest('button')) return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.code === 'Space') { e.preventDefault(); toggle(); }
   if (e.code === 'ArrowLeft') { t = Math.max(0, t - 1); seek(); }
@@ -1382,10 +1428,12 @@ $('draft').value = kept(':draft', '');
 $('draft').oninput = () => keep(':draft', $('draft').value);
 
 const events = new EventSource('/studio/events');
+const refresh = () => location.replace('/studio?t=' + t.toFixed(2) + '&tab=' + openTab());
 events.onmessage = (e) => {
   const event = JSON.parse(e.data);
   if ((event.type === 'hello' && event.boot !== BOOT) || event.type === 'config') {
-    return location.replace('/studio?t=' + t.toFixed(2) + '&tab=' + openTab());
+    if (downloading) { refreshAfterExport = true; return; }
+    return refresh();
   }
   if ('chat' in event) { chat = event.chat; showChat(); }
   if ('agent' in event) { agent = event.agent; showAgent(); showChat(); }

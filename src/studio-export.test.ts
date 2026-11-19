@@ -5,6 +5,8 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, expect, test, vi } from 'vitest'
 import { launchBrowser } from './tools.ts'
 
+vi.mock('./cut/export.ts', () => ({ convertExport: vi.fn() }))
+
 vi.mock('./cut/cut.ts', async (original) => ({
   ...(await original<typeof import('./cut/cut.ts')>()),
   cut: vi.fn(),
@@ -15,6 +17,7 @@ process.env.PRODUCT_DEMO_HOME = home
 const { filesOf, newRun, newVideo } = await import('./videos.ts')
 const { studio, stopStudio } = await import('./studio.ts')
 const { cut } = await import('./cut/cut.ts')
+const { convertExport } = await import('./cut/export.ts')
 const video = await newVideo('Export test')
 let address: string
 let take: string
@@ -106,21 +109,107 @@ test('the export button downloads the rendered file and recovers from a failed r
     const page = await browser.newPage({ acceptDownloads: true })
     await page.goto(address + '/studio')
     vi.mocked(cut).mockRejectedValueOnce(new Error('try again'))
-    await page.getByRole('button', { name: 'Export MP4' }).click()
+    await page.locator('#export').click()
+    await page
+      .getByRole('dialog', { name: 'Export video' })
+      .getByRole('button', { name: 'Export', exact: true })
+      .click()
     await page.waitForFunction(() =>
       document.getElementById('export-status')?.textContent?.includes('Export failed'),
     )
-    expect(await page.getByRole('button', { name: 'Export MP4' }).isEnabled()).toBe(true)
+    expect(await page.getByRole('button', { name: 'Export', exact: true }).isEnabled()).toBe(true)
     vi.mocked(cut).mockImplementationOnce(async (_, output) => {
       await writeFile(output, 'downloaded mp4')
       return 1
     })
     const downloaded = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Export MP4' }).click()
+    await page.locator('#export').click()
+    await page
+      .getByRole('dialog', { name: 'Export video' })
+      .getByRole('button', { name: 'Export', exact: true })
+      .click()
     const download = await downloaded
     expect(download.suggestedFilename()).toBe(video.id + '.mp4')
     expect(await readFile((await download.path())!, 'utf8')).toBe('downloaded mp4')
   } finally {
+    await browser.close()
+  }
+})
+
+test.each(['webm', 'gif'] as const)(
+  'exports %s with the matching filename and media type',
+  async (format) => {
+    vi.mocked(cut).mockImplementationOnce(async (_, output) => {
+      await writeFile(output, 'master mp4')
+      return 1
+    })
+    vi.mocked(convertExport).mockImplementationOnce(async (input, output, selected) => {
+      expect(await readFile(input, 'utf8')).toBe('master mp4')
+      expect(selected).toBe(format)
+      await writeFile(output, 'converted ' + format)
+    })
+    const response = await fetch(address + '/studio/export', {
+      method: 'POST',
+      body: JSON.stringify({ format }),
+    })
+    expect(response.headers.get('content-type')).toBe(format === 'gif' ? 'image/gif' : 'video/webm')
+    expect(response.headers.get('content-disposition')).toContain(video.id + '.' + format)
+    expect(await response.text()).toBe('converted ' + format)
+    expect(await readFile(filesOf(video).cut, 'utf8')).toBe('master mp4')
+    expect(await readFile(join(video.dir, 'video.' + format), 'utf8')).toBe('converted ' + format)
+  },
+)
+
+test('rejects unsupported formats before rendering', async () => {
+  const before = vi.mocked(cut).mock.calls.length
+  const response = await fetch(address + '/studio/export', {
+    method: 'POST',
+    body: JSON.stringify({ format: '../../outside' }),
+  })
+  expect(response.status).toBe(400)
+  expect(vi.mocked(cut).mock.calls).toHaveLength(before)
+})
+
+test('finishes the download when another tab changes settings during a render', async () => {
+  const browser = await launchBrowser()
+  let release!: () => void
+  const held = new Promise<void>((done) => {
+    release = done
+  })
+  try {
+    const page = await browser.newPage({ acceptDownloads: true })
+    await page.goto(address + '/studio')
+    let started = false
+    vi.mocked(cut).mockImplementationOnce(async (_, output) => {
+      started = true
+      await held
+      await writeFile(output, 'finished export')
+      return 1
+    })
+    const downloaded = page.waitForEvent('download')
+    await page.locator('#export').click()
+    await page.locator('#start-export').click()
+    await vi.waitFor(() => expect(started).toBe(true))
+    const changed = page.evaluate(
+      () =>
+        new Promise<void>((done) => {
+          const events = new EventSource('/studio/events')
+          events.onmessage = (event) => {
+            if (JSON.parse(event.data).type !== 'config') return
+            events.close()
+            done()
+          }
+        }),
+    )
+    const look = JSON.parse(await readFile(filesOf(video).look, 'utf8'))
+    await writeFile(filesOf(video).look, JSON.stringify({ ...look, backdrop: '#123456' }))
+    await changed
+    expect(page.url()).toBe(address + '/studio')
+    release()
+    const download = await downloaded
+    expect(await readFile((await download.path())!, 'utf8')).toBe('finished export')
+  } finally {
+    release()
     await browser.close()
   }
 })
