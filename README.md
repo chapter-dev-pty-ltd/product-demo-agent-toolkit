@@ -61,6 +61,8 @@ the videos you create. Easily see how configuration changes look without reshoot
 You can also chat with your own local agent and see the changes it makes to the video in real
 time.
 
+Your agent opens it for you, or open it yourself with `product-demo-agent-toolkit studio <video>`.
+
 ## Customizable Config
 
 The toolkit is ready to roll by default, but if you want to customize it, you can do that too!
