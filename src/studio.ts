@@ -739,19 +739,17 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
 #screen { position: relative; flex: none; border-radius: 10px; box-shadow: 0 12px 32px rgb(0 0 0 / .08), 0 2px 6px rgb(0 0 0 / .04); }
 #screen iframe { position: absolute; left: 0; top: 0; width: ${CANVAS.width}px; height: ${CANVAS.height}px; border: 0; transform-origin: 0 0; }
 #screen iframe.loading { visibility: hidden; }
-.transport { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 16px;
+.transport { display: flex; justify-content: space-between; align-items: center; height: 44px; padding: 0 16px 0 12px;
   border-top: 1px solid var(--line); }
-.transport .left { display: flex; gap: 4px; }
+.transport .left { display: flex; align-items: center; gap: 4px; }
 .icon { width: 30px; height: 30px; border: 0; background: none; border-radius: 8px; display: grid; place-items: center; cursor: pointer; color: var(--dim); }
 .icon:hover { background: var(--muted); color: var(--text); }
 .icon svg { width: 16px; height: 16px; }
-#play { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--text); color: #fff; display: grid; place-items: center; cursor: pointer; }
+#play { width: 28px; height: 28px; margin-right: 2px; border-radius: 50%; border: 0; background: var(--text); color: #fff; display: grid; place-items: center; cursor: pointer; }
 #play:hover { background: #262626; }
-#play svg { width: 16px; height: 16px; }
-#time { justify-self: end; font: 500 13px var(--mono); }
+#play svg { width: 12px; height: 12px; }
+#time { padding-left: 6px; font: 500 12px var(--mono); }
 .icon[aria-pressed="true"] { color: var(--text); }
-.clip.music { background: #dcfce7; border-color: #4ade80; color: #14532d; }
-.clip.music.off { opacity: .35; }
 .grid .colour { position: relative; background: conic-gradient(#f87171, #fbbf24, #4ade80, #22d3ee, #818cf8, #e879f9, #f87171); border-radius: 7px; }
 .grid .colour input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .grid .colour[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--text); }
@@ -765,25 +763,36 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
 .ruler, .track { display: grid; grid-template-columns: var(--label) 1fr; }
 .ruler { height: 28px; }
 .ruler .lane { position: relative; border-bottom: 1px solid var(--line); }
-.tick { position: absolute; bottom: 0; height: 6px; border-left: 1px solid var(--line-strong); }
-.tick span { position: absolute; bottom: 8px; left: -1px; transform: translateX(-50%); font: 10px var(--mono); color: var(--faint); white-space: nowrap; }
-.tick.minor { height: 3px; }
+.tick { position: absolute; bottom: 0; }
+.tick span { position: absolute; bottom: 8px; left: 0; transform: translateX(-50%); font: 10px var(--mono); color: var(--faint); white-space: nowrap; }
+.tick.minor { bottom: 13px; width: 2px; height: 2px; margin-left: -1px; border-radius: 1px; background: var(--line-strong); }
 .track { height: 36px; }
 .track .name { display: flex; align-items: center; gap: 8px; padding: 0 16px; color: var(--text); font-size: 12px; border-right: 1px solid var(--line); }
 .track .name small { color: var(--faint); font-size: 11px; }
 .track .name svg { width: 14px; height: 14px; color: var(--dim); flex: none; }
 .ruler .lane, .track .lane { margin: 0 24px 0 16px; }
 .track .lane { position: relative; background: var(--soft); border-bottom: 1px solid #fff; }
-.clip { position: absolute; top: 5px; bottom: 5px; border-radius: 6px; border: 1px solid; overflow: hidden;
-  font-size: 11px; line-height: 24px; padding: 0 8px; white-space: nowrap; text-overflow: ellipsis; }
-.clip.page { background: var(--blue-bg); border-color: var(--blue); color: var(--blue-text); }
-.clip.highlight { background: var(--violet-bg); border-color: var(--violet); color: #4c1d95; }
-.mark { position: absolute; top: 8px; bottom: 8px; width: 4px; margin-left: -2px; border-radius: 2px; background: var(--pink); }
+.clip { position: absolute; top: 4px; bottom: 4px; display: flex; align-items: center; gap: 6px; border-radius: 6px; overflow: hidden;
+  font-size: 11px; font-weight: 500; line-height: 28px; padding: 0 8px; white-space: nowrap; }
+.clip > span { overflow: hidden; text-overflow: ellipsis; }
+.clip > svg, .clip > img { width: 14px; height: 14px; flex: none; }
+.clip.page { background: var(--blue-bg); color: var(--blue-text); }
+.clip.page small { font-size: inherit; font-weight: 400; color: #3b5ba9; }
+.clip.page img { border-radius: 3px; }
+.clip.music { padding: 0; background: #dcf5e4; color: #14532d; }
+.clip.music > span { position: relative; padding: 0 8px; background: inherit; }
+.clip.music > svg { position: absolute; left: 0; top: 4px; width: 100%; height: 20px; color: #16a34a; opacity: .35; }
+.clip.music.off { opacity: .35; }
+.clip.highlight { background: var(--violet); color: #fff; }
+.clip.highlight > svg { width: 13px; height: 13px; }
+.mark { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%;
+  background: var(--pink); border: 2px solid #fff; box-shadow: 0 1px 3px rgb(236 72 153 / .4); }
 .lane .empty { position: absolute; left: 8px; top: 0; line-height: 36px; color: var(--faint); font-size: 11px; }
 #lanes { position: relative; cursor: text; }
 #playhead { position: absolute; top: 0; bottom: 10px; width: 0; pointer-events: none; z-index: 2; }
 #playhead::before { content: ''; position: absolute; top: 0; bottom: 0; left: -0.5px; border-left: 1px solid var(--text); }
-#playhead::after { content: ''; position: absolute; top: 16px; left: -6px; border: 6px solid transparent; border-top: 8px solid var(--text); }
+#playhead span { position: absolute; top: 5px; left: 0; transform: translateX(-50%); height: 18px; padding: 0 6px; border-radius: 5px;
+  background: var(--text); color: #fff; font: 500 10px/18px var(--mono); white-space: nowrap; }
 
 /* Settings panel */
 aside { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
@@ -905,16 +914,16 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
   <div id="viewer"><div id="screen"></div></div>
   <div class="transport">
     <div class="left">
-      <button class="icon" id="sound" title="Sound on" aria-pressed="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6v4h2.5l3.5 3V3L5 6z"/><path id="waves" d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4"/></svg></button>
+      <button id="play" title="Play (space)"></button>
       <button class="icon" id="restart" title="To start"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v10M12 3.5 6.5 8l5.5 4.5z"/></svg></button>
+      <div id="time"></div>
     </div>
-    <button id="play" title="Play (space)"></button>
-    <div id="time"></div>
+    <button class="icon" id="sound" title="Sound on" aria-pressed="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6v4h2.5l3.5 3V3L5 6z"/><path id="waves" d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4"/></svg></button>
   </div>
   <div class="timeline">
     <div class="ruler"><div></div><div class="lane" id="ruler"></div></div>
     <div id="tracks"></div>
-    <div id="playhead"></div>
+    <div id="playhead"><span id="playhead-time"></span></div>
   </div>
 </section>
 
@@ -1062,10 +1071,13 @@ const track = (name, sub, icon) => {
 };
 const timeline = () => {
   const ruler = $('ruler');
+  // A label every step, and a dot between: every second when the step is 5s, say.
   const step = [1, 2, 5, 10, 15, 30, 60].find((s) => length / s <= 12) || 60;
-  for (let s = 0; s <= length; s += step / 2) {
+  const per = step % 5 === 0 ? 5 : 2;
+  for (let i = 0; (i * step) / per <= length; i++) {
+    const s = (i * step) / per;
     const tick = document.createElement('div');
-    const major = Math.round(s / step * 2) % 2 === 0;
+    const major = i % per === 0;
     tick.className = 'tick' + (major ? '' : ' minor');
     tick.style.left = pct(s);
     if (major) tick.innerHTML = '<span>' + clock(s).slice(0, 5) + '</span>';
@@ -1075,15 +1087,35 @@ const timeline = () => {
   const pointer = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="m3 3 10 3.6-4.6 1.8L6.6 13z"/></svg>';
   const spark = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="2.5" y="4" width="11" height="8" rx="2"/></svg>';
   const pages = track('Page', '', globe);
-  const addresses = data.addresses.length ? data.addresses : [{ at: 0, label: 'Screen' }];
+  // A page shown again (a reload, a route that changed nothing) stays one clip.
+  const addresses = (data.addresses.length ? data.addresses : [{ at: 0, label: 'Screen' }])
+    .filter((a, i, all) => i === 0 || a.label !== all[i - 1].label);
   addresses.forEach((a, i) => {
     const end = addresses[i + 1]?.at ?? length;
     const clip = document.createElement('div');
     clip.className = 'clip page';
     clip.style.left = 'calc(' + pct(a.at) + ' + 1px)';
     clip.style.width = 'calc(' + pct(end - a.at) + ' - 2px)';
-    clip.textContent = a.label;
     clip.title = a.label;
+    // The site's own icon where it has one, then its host, then the rest of the address, quieter.
+    const slash = a.label.indexOf('/');
+    const host = slash < 0 ? a.label : a.label.slice(0, slash);
+    const name = document.createElement('span');
+    name.textContent = host.replace(/^www\\./, '');
+    if (slash >= 0) {
+      const rest = document.createElement('small');
+      rest.textContent = ' ' + a.label.slice(slash);
+      name.appendChild(rest);
+    }
+    if (host.includes('.') || host.startsWith('localhost')) {
+      const icon = document.createElement('img');
+      icon.alt = '';
+      icon.referrerPolicy = 'no-referrer';
+      icon.src = '//' + host + '/favicon.ico';
+      icon.onerror = () => icon.replaceWith(Object.assign(document.createElement('span'), { innerHTML: globe }).firstChild);
+      clip.appendChild(icon);
+    }
+    clip.appendChild(name);
     pages.appendChild(clip);
   });
   const clicks = track('Clicks', String(data.clicks.length), pointer);
@@ -1099,15 +1131,19 @@ const timeline = () => {
   musicClip.className = 'clip music';
   musicClip.style.left = '1px';
   musicClip.style.width = 'calc(100% - 2px)';
+  musicClip.innerHTML = '<span></span>';
   tune.appendChild(musicClip);
   const lights = track('Highlights', '', spark);
   if (!data.highlights.length) lights.innerHTML = '<span class="empty">None in this take</span>';
+  const lens = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4 14 14M5 7h4M7 5v4"/></svg>';
+  const styles = { magnify: lens, box: spark, cursor: pointer };
   for (const h of data.highlights) {
     const clip = document.createElement('div');
     clip.className = 'clip highlight';
     clip.style.left = pct(h.at);
     clip.style.width = pct(h.until - h.at);
-    clip.textContent = h.style;
+    clip.innerHTML = (styles[h.style] || spark) + '<span></span>';
+    clip.lastChild.textContent = pretty(h.style);
     lights.appendChild(clip);
   }
   render();
@@ -1131,6 +1167,7 @@ timelineEl.addEventListener('pointerup', () => (timelineEl.onpointermove = null)
 
 const show = () => {
   $('time').innerHTML = clock(t) + ' <span>/ ' + clock(length) + '</span>';
+  $('playhead-time').textContent = clock(t);
   $('draft-at').textContent = 'At ' + clock(t);
   if (typeof showCurrent === 'function') showCurrent();
   // Only when it changes: an icon swapped between press and release loses the click.
@@ -1146,11 +1183,36 @@ const seek = async () => { if (frame) await frame.contentWindow.stage.seek(t); s
 // voiceover by 1.6 rather than lowering this), and faded out over the ending's hold.
 const player = new Audio();
 player.loop = true;
+const musicSrc = (m) => m.track === 'own' ? '/studio/own/music' : '/studio/music/' + m.track;
+
+// The music's waveform on its clip: the loudest moment in each slice, looped as the cut loops it.
+const wave = async (src) => {
+  if (musicClip.dataset.wave === (src || '')) return;
+  musicClip.dataset.wave = src || '';
+  musicClip.querySelector('svg')?.remove();
+  if (!src) return;
+  try {
+    const sound = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(await (await fetch(src)).arrayBuffer());
+    if (musicClip.dataset.wave !== src) return;
+    const samples = sound.getChannelData(0), rate = sound.sampleRate;
+    const n = Math.max(40, Math.floor(musicClip.clientWidth / 4));
+    const peaks = [];
+    for (let i = 0; i < n; i++) {
+      const from = Math.floor((i / n) * length * rate), to = Math.floor(((i + 1) / n) * length * rate);
+      let peak = 0;
+      for (let s = from; s < to; s += Math.max(1, Math.floor((to - from) / 256))) peak = Math.max(peak, Math.abs(samples[s % samples.length]));
+      peaks.push(peak);
+    }
+    const top = Math.max(...peaks) || 1;
+    const bars = peaks.map((p, i) => { const h = 3 + (p / top) * 17; return '<rect x="' + i * 4 + '" y="' + (10 - h / 2) + '" width="2" height="' + h + '" rx="1"/>'; });
+    musicClip.insertAdjacentHTML('afterbegin', '<svg viewBox="0 0 ' + n * 4 + ' 20" preserveAspectRatio="none" fill="currentColor">' + bars.join('') + '</svg>');
+  } catch {}
+};
 let heard = true;
 const audio = () => {
   const on = playing && heard && look.music;
   if (!on) { player.pause(); return; }
-  const src = look.music.track === 'own' ? '/studio/own/music' : '/studio/music/' + look.music.track;
+  const src = musicSrc(look.music);
   if (player.dataset.src !== src) { player.dataset.src = src; player.src = src; }
   const fade = Math.min(HOLD, length);
   player.volume = Math.max(0, Math.min(1, look.music.volume * Math.min(1, (length - t) / fade)));
@@ -1231,7 +1293,8 @@ const render = () => {
   }
   if (musicClip) {
     musicClip.className = 'clip music' + (m ? '' : ' off');
-    musicClip.textContent = m ? (m.track === 'own' ? fileName(OWNED.music) : pretty(m.track)) + ' · ' + Math.round(m.volume * 100) + '%' : 'No music';
+    musicClip.querySelector('span').textContent = m ? (m.track === 'own' ? fileName(OWNED.music) : pretty(m.track)) + ' · ' + Math.round(m.volume * 100) + '%' : 'No music';
+    wave(m && musicSrc(m));
   }
   fillInput.value = look.fill;
   fillInput.style.setProperty('--fill', ((look.fill - 0.5) / 0.5) * 100 + '%');
