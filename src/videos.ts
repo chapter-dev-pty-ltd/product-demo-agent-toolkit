@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { randomInt } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -62,8 +62,9 @@ export async function newVideo(title?: string, session?: string): Promise<Video>
 function newId(): string {
   const letters = 'abcdefghijklmnopqrstuvwxyz'
   const all = `${letters}0123456789`
-  const bytes = randomBytes(6)
-  return [...bytes].map((byte, i) => (i === 0 ? letters[byte % 26] : all[byte % 36])).join('')
+  // randomInt draws evenly; a random byte modulo 26 or 36 would favour some characters.
+  const pick = (from: string) => from[randomInt(from.length)]
+  return pick(letters) + Array.from({ length: 5 }, () => pick(all)).join('')
 }
 
 /** Every video, the most recently worked on first. */
