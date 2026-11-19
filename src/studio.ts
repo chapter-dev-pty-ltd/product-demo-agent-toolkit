@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { openSync, watch } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { createReadStream, openSync, watch } from 'node:fs'
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer, request, type IncomingMessage, type ServerResponse } from 'node:http'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import {
@@ -17,7 +17,7 @@ import {
   type Music,
   type ProjectFile,
 } from './config.ts'
-import { prepare, stems, type Stem } from './cut/cut.ts'
+import { LIMIT, prepare, STEM_GAIN, stems, stemsOf, type Stem } from './cut/cut.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
 import { filesOf, latestTake, type Video } from './videos.ts'
 
@@ -200,28 +200,31 @@ export async function studio(
     const url = new URL(req.url ?? '/', 'http://studio')
     const path = url.pathname
     const send = (status: number, contentType: string, body: Buffer | string) => {
-      const head = { 'content-type': contentType, 'cache-control': 'no-store' }
-      if (status !== 200 || !Buffer.isBuffer(body)) {
-        res.writeHead(status, head)
-        return res.end(body)
+      res.writeHead(status, { 'content-type': contentType, 'cache-control': 'no-store' })
+      res.end(body)
+    }
+    const sendFile = async (contentType: string, file: string | URL) => {
+      const head = {
+        'content-type': contentType,
+        'cache-control': 'no-store',
+        'accept-ranges': 'bytes',
       }
-      const size = body.length
+      const { size } = await stat(file)
       const part = byteRange(req.headers.range, size)
       if (part === 'unsatisfiable') {
         res.writeHead(416, { ...head, 'content-range': `bytes */${size}` })
         return res.end()
       }
-      if (!part) {
-        res.writeHead(200, { ...head, 'accept-ranges': 'bytes' })
-        return res.end(body)
-      }
-      res.writeHead(206, {
+      const { from, to } = part ?? { from: 0, to: size - 1 }
+      res.writeHead(part ? 206 : 200, {
         ...head,
-        'accept-ranges': 'bytes',
-        'content-range': `bytes ${part.from}-${part.to}/${size}`,
-        'content-length': part.to - part.from + 1,
+        'content-length': to - from + 1,
+        ...(part ? { 'content-range': `bytes ${from}-${to}/${size}` } : {}),
       })
-      res.end(body.subarray(part.from, part.to + 1))
+      if (to < from) return res.end()
+      createReadStream(file, { start: from, end: to })
+        .on('error', () => res.destroy())
+        .pipe(res)
     }
     if (port === undefined || !trusted(port, req.headers.host, req.headers.origin)) {
       return send(403, 'text/plain', 'Not allowed.')
@@ -235,10 +238,10 @@ export async function studio(
       }
       if (path === '/studio') {
         const now = toPage(settings)
-        const heard = (Object.keys(await sounds) as Stem[]).filter(
+        const audible = stemsOf(footage).filter(
           (stem) => stem === 'voice' || soundOn(stem, extras.sound),
         )
-        return send(200, 'text/html', page(now, extras, video, footageDir, boot, heard))
+        return send(200, 'text/html', page(now, extras, video, footageDir, boot, audible))
       }
       if (path === '/studio/ping') {
         const about = {
@@ -319,25 +322,24 @@ export async function studio(
       }
       const thumb = path.match(/^\/studio\/backdrops\/([a-z-]+)\.jpg$/)
       if (thumb?.[1] && (BACKDROPS as readonly string[]).includes(thumb[1])) {
-        return send(200, 'image/jpeg', await readFile(library(`backdrops/${thumb[1]}.jpg`)))
+        return await sendFile('image/jpeg', library(`backdrops/${thumb[1]}.jpg`))
       }
       const kind = path.match(/^\/studio\/own\/(backdrop|cursor|music)$/)?.[1] as
         'backdrop' | 'cursor' | 'music' | undefined
       const file = kind && mine[kind]?.file
       if (file) {
-        return send(
-          200,
+        return await sendFile(
           MEDIA[extname(file).toLowerCase()] ?? 'application/octet-stream',
-          await readFile(file),
+          file,
         )
       }
       const track = path.match(/^\/studio\/music\/([a-z-]+)$/)?.[1]
       if (track && (MUSIC as readonly string[]).includes(track)) {
-        return send(200, 'audio/mpeg', await readFile(library(`music/${track}.mp3`)))
+        return await sendFile('audio/mpeg', library(`music/${track}.mp3`))
       }
       const stem = path.match(/^\/studio\/sound\/(click|typing|voice)$/)?.[1] as Stem | undefined
       const sound = stem && (await sounds)[stem]
-      if (sound) return send(200, 'audio/mp4', await readFile(sound))
+      if (sound) return await sendFile('audio/mp4', sound)
       const served = await stage(path)
       if (!served) return send(404, 'text/plain', 'Not found')
       return send(200, served.contentType, served.body)
@@ -609,7 +611,7 @@ function page(
   video: Video,
   footageDir: string,
   boot: string,
-  heard: Stem[],
+  audible: Stem[],
 ): string {
   const escape = (text: string) =>
     text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
@@ -866,7 +868,9 @@ const BACKDROPS = ${JSON.stringify(BACKDROPS)};
 const OWNED = ${JSON.stringify(extras.owned)};
 const TRACKS = ${JSON.stringify(extras.music)};
 const HOLD = ${extras.hold};
-const STEMS = ${JSON.stringify(heard)};
+const STEMS = ${JSON.stringify(audible)};
+const STEM_GAIN = ${STEM_GAIN};
+const LIMIT = ${LIMIT};
 const BOOT = ${JSON.stringify(boot)};
 const fileName = (path) => path.split('/').pop();
 const CURSORS = { black: '#111111', pink: '#ff7ccb', lime: '#b6f24f', macos: 'linear-gradient(135deg,#000 50%,#fff 50%)' };
@@ -1063,11 +1067,28 @@ const wave = async (src) => {
 };
 let heard = true;
 const stems = STEMS.map((stem) => Object.assign(new Audio('/studio/sound/' + stem), { preload: 'auto' }));
+let mixer;
+const wire = () => {
+  if (mixer) return void mixer.resume();
+  mixer = new AudioContext();
+  const limiter = mixer.createDynamicsCompressor();
+  const settings = { threshold: 20 * Math.log10(LIMIT), knee: 0, ratio: 20, attack: 0.001, release: 0.05 };
+  for (const [name, value] of Object.entries(settings)) limiter[name].value = value;
+  limiter.connect(mixer.destination);
+  const restore = mixer.createGain();
+  restore.gain.value = 1 / STEM_GAIN;
+  restore.connect(limiter);
+  for (const s of stems) mixer.createMediaElementSource(s).connect(restore);
+  mixer.createMediaElementSource(player).connect(limiter);
+};
+const follow = (el, at) => {
+  if (el.paused || Math.abs(el.currentTime - at) > 0.3) el.currentTime = at;
+  if (el.paused) el.play().catch(() => {});
+};
 const audio = () => {
   for (const s of stems) {
-    if (!playing || !heard || t >= (s.duration || Infinity)) { s.pause(); continue; }
-    if (s.paused || Math.abs(s.currentTime - t) > 0.3) s.currentTime = t;
-    if (s.paused) s.play().catch(() => {});
+    if (!playing || !heard || t >= (s.duration || Infinity)) s.pause();
+    else follow(s, t);
   }
   const on = playing && heard && look.music;
   if (!on) { player.pause(); return; }
@@ -1075,9 +1096,7 @@ const audio = () => {
   if (player.dataset.src !== src) { player.dataset.src = src; player.src = src; }
   const fade = Math.min(HOLD, length);
   player.volume = Math.max(0, Math.min(1, look.music.volume * Math.min(1, (length - t) / fade)));
-  const at = player.duration ? t % player.duration : t;
-  if (player.paused || Math.abs(player.currentTime - at) > 0.3) player.currentTime = at;
-  if (player.paused) player.play().catch(() => {});
+  follow(player, player.duration ? t % player.duration : t);
 };
 $('sound').onclick = () => {
   heard = !heard;
@@ -1100,7 +1119,7 @@ const toggle = () => {
   if (!playing && t >= length) t = 0;
   playing = !playing;
   show();
-  if (playing) { last = performance.now(); requestAnimationFrame(tick); }
+  if (playing) { wire(); last = performance.now(); requestAnimationFrame(tick); }
   audio();
 };
 $('play').onclick = toggle;

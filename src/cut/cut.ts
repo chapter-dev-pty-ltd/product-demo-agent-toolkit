@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, rename } from 'node:fs/promises'
 import { once } from 'node:events'
 import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -116,7 +116,7 @@ const KEYS: Record<'key' | 'space' | 'enter', string[]> = {
 const keyKind = (key: string): keyof typeof KEYS =>
   key === ' ' || key === 'Space' ? 'space' : key.split('+').at(-1) === 'Enter' ? 'enter' : 'key'
 
-interface Track {
+export interface Track {
   files: string[]
   times: number[]
   volume: number
@@ -151,25 +151,43 @@ function soundTracks(footage: Footage, sound: Sound): Record<Stem, Track[]> {
   }
 }
 
+export function stemsOf(footage: Footage): Stem[] {
+  return (Object.entries(soundTracks(footage, true)) as [Stem, Track[]][])
+    .filter(([, tracks]) => tracks.some((track) => track.times.length > 0))
+    .map(([stem]) => stem)
+}
+
+// A stem can't be trusted to keep samples past full scale, so stems leave this headroom and
+// the studio turns them back up ahead of one limiter over everything, as cut's mix does.
+export const STEM_GAIN = 0.5
+export const LIMIT = 0.89
+
 export async function stems(
   footageDir: string,
   footage: Footage,
   length: number,
 ): Promise<Partial<Record<Stem, string>>> {
   const ffmpeg = await findFfmpeg()
-  const made: Partial<Record<Stem, string>> = {}
-  for (const [stem, tracks] of Object.entries(soundTracks(footage, true)) as [Stem, Track[]][]) {
-    const args = soundArgs(tracks, length, undefined, false)
-    if (args.length === 0) continue
-    const out = join(footageDir, `${stem}.m4a`)
-    const run = spawn(ffmpeg, ['-loglevel', 'error', '-y', ...args, out], {
-      stdio: ['ignore', 'ignore', 'inherit'],
-    })
-    const [code] = await once(run, 'exit')
-    if (code !== 0) throw new Error(`ffmpeg failed with code ${code} making the ${stem} sound.`)
-    made[stem] = out
-  }
-  return made
+  const tracks = soundTracks(footage, true)
+  const made = await Promise.all(
+    stemsOf(footage).map(async (stem) => {
+      const out = join(footageDir, `sound-${stem}.m4a`)
+      if (existsSync(out)) return [stem, out] as const
+      const part = `${out}.part`
+      const args = soundArgs(tracks[stem], length, undefined, true)
+      const run = spawn(ffmpeg, ['-loglevel', 'error', '-y', ...args, '-f', 'mp4', part], {
+        stdio: ['ignore', 'ignore', 'inherit'],
+      })
+      const [code] = await once(run, 'exit')
+      if (code !== 0) {
+        console.log(`ffmpeg failed with code ${code} making the ${stem} sound.`)
+        return [stem, undefined] as const
+      }
+      await rename(part, out)
+      return [stem, out] as const
+    }),
+  )
+  return Object.fromEntries(made.filter(([, out]) => out)) as Partial<Record<Stem, string>>
 }
 
 function pick(t: number, of: number): number {
@@ -228,11 +246,16 @@ export function musicGraph(music: MusicTrack, input: number, length: number): st
   return graph
 }
 
-function soundArgs(tracks: Track[], length: number, music?: MusicTrack, video = true): string[] {
+export function soundArgs(
+  tracks: Track[],
+  length: number,
+  music?: MusicTrack,
+  stem = false,
+): string[] {
   const inputs: string[] = []
   const graph: string[] = []
   const played: string[] = []
-  const last = () => inputs.length / 2 - (video ? 0 : 1)
+  const last = () => inputs.length / 2 - (stem ? 1 : 0)
   if (music) {
     inputs.push('-i', music.file)
     graph.push(...musicGraph(music, last(), length))
@@ -275,9 +298,10 @@ function soundArgs(tracks: Track[], length: number, music?: MusicTrack, video = 
   if (played.length === 0) return []
   graph.push(`anullsrc=r=48000:cl=stereo:d=${length.toFixed(3)}[q]`)
   graph.push(
-    `[q]${played.join('')}amix=inputs=${played.length + 1}:normalize=0:duration=first,alimiter=limit=0.89[a]`,
+    `[q]${played.join('')}amix=inputs=${played.length + 1}:normalize=0:duration=first,` +
+      (stem ? `volume=${STEM_GAIN}[a]` : `alimiter=limit=${LIMIT}[a]`),
   )
   // prettier-ignore
   return [...inputs, '-filter_complex', graph.join(';'),
-    ...(video ? ['-map', '0:v'] : []), '-map', '[a]', '-c:a', 'aac', '-b:a', '160k']
+    ...(stem ? [] : ['-map', '0:v']), '-map', '[a]', '-c:a', 'aac', '-b:a', '160k']
 }
