@@ -11,9 +11,6 @@ import {
 } from './similo.ts'
 import { launchBrowser } from './tools.ts'
 
-// Each case records an element on one page, then looks for it on a second page that a
-// real app might show instead: re-sorted, restyled, rebuilt, resized, or in another state.
-
 let browser: Browser
 beforeAll(async () => {
   browser = await launchBrowser()
@@ -28,7 +25,6 @@ async function open(html: string, viewport = wide): Promise<Page> {
   return page
 }
 
-/** Fingerprints `pick` on the first page, then decides what it is on the second. */
 async function refind(
   before: string,
   after: string,
@@ -44,7 +40,6 @@ async function refind(
   return { decision: decide(ranked), page, scores: ranked.slice(0, 3).map((c) => c.score) }
 }
 
-/** The element found, or a failure that says what was decided instead. */
 function found(decision: Decision): Locator {
   if ('found' in decision) return decision.found.locator
   throw new Error(`Expected one element, got ${JSON.stringify(Object.keys(decision))}`)

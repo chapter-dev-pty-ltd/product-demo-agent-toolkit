@@ -11,16 +11,8 @@ import { readConfig } from './config.ts'
 import { findFfmpeg, launchBrowser } from './tools.ts'
 import { PROVIDERS, type VoiceProvider } from './voice.ts'
 
-// Getting a project ready, and keeping keys. A key is looked for in the environment, then the
-// project's .env, then ~/.product-demo/.env, so one saved there works in every project.
-
 const HOME_ENV = join(HOME, '.env')
 
-/**
- * Loads the voice providers' keys from the project's .env, then the home one. Only those keys:
- * the rest of an app's .env stays out of the browser and ffmpeg. Neither overrides what's set,
- * and a file that doesn't name a key, or leaves it blank, leaves it to the next.
- */
 export function loadKeys(
   files: string[] = ['.env', HOME_ENV],
   env: NodeJS.ProcessEnv = process.env,
@@ -44,10 +36,6 @@ export function loadKeys(
 
 const COMMAND = 'product-demo-agent-toolkit'
 
-/**
- * The agents a user might have, by the folder each keeps in their home. Most read skills from
- * the shared ~/.agents/skills; those with `skills` read only their own folder.
- */
 const AGENTS: { name: string; home: string; skills?: string }[] = [
   { name: 'Claude Code', home: '.claude', skills: join('.claude', 'skills') },
   { name: 'Codex', home: '.codex', skills: join('.codex', 'skills') },
@@ -61,16 +49,11 @@ const AGENTS: { name: string; home: string; skills?: string }[] = [
   { name: 'GitHub Copilot', home: '.copilot' },
 ]
 
-/** Copies the skills into one folder. */
 export async function copySkills(to: string): Promise<string> {
   await cp(fileURLToPath(new URL('../skills', import.meta.url)), to, { recursive: true })
   return to
 }
 
-/**
- * Installs the skills for every agent on this machine: into the shared ~/.agents/skills, and
- * into the own folder of each agent found that reads only that. Says which agents it found.
- */
 export async function installSkills(
   home: string = homedir(),
 ): Promise<{ agents: string[]; folders: string[] }> {
@@ -83,7 +66,6 @@ export async function installSkills(
   return { agents: found.map((agent) => agent.name), folders }
 }
 
-/** What installing the skills did, for people. */
 export function installedSkills({ agents }: { agents: string[] }): string {
   const named =
     agents.length > 1 ? `${agents.slice(0, -1).join(', ')} and ${agents.at(-1)}` : agents[0]
@@ -92,15 +74,8 @@ export function installedSkills({ agents }: { agents: string[] }): string {
     : `Installed the skills in ~/.agents/skills. If your agent keeps skills somewhere else: ${COMMAND} skills <its skills folder>.`
 }
 
-/**
- * Everything a new user needs, once: the command installed for good (when this is run with
- * npx, or an older version is installed), and the skills. The agent runs `init` in each
- * project itself.
- */
 export async function setup(): Promise<string[]> {
   const said: string[] = []
-  // Asked of npm's global packages, not the PATH: under npx, the command is on the PATH only
-  // until npx exits.
   const listed = spawnSync('npm', ['ls', '-g', '--depth=0', '--json', pkg.name], {
     encoding: 'utf8',
   })
@@ -130,13 +105,11 @@ export async function setup(): Promise<string[]> {
   return said
 }
 
-/** Gets the project ready, and says what it did and what's missing, for the agent to act on. */
 export async function init(): Promise<string[]> {
   const said: string[] = []
   if (existsSync('.git') || existsSync('.gitignore')) {
     const ignore = existsSync('.gitignore') ? await readFile('.gitignore', 'utf8') : ''
     const lines = new Set(ignore.split('\n').map((line) => line.trim().replace(/\/$/, '')))
-    // Videos are kept in ~/.product-demo, not the project: only a key in .env needs keeping out.
     const missing = ['.env'].filter((l) => !lines.has(l.replace(/\/$/, '')))
     if (missing.length > 0) {
       const gap = ignore && !ignore.endsWith('\n') ? '\n' : ''
@@ -170,10 +143,6 @@ export async function init(): Promise<string[]> {
   return said
 }
 
-/**
- * What the agent does when there's no key that works: a voiceover is the user's to choose, so
- * it asks once and gets on with the film, rather than stopping or trying the key again.
- */
 function askForKey(provider: string, which: 'one' | 'a new one'): string {
   return (
     `A voiceover is optional: ask the user for ${which}, once, and carry on meanwhile. They can ` +
@@ -184,7 +153,6 @@ function askForKey(provider: string, which: 'one' | 'a new one'): string {
   )
 }
 
-/** Checks a provider's key and saves it in ~/.product-demo/.env, for every project. */
 export async function saveKey(id: string, key: string): Promise<string> {
   const provider: VoiceProvider | undefined = PROVIDERS[id]
   if (!provider) throw new Error(`No provider called ${id}. There's ${Object.keys(PROVIDERS)}.`)
@@ -194,10 +162,8 @@ export async function saveKey(id: string, key: string): Promise<string> {
   await mkdir(dirname(HOME_ENV), { recursive: true, mode: 0o700 })
   const old = existsSync(HOME_ENV) ? await readFile(HOME_ENV, 'utf8') : ''
   const kept = old.split('\n').filter((line) => line && !line.startsWith(`${provider.key}=`))
-  // Readable only by the user, from the moment it's made (and if it was made before, from now).
   await writeFile(HOME_ENV, [...kept, `${provider.key}=${key}`].join('\n') + '\n', { mode: 0o600 })
   await chmod(HOME_ENV, 0o600)
-  // A blank one in the project's .env doesn't count: loadKeys passes over it.
   const shadowed =
     existsSync('.env') && Boolean(parseEnv(await readFile('.env', 'utf8'))[provider.key])
   return `Saved the ${provider.name} key in ${HOME_ENV}, for every project.${
@@ -205,7 +171,6 @@ export async function saveKey(id: string, key: string): Promise<string> {
   }`
 }
 
-/** Reads a key without showing it: typed or pasted at a prompt, or piped in. */
 export async function readSecret(question: string): Promise<string> {
   const input = process.stdin
   let text = ''

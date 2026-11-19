@@ -10,21 +10,16 @@ import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
 import { openStage, type Highlighted } from './stage.ts'
 
-// The cut renders the stage (stage.ts) one frame at a time: seek it to the frame's time,
-// photograph it, and stream the photographs into ffmpeg, which only encodes the video.
-
 const FPS = 60
 
 export async function readFootage(footageDir: string): Promise<Footage> {
   return JSON.parse(await readFile(join(footageDir, 'footage.json'), 'utf8'))
 }
 
-/** How long the cut of this footage runs, in seconds: the footage plus the ending's hold. */
 export function videoLength(footage: Footage): number {
   return footage.end + (footage.film.ending?.hold ?? 2) - (footage.frames[0]?.at ?? 0)
 }
 
-/** What the stage needs from footage: the footage, its highlights as the film has them now, its length and title. */
 export async function prepare(footageDir: string): Promise<{
   footage: Footage
   highlights: Highlighted[]
@@ -36,7 +31,6 @@ export async function prepare(footageDir: string): Promise<{
   const film = existsSync(footage.source) ? await readFilm(footage.source) : footage.film
   const length = videoLength(footage)
   const title = film.notes?.split(/(?<=\.)\s/)[0] ?? ''
-  // How each highlight looks comes from the film as it is now; when it held, from the shoot.
   const highlights = footage.highlights.flatMap((held) => {
     const now = film.steps[held.step]?.highlight
     if (!now) return []
@@ -55,11 +49,6 @@ export async function prepare(footageDir: string): Promise<{
   return { footage, highlights, length, title }
 }
 
-/**
- * Cuts footage into an mp4 and returns its length. The film's directions are read from its
- * file as it is now, so changing them only needs another cut. `extra` is HTML put on the
- * stage over everything else.
- */
 export async function cut(
   footageDir: string,
   out: string,
@@ -97,8 +86,6 @@ export async function cut(
             : [],
           volume: 0.7,
         })),
-        // The voiceover, each line where the shoot started it, 4dB up so it sits clear of the
-        // music (its peaks, about -5dB, stay under the limiter).
         ...(footage.lines ?? []).map((l) => ({
           files: [l.file],
           times: [l.at - start],
@@ -107,7 +94,6 @@ export async function cut(
         })),
       ],
       length,
-      // The music fades out over the ending's hold, so it ends with the video.
       music && { ...music, fade: Math.max(1, footage.film.ending?.hold ?? 2) },
     )
     const encoder = spawn(
@@ -140,10 +126,6 @@ export async function cut(
   return length
 }
 
-// The sounds the cut plays: a click for each click, and a keystroke for each key, with space
-// and Enter their own. Each is picked at random from its set, never the same one twice running,
-// and pitched and levelled a little differently, as no two real presses sound the same. The keys
-// are cut from one recording of one keyboard.
 const CLICKS = ['click-1.wav', 'click-2.wav']
 const KEYS: Record<'key' | 'space' | 'enter', string[]> = {
   key: Array.from({ length: 8 }, (_, i) => `key-${i + 1}.wav`),
@@ -151,11 +133,9 @@ const KEYS: Record<'key' | 'space' | 'enter', string[]> = {
   enter: ['enter.wav'],
 }
 
-/** Which key sound a key gets: Enter and space have their own. */
 const keyKind = (key: string): keyof typeof KEYS =>
   key === ' ' || key === 'Space' ? 'space' : key.split('+').at(-1) === 'Enter' ? 'enter' : 'key'
 
-/** A set of sounds, the times to play one of them, how loud, and whether each play varies. */
 interface Track {
   files: string[]
   times: number[]
@@ -163,12 +143,10 @@ interface Track {
   vary?: boolean
 }
 
-/** Random, but seeded by the time, so cutting the same footage again sounds the same. */
 function pick(t: number, of: number): number {
   return Math.floor(chance(t) * of)
 }
 
-/** A number from 0 to 1, random but always the same for the same time. */
 function chance(t: number): number {
   let h = Math.round(t * 1000)
   h = Math.imul(h ^ (h >>> 16), 0x7feb352d)
@@ -176,7 +154,6 @@ function chance(t: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 2 ** 32
 }
 
-/** The background music: its file, how long it runs, how loud, and how long it fades out. */
 interface MusicTrack {
   file: string
   length: number
@@ -184,14 +161,11 @@ interface MusicTrack {
   fade?: number
 }
 
-/** Where the music is (one of ours, or the project's own file) and how long it runs. */
 async function musicTrack(ffmpeg: string, music: Music): Promise<MusicTrack> {
-  // The config has already checked that a project's own file is there.
   const file =
     typeof music.track === 'string'
       ? fileURLToPath(new URL(`../library/music/${music.track}.mp3`, import.meta.url))
       : music.track.file
-  // ffmpeg with only an input prints what it is, its length among it, and stops.
   const probe = spawn(ffmpeg, ['-hide_banner', '-i', file], { stdio: ['ignore', 'ignore', 'pipe'] })
   let said = ''
   probe.stderr.on('data', (chunk) => (said += chunk))
@@ -202,11 +176,6 @@ async function musicTrack(ffmpeg: string, music: Music): Promise<MusicTrack> {
   return { file, length, volume: music.volume }
 }
 
-/**
- * ffmpeg's music: the track from its start, and when the video runs longer, again and again,
- * each time crossfading in over a second so the loop doesn't jump. Then it's cut to the video's
- * length and fades out.
- */
 export function musicGraph(music: MusicTrack, input: number, length: number): string[] {
   const overlap = Math.min(1, music.length / 4)
   const copies =
@@ -230,10 +199,6 @@ export function musicGraph(music: MusicTrack, input: number, length: number): st
   return graph
 }
 
-/**
- * ffmpeg's arguments for the sound: each track's sounds at its times, and the music under them
- * all, for the video's length.
- */
 function soundArgs(tracks: Track[], length: number, music?: MusicTrack): string[] {
   const inputs: string[] = []
   const graph: string[] = []
@@ -245,7 +210,6 @@ function soundArgs(tracks: Track[], length: number, music?: MusicTrack): string[
   }
   for (const [n, track] of tracks.entries()) {
     if (track.times.length === 0) continue
-    // Which sound each time gets: random, but never the one just before.
     const picks: number[] = []
     for (const t of track.times) {
       const before = picks.at(-1)
@@ -255,8 +219,6 @@ function soundArgs(tracks: Track[], length: number, music?: MusicTrack): string[
           : pick(t, track.files.length)
       picks.push(before !== undefined && track.files.length > 1 && k >= before ? k + 1 : k)
     }
-    // Each sound is split into as many copies as it plays, then each copy varied a little and
-    // delayed to its time.
     for (const [k, file] of track.files.entries()) {
       const path = isAbsolute(file)
         ? file
@@ -271,7 +233,6 @@ function soundArgs(tracks: Track[], length: number, music?: MusicTrack): string[
       )
     }
     for (const [i, t] of track.times.entries()) {
-      // A little higher or lower and louder or softer each time (the sounds are 48kHz).
       const pitch = 1 + (chance(t + 0.1) - 0.5) * 0.06
       const gain = (chance(t + 0.2) - 0.5) * 4
       const varied = `asetrate=${Math.round(48000 * pitch)},aresample=48000,volume=${gain.toFixed(2)}dB,`
@@ -282,7 +243,6 @@ function soundArgs(tracks: Track[], length: number, music?: MusicTrack): string[
     }
   }
   if (played.length === 0) return []
-  // A silent track the video's length leads the mix, so the sound runs to the end.
   graph.push(`anullsrc=r=48000:cl=stereo:d=${length.toFixed(3)}[q]`)
   graph.push(
     `[q]${played.join('')}amix=inputs=${played.length + 1}:normalize=0:duration=first,alimiter=limit=0.89[a]`,

@@ -4,22 +4,8 @@ import type { Browser, Page } from 'playwright-core'
 import { isHex, type Config, type CURSORS } from '../config.ts'
 import type { Footage } from '../perform.ts'
 
-// The stage: a web page that is the finished video. The footage's screenshots are the
-// picture, and everything the cut adds (the backdrop, the window, the cursor, its dip on a
-// click) is plain HTML and CSS on top. `stage.seek(t)` sets the page to second t of the
-// video: the screenshot for that moment, the cursor where it was, and every CSS animation
-// at its time. The renderer seeks it frame by frame and photographs it (cut.ts).
-//
-// An element with `data-at="2.5"` runs its CSS animations from 2.5s into the video, and
-// with `data-for="0.6"` it shows only for those 0.6s. That's how an effect is added.
-
 export const CANVAS = { width: 1920, height: 1080 }
 const ORIGIN = 'https://stage.product-demo'
-/**
- * Each cursor: its drawing, its size on the stage, where its tip is (from its top left, in
- * stage pixels), its colour, and where its label sits and the label's text colour. The rounded
- * arrow comes in colours; `macos` is a classic pointer, black with a white edge.
- */
 interface CursorLook {
   file: string | URL
   width: number
@@ -64,24 +50,16 @@ const CURSOR_LOOKS: Record<(typeof CURSORS)[number], CursorLook> = {
   },
 }
 
-/** A file in the toolkit's library. */
 function library(path: string): URL {
   return new URL(`../library/${path}`, import.meta.url)
 }
 
-/**
- * A cursor's look and its drawing: a named one, the rounded arrow in a hex colour (its label's
- * text dark on a light one), or an SVG of the project's own, at the size it says it is, with
- * its tip where the config says and a dark label.
- */
 async function cursorFor(cursor: Config['cursor']): Promise<{ look: CursorLook; svg: string }> {
   const { style } = cursor
   if (typeof style !== 'object') {
     const look = cursorLook(style)
     return { look, svg: await readFile(look.file, 'utf8') }
   }
-  // The project's own SVG is shown as a picture, not put in the page, so its styles and
-  // scripts can't reach the stage.
   const { width, height, unit } = svgSize(await readFile(style.file, 'utf8'))
   const [x = 0, y = 0] = cursor.tip ?? []
   const look = {
@@ -95,11 +73,6 @@ async function cursorFor(cursor: Config['cursor']): Promise<{ look: CursorLook; 
   return { look, svg: '<img src="/cursor.svg" alt="">' }
 }
 
-/**
- * A cursor SVG's size on the stage, and how many stage pixels one of its own units is: its
- * width and height (or one, the other from its viewBox's shape), or else its viewBox fitted
- * to 32px on its longer side.
- */
 function svgSize(svg: string): { width: number; height: number; unit: number } {
   const tag = /<svg\b[^>]*>/i.exec(svg)?.[0] ?? ''
   const length = (name: string) => {
@@ -133,7 +106,6 @@ function cursorLook(style: Exclude<Config['cursor']['style'], object>): CursorLo
   return { ...CURSOR_LOOKS.black, colour: style, label: { ...CURSOR_LOOKS.black.label, text } }
 }
 
-/** A highlight as the stage draws it, timed from the footage's start. */
 export interface Highlighted {
   at: number
   until: number
@@ -143,22 +115,18 @@ export interface Highlighted {
   colour: string
 }
 
-/** What the stage is told, in video time (seconds from its start) and app pixels. */
 interface StageData {
   length: number
   frames: { file: string; at: number }[]
   pointer: { at: number; x: number; y: number }[]
   clicks: { at: number; x: number; y: number }[]
   highlights: Highlighted[]
-  /** The address bar's text over time, for a browser frame. */
   addresses: { at: number; label: string }[]
   title: string
 }
 
-/** How the cut looks: the parts of the config the stage draws. */
 export type Look = Pick<Config, 'backdrop' | 'cursor' | 'display' | 'window'>
 
-/** A file the stage asks for, or undefined when there's none. */
 export type StageFiles = (
   path: string,
 ) => Promise<{ contentType: string; body: Buffer | string } | undefined>
@@ -169,11 +137,6 @@ const IMAGE_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
 }
 
-/**
- * The stage for this footage as files by path: the page at `/`, the backdrop, a cursor of the
- * project's own and the footage's frames. `look` is read on every request, so a studio can
- * change it in place.
- */
 export function stageFiles(
   footageDir: string,
   footage: Footage,
@@ -194,11 +157,9 @@ export function stageFiles(
     addresses: (footage.addresses ?? []).map((a) => ({ at: a.at - start, label: label(a.url) })),
     title,
   }
-  // Footage shot before windows could be sized was 1440x900.
   const view = footage.viewport ?? { width: 1440, height: 900 }
   return async (path) => {
     const now = look()
-    // The backdrop: a picture, served beside the page with its own extension, or a colour.
     const { backdrop } = now
     const picture =
       typeof backdrop === 'object'
@@ -217,7 +178,6 @@ export function stageFiles(
       }
     }
     const { style } = now.cursor
-    // Anything else is one of the footage's own files, never one outside its folder.
     const asked = resolve(footageDir, decodeURIComponent(path.slice(1)))
     const inside = asked.startsWith(resolve(footageDir) + sep)
     const file =
@@ -235,7 +195,6 @@ export function stageFiles(
   }
 }
 
-/** Opens the stage for this footage in a page of its own, at the size of the video. */
 export async function openStage(
   browser: Browser,
   footageDir: string,
@@ -248,7 +207,6 @@ export async function openStage(
 ): Promise<Page> {
   const files = stageFiles(footageDir, footage, highlights, () => look, length, title, extra)
   const page = await browser.newPage({ viewport: CANVAS, deviceScaleFactor: 1 })
-  // Served from one made-up origin: the page, the library's pictures and the footage.
   await page.route(`${ORIGIN}/**`, async (route) => {
     const file = await files(new URL(route.request().url()).pathname)
     if (!file) return route.fulfill({ status: 404 })
@@ -259,12 +217,10 @@ export async function openStage(
   return page
 }
 
-/** An address as an address bar shows it: no scheme, nothing trailing. */
 function label(url: string): string {
   return url.replace(/^[a-z]+:\/\//, '').replace(/[/#]+$/, '')
 }
 
-/** A browser window's toolbar, as Chapter draws it: lights, back and forward, the address, share, new tab, tabs. */
 function toolbar(): string {
   const light = (x: number, colour: string) =>
     `<i class="light" style="left:${x}px;background:${colour}"></i>`
@@ -281,7 +237,6 @@ ${icon(80, '<rect x="3" y="6" width="9" height="9" rx="2"/><path d="M6 3h7a2 2 0
 </span></div></div>`
 }
 
-// A browser window's glass: a toolbar across the top and a rim at the sides and bottom.
 const BAR = 46
 const RIM = 10
 
@@ -295,7 +250,6 @@ function html(
 ): string {
   const browser = look.display === 'browser'
   const arrow = cursor.svg
-  // The cursor at its own size, times the config's.
   const own = cursor.look
   const pointer = {
     ...own,
@@ -307,8 +261,6 @@ function html(
   const label = look.cursor.label
     ? `<div id="label">${look.cursor.label.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</div>`
     : ''
-  // The window is drawn as big as fits in the config's share of the video, its toolbar and
-  // rim included, and never past 1.25x its frames, where the text would go soft.
   const { width: W, height: H } = view
   const chrome = browser ? { x: RIM * 2, y: BAR + RIM } : { x: 0, y: 0 }
   const fill = look.window.fill
@@ -317,7 +269,6 @@ function html(
     (CANVAS.height * fill - chrome.y) / H,
     1.25,
   )
-  // In a browser it's the whole window, toolbar and all, that's centred.
   const app = {
     x: (CANVAS.width - W * s) / 2,
     y: (CANVAS.height - H * s + (browser ? BAR - RIM : 0)) / 2,
@@ -338,13 +289,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
   border-radius: ${(browser ? 10 : 14) / s}px; overflow: hidden; background: #fff;
   box-shadow: ${browser ? '0 1px 6px rgb(20 20 50 / 0.10)' : '0 30px 80px rgb(20 20 60 / 0.28), 0 6px 18px rgb(20 20 60 / 0.16)'};
 }
-/* A browser window of frosted glass: the backdrop blurred and milky behind its toolbar. */
 #glass {
   position: absolute; left: ${glass.x}px; top: ${glass.y}px; width: ${glass.width}px; height: ${glass.height}px;
   border-radius: 16px; overflow: hidden; box-shadow: 0 30px 70px rgb(40 30 80 / .18), 0 0 0 0.5px rgb(30 30 60 / .12);
 }
-/* The frost: the backdrop itself, lined up with the one behind and blurred, clipped to the
-   glass, so its edges are as even as its middle. Then a milky pane over it. */
 #frost { position: absolute; left: ${-glass.x}px; top: ${-glass.y}px; width: ${CANVAS.width}px; height: ${CANVAS.height}px;
   background: ${background}; filter: blur(28px) saturate(1.3); }
 #glass::after { content: ''; position: absolute; inset: 0; background: rgb(255 255 255 / .52); }
@@ -361,25 +309,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
   font: 500 14px Inter, system-ui, -apple-system, sans-serif; color: rgb(30 30 40 / .8); }
 #address span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #address svg { position: static; flex: none; width: 14px; height: 14px; }
-/* Everything that moves with the camera: the app and the cursor. */
 #camera { position: absolute; inset: 0; transform-origin: 0 0; }
 #shot { position: absolute; inset: 0; width: 100%; height: 100%; }
 #highlight { position: absolute; box-sizing: border-box; border: 3px solid; border-radius: 8px; opacity: 0; }
-/* Magnify: a copy of the region, lifted off the dimmed screen. */
 #dim { position: absolute; inset: 0; background: rgb(15 15 30); opacity: 0; }
 #lift { position: absolute; overflow: hidden; border-radius: 12px; opacity: 0; transform-origin: center;
   box-shadow: 0 28px 70px rgb(0 0 0 / .32), 0 8px 20px rgb(0 0 0 / .18); }
 #lift img { position: absolute; width: ${W}px; height: ${H}px; max-width: none; }
-/* The cursor with its tip on the pointer, and a soft shadow so it reads on any app. */
 #cursor { position: absolute; left: -${pointer.tip[0]}px; top: -${pointer.tip[1]}px; width: ${pointer.width}px; height: ${pointer.height}px; color: ${pointer.colour}; }
 #cursor > :first-child { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: ${pointer.tip[0]}px ${pointer.tip[1]}px; animation: dip 250ms linear paused;
   filter: drop-shadow(0 1.5px 2.5px rgb(0 0 0 / .28)); }
-/* The cursor's label: a pill in its colour, below and right of the arrow. */
 #label { position: absolute; left: ${own.label.x * k}px; top: ${own.label.y * k}px; padding: ${4 * k}px ${8.25 * k}px;
   border-radius: 999px; background: ${own.colour}; color: ${own.label.text}; white-space: nowrap;
   font: 600 ${13.5 * k}px/${16.5 * k}px Inter, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.01em;
   box-shadow: 0 ${2 * k}px ${4 * k}px rgb(0 0 0 / .18); }
-/* A click: the arrow pressed in, then springing back past its size and settling. */
 @keyframes dip {
   0% { transform: scale(1); animation-timing-function: cubic-bezier(.2,.7,.3,1); }
   36% { transform: scale(.9); animation-timing-function: ease-out; }
@@ -399,17 +342,10 @@ const box = document.getElementById('highlight');
 const dim = document.getElementById('dim');
 const lift = document.getElementById('lift');
 const lens = lift.querySelector('img');
-// Out past 1 and back: the lift's spring.
 const pop = (k) => 1 + 2.70158 * (k - 1) ** 3 + 1.70158 * (k - 1) ** 2;
 const W = ${W}, H = ${H};
 const ease = (k) => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2);
 
-// A highlight at t. The camera zooms toward its box by its zoom (1 is the box filling the
-// view, but never past 2x: the frames are recorded at 1x), centred on it but never past the
-// app's edges. It zooms about one fixed point, worked out from where it ends, so the box only
-// ever moves one way on screen, never out and back. Then either an outline in its colour
-// fades in, the region is magnified (a copy of it lifts off the dimmed screen), or the cursor
-// circles it from where it rests.
 const highlightAt = async (t, rest) => {
   const h = data.highlights.find((h) => t >= h.at && t < h.until);
   if (!h) {
@@ -425,7 +361,6 @@ const highlightAt = async (t, rest) => {
   const end = 1 + (Math.max(1, full) - 1) * h.zoom;
   const endX = Math.min(0, Math.max(W - W * end, W / 2 - (x + w / 2) * end));
   const endY = Math.min(0, Math.max(H - H * end, H / 2 - (y + h2 / 2) * end));
-  // The point that stays put: where it is on the page is where it ends on screen.
   const px = end > 1 ? endX / (1 - end) : 0, py = end > 1 ? endY / (1 - end) : 0;
   const scale = 1 + (end - 1) * e;
   camera.style.transform = 'translate(' + px * (1 - scale) + 'px,' + py * (1 - scale) + 'px) scale(' + scale + ')';
@@ -433,9 +368,6 @@ const highlightAt = async (t, rest) => {
   if (h.style === 'cursor') {
     box.style.opacity = dim.style.opacity = lift.style.opacity = 0;
     if (!rest) return;
-    // Once round a ring about the box, clockwise, starting from the point nearest where the
-    // cursor rests. The cursor eases onto the moving ring and off it again, so it flows into
-    // and out of the loop rather than stopping to turn.
     const span = h.until - h.at, go = Math.min(0.45, span / 4);
     const cx = x + w / 2, cy = y + h2 / 2, rx = w / 2 + 20, ry = h2 / 2 + 20;
     const a0 = Math.atan2((rest.x - cx) / rx, -(rest.y - cy) / ry);
@@ -467,7 +399,6 @@ const highlightAt = async (t, rest) => {
 };
 const dip = () => cursor.firstElementChild.getAnimations()[0];
 
-// The last of a list timed by 'at' that has started by t.
 const lastBy = (list, t) => {
   let lo = 0, hi = list.length - 1, found = -1;
   while (lo <= hi) {
@@ -488,7 +419,6 @@ window.stage = {
       shot.setAttribute('src', frame.file);
       await shot.decode().catch(() => {});
     }
-    // The cursor between the two samples around t.
     const i = lastBy(data.pointer, t);
     const a = data.pointer[Math.max(0, i)], b = data.pointer[i + 1];
     let rest;
@@ -502,7 +432,6 @@ window.stage = {
     const click = data.clicks[lastBy(data.clicks, t)];
     const press = dip();
     if (press) press.currentTime = click ? Math.min(250, (t - click.at) * 1000) : 250;
-    // Timed elements: their animations run from data-at, and data-for limits when they show.
     for (const el of document.querySelectorAll('[data-at]')) {
       const local = t - Number(el.dataset.at);
       if (el.dataset.for) el.style.visibility = local >= 0 && local < Number(el.dataset.for) ? 'visible' : 'hidden';

@@ -1,6 +1,3 @@
-# Publishes to npm when a version tag is pushed (npm version patch, then git push --follow-tags).
-# A version like 0.2.0 goes out as latest; one like 0.2.0-beta.0 as next. npm trusts this
-# workflow directly (trusted publishing), so there's no token, and the package gets provenance.
 name: Release
 
 on:

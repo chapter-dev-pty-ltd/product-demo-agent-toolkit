@@ -5,7 +5,6 @@ import { z } from 'zod'
 import { HOME } from './home.ts'
 import type { VoiceChoice } from './voice.ts'
 
-/** The backdrops in library/backdrops, by name. */
 export const BACKDROPS = [
   'halo',
   'sky',
@@ -31,14 +30,11 @@ export const BACKDROPS = [
   'peach-dawn',
 ] as const
 
-/** How the app is shown: on the backdrop as it is, or in a browser window. */
 export const DISPLAYS = ['none', 'browser'] as const
 export type Display = (typeof DISPLAYS)[number]
 
-/** The cursors the cut can draw: the rounded arrow in three colours, or a Mac's pointer. */
 export const CURSORS = ['black', 'pink', 'lime', 'macos'] as const
 
-/** A colour as hex, like `#8fd3ff`. */
 export type Hex = `#${string}`
 
 export function isHex(value: string): value is Hex {
@@ -49,12 +45,10 @@ function isOneOf<T extends string>(list: readonly T[], value: string): value is 
   return list.some((item) => item === value)
 }
 
-/** A file of the user's own, from a path in the config or a video's look (made absolute). */
 export interface ProjectFile {
   file: string
 }
 
-/** The file at a path from the config, or an issue saying it isn't there. */
 function projectFile(path: string, context: z.RefinementCtx): ProjectFile {
   const file = resolve(path)
   if (!existsSync(file))
@@ -62,7 +56,6 @@ function projectFile(path: string, context: z.RefinementCtx): ProjectFile {
   return { file }
 }
 
-/** A library backdrop, a flat colour, or a picture of the project's own. */
 export type Backdrop = (typeof BACKDROPS)[number] | Hex | ProjectFile
 
 const backdropSchema = z.string().transform((value, context): Backdrop => {
@@ -75,7 +68,6 @@ const backdropSchema = z.string().transform((value, context): Backdrop => {
   return z.NEVER
 })
 
-/** One of the cursors, the rounded arrow in any colour, or an SVG of the project's own. */
 export type CursorStyle = (typeof CURSORS)[number] | Hex | ProjectFile
 
 const styleSchema = z.string().transform((value, context): CursorStyle => {
@@ -88,10 +80,6 @@ const styleSchema = z.string().transform((value, context): CursorStyle => {
   return z.NEVER
 })
 
-/**
- * The cursor: which one, how big (1 is its own size), a label beside it, and for an SVG of
- * the project's own, where its tip is in it.
- */
 export interface Cursor {
   style: CursorStyle
   size: number
@@ -99,7 +87,6 @@ export interface Cursor {
   tip?: [number, number] | undefined
 }
 
-/** `"macos"` or `"#8fd3ff"` for one at its own size, or `{ "style": "macos", "size": 1.5 }`. */
 const cursorSchema: z.ZodType<Cursor, unknown> = z.preprocess(
   (cursor) => (typeof cursor === 'string' ? { style: cursor } : cursor),
   z.strictObject({
@@ -110,7 +97,6 @@ const cursorSchema: z.ZodType<Cursor, unknown> = z.preprocess(
   }),
 )
 
-/** Which sounds the video has: all or none, or each on its own. */
 export type Sound = boolean | { click?: boolean | undefined; typing?: boolean | undefined }
 
 export const soundSchema: z.ZodType<Sound> = z.union([
@@ -118,15 +104,12 @@ export const soundSchema: z.ZodType<Sound> = z.union([
   z.strictObject({ click: z.boolean().optional(), typing: z.boolean().optional() }),
 ])
 
-/** Whether a sound is on, by the config: all of them, or each on its own (on by default). */
 export function soundOn(kind: 'click' | 'typing', setting: Sound): boolean {
   return typeof setting === 'object' ? (setting[kind] ?? true) : setting
 }
 
-/** The music in library/music, by name: two minutes each, looped when a video runs longer. */
 export const MUSIC = ['lofi'] as const
 
-/** Background music: one of ours by name, or an audio file of the project's own, and how loud. */
 export interface Music {
   track: (typeof MUSIC)[number] | ProjectFile
   volume: number
@@ -142,7 +125,6 @@ const trackSchema = z.string().transform((value, context): Music['track'] => {
   return z.NEVER
 })
 
-/** `false` for none, `"lofi"` or `"music/theme.mp3"`, or `{ "track": "lofi", "volume": 0.4 }`. */
 const musicSchema: z.ZodType<Music | false, unknown> = z
   .preprocess(
     (music) => (typeof music === 'string' ? { track: music } : music === false ? null : music),
@@ -152,7 +134,6 @@ const musicSchema: z.ZodType<Music | false, unknown> = z
   )
   .transform((music) => music ?? false)
 
-/** Jessica, one of ElevenLabs' own voices: every account has her. */
 const JESSICA = 'cgSgspJ2msm6clMCkdW9'
 
 export const voiceSchema: z.ZodObject<{
@@ -161,7 +142,6 @@ export const voiceSchema: z.ZodObject<{
   model: z.ZodOptional<z.ZodString>
 }> = z.strictObject({ provider: z.string(), voice: z.string(), model: z.string().optional() })
 
-/** The app's window: its size in the browser, and how much of the video it fills. */
 export interface AppWindow {
   width: number
   height: number
@@ -239,21 +219,11 @@ const config: z.ZodType<Config> = z.strictObject({
     ),
 })
 
-/** The default look for new videos, and the settings every video shares. */
 export const CONFIG_FILE: string = join(HOME, 'config.json')
 
-/**
- * The settings that make up a video's look and sound. Each video keeps its own copy in its
- * look.json, taken from the default when it's made, so a later change to the default never
- * changes a video that already exists.
- */
 export const LOOK_KEYS = ['backdrop', 'display', 'window', 'cursor', 'sound', 'music'] as const
 export type LookSettings = Pick<Config, (typeof LOOK_KEYS)[number]>
 
-/**
- * The settings for a video: the shared config, with its look from `lookFile` when it has one.
- * Without one, the default look.
- */
 export async function readConfig(lookFile?: string): Promise<Config> {
   const shared = await readRaw(CONFIG_FILE)
   const look = lookFile ? await readRaw(lookFile) : {}
@@ -266,7 +236,6 @@ export async function readConfig(lookFile?: string): Promise<Config> {
   return parsed.data
 }
 
-/** A settings file as it's written, with its own files' paths made absolute (or {} if none). */
 export async function readRaw(file: string): Promise<Record<string, unknown>> {
   let raw: Record<string, unknown> = {}
   try {
@@ -275,8 +244,6 @@ export async function readRaw(file: string): Promise<Record<string, unknown>> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
-  // A path is relative to the file it's written in, so it means the same file wherever the
-  // settings are read from.
   const base = dirname(file)
   const path = (value: unknown) =>
     typeof value === 'string' && /[/\\]|\.\w+$/.test(value) && !value.startsWith('#')
@@ -292,7 +259,6 @@ export async function readRaw(file: string): Promise<Record<string, unknown>> {
   return raw
 }
 
-/** A look as it's written in a file: its own files by path, the rest as they are. */
 export function lookToRaw(look: LookSettings): Record<string, unknown> {
   const written = <T>(value: T | ProjectFile): T | string =>
     typeof value === 'object' && value !== null && 'file' in value ? value.file : value

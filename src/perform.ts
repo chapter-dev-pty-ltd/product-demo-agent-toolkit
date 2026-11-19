@@ -17,49 +17,30 @@ import { decide, fingerprint, rank } from './similo.ts'
 import { launchBrowser } from './tools.ts'
 import { speakLines, wordAt, type Spoken } from './voice.ts'
 
-// Rehearse and shoot are the same run: a fresh browser, every step performed at a
-// person's pace with a hand-moved pointer, letting the page settle after each.
-// Shooting films it; rehearsing leaves a still after every step to judge it by instead.
-
-/** What a rehearsal leaves: a still of the opening screen and after every step. */
 export interface Rehearsal {
   film: Film
   stills: { step: string; file: string }[]
-  /** Choices made without asking (`just_do_it`), recoveries, and steps that never settled. */
   warnings: string[]
 }
 
-/** What a shoot leaves for `cut`: every frame, and where the pointer went, timed from the start. */
 export interface Footage {
   film: Film
-  /** The film file it was shot from, so a cut can read the film's latest directions. */
   source: string
   frames: { file: string; at: number }[]
-  /** Where the pointer was, from each move; the cut draws the cursor along it. */
   pointer: { at: number; x: number; y: number }[]
-  /** Where and when the pointer clicked. */
   clicks: { at: number; x: number; y: number }[]
-  /** Each key pressed, typing included, and when: the cut plays a key sound for each. */
   keys: { at: number; key: string }[]
-  /** The page's address over time, for a browser frame's address bar. */
   addresses: { at: number; url: string }[]
-  /** Each line of voiceover, its audio file, and when the shoot started it. */
   lines: { at: number; file: string; text: string }[]
-  /** When each highlighted step held, and its element's box in screen pixels. */
   highlights: { step: number; at: number; until: number; box: number[] }[]
-  /** The window's size in page pixels, which is also its frames' size. */
   viewport: { width: number; height: number }
-  /** When each step started, by its index in the film (footage shot before this has none). */
   steps?: number[]
   end: number
-  /** Choices made without asking (`just_do_it`), recoveries, and steps that never settled. */
   warnings: string[]
 }
 
-/** A step that can't go on until someone decides something. Trying again won't help. */
 export class NeedsDecision extends Error {}
 
-/** Performs the film without a camera, keeping a still after each step. */
 export async function rehearse(film: Film, dir: string, config: Config): Promise<Rehearsal> {
   const stills: Rehearsal['stills'] = []
   const { warnings } = await perform(film, dir, config, {
@@ -74,7 +55,6 @@ export async function rehearse(film: Film, dir: string, config: Config): Promise
   return rehearsal
 }
 
-/** Performs the film on camera, keeping every frame. */
 export async function shoot(
   film: Film,
   source: string,
@@ -116,7 +96,6 @@ export async function shoot(
     },
   )
   await Promise.all(writes)
-  // The pointer from where it rested when the camera started: earlier moves count as at 0.
   const since = (t: number) => Math.max(0, (t - started) / 1000)
   const first = trail.findLastIndex((m) => m.t <= started)
   const pointer = trail.slice(Math.max(0, first)).map((m) => ({ at: since(m.t), x: m.x, y: m.y }))
@@ -132,7 +111,6 @@ export async function shoot(
     clicks,
     keys: keys.filter((k) => k.t >= started).map((k) => ({ at: since(k.t), key: k.key })),
     lines: lines.map((l) => ({ ...l, at: since(l.at) })),
-    // The address from the one showing when the camera started.
     addresses: addresses
       .slice(
         Math.max(
@@ -151,16 +129,10 @@ export async function shoot(
 }
 
 interface Watchers {
-  /** Starts filming once the opening screen has settled; returns how to stop, before the browser closes. */
   camera?: (page: Page) => Promise<() => Promise<void>>
-  /** Keeps a still of the screen: the opening one (index 0), then after each step. */
   still?: (page: Page, step: string, index: number) => Promise<void>
 }
 
-/**
- * One run of the film in a fresh browser. Returns its warnings and the hand's trail; throws
- * at the first step that fails.
- */
 async function perform(
   film: Film,
   dir: string,
@@ -176,7 +148,6 @@ async function perform(
   steps: number[]
 }> {
   await mkdir(dir, { recursive: true })
-  // The lines are spoken first: the shoot is paced by them.
   const spoken = await speakLines(
     film.steps.flatMap((s) => (s.say ? [s.say] : [])),
     config.voice,
@@ -186,7 +157,6 @@ async function perform(
     const { width, height } = config.window
     const page = await browser.newPage({ viewport: { width, height } })
     const settler = watch(page)
-    // Every address the page shows, a link followed or a route changed in place.
     const addresses: { t: number; url: string }[] = []
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame()) addresses.push({ t: performance.now(), url: frame.url() })
@@ -202,7 +172,6 @@ async function perform(
     const highlights: Footage['highlights'] = []
     const lines: Footage['lines'] = []
     const steps: number[] = []
-    // The line being spoken, and when it started.
     let line: { spoken: Spoken; at: number } | undefined
     for (const [index, step] of film.steps.entries()) {
       const label = `Step ${index + 1} (${describeStep(step)})`
@@ -216,7 +185,6 @@ async function perform(
           line = { spoken: said, at: performance.now() }
           lines.push({ at: line.at, file: said.file, text: said.text })
         }
-        // An action with a word lands on it: the hand arrives early and presses as it's said.
         hand.due = undefined
         if (step.on) {
           if (!line) throw new Error(`"on" needs a line: give this step or one before it "say".`)
@@ -225,18 +193,13 @@ async function perform(
           hand.due = line.at + word * 1000
         }
         hand.landed = undefined
-        // A hover on the way to another pointer step is passed through, not stopped at: the
-        // pointer flows on into the next move, with no wait for the page between them.
         const next = film.steps[index + 1]
         hand.passing =
           'hover' in step && step.seconds === undefined && !step.highlight && pointing(next)
-        // A highlight comes on before its action, and the press waits for its zoom, so the
-        // action happens inside it.
         const lit = step.highlight ? await highlightOn(page, step, finder) : undefined
         hand.notBefore = lit ? lit.at + ZOOM_MS : 0
         await settler.mark()
         await act(page, hand, film.app, step, finder)
-        // Late on its word: the line gave the action too little time after the one before it.
         if (hand.due !== undefined && step.on && hand.landed !== undefined) {
           const late = (hand.landed - hand.due) / 1000
           if (late > 0.2) {
@@ -246,9 +209,7 @@ async function perform(
           }
         }
         hand.due = undefined
-        // Within a line, the voice paces the film: only the page is waited for, not a beat too.
         const carriesOn = Boolean(line && next?.on && !next.say)
-        // The line runs on while a step after this one, before the next line, lands on its words.
         const rest = film.steps.slice(index + 1)
         const nextLine = rest.findIndex((later) => later.say)
         const keepsLine = Boolean(
@@ -267,7 +228,6 @@ async function perform(
           await page.waitForTimeout((step.highlight?.seconds ?? 2) * 1000)
           highlights.push({ step: index, ...lit, until: performance.now() })
         }
-        // A line finishes before the film moves on, unless a step still to come lands on its words.
         if (line && !keepsLine) {
           const left = line.at + line.spoken.seconds * 1000 + 350 - performance.now()
           if (left > 0) await page.waitForTimeout(left)
@@ -290,17 +250,13 @@ async function perform(
 
 export type Finder = (target: Target) => Promise<Locator>
 
-/** Whether a step moves the pointer to an element, so a hover before it can flow into it. */
 const pointing = (step: Step | undefined): boolean =>
   step !== undefined && ['hover', 'click', 'drag', 'fill', 'select'].some((kind) => kind in step)
 
-/** How long a hand takes from letting go of the mouse to the first key. */
 const TO_KEYBOARD_MS = 600
 
-/** How long the cut takes to zoom in on a highlight (stage.ts eases over the same). */
 const ZOOM_MS = 800
 
-/** Performs one step with the hand: at a person's pace when filming, at once when exploring. */
 export async function act(
   page: Page,
   hand: Hand,
@@ -315,8 +271,6 @@ export async function act(
   } else if ('click' in step) {
     await hand.click(await find(step.click), step)
   } else if ('fill' in step) {
-    // On a word, the typing starts on it: the field is clicked a beat before, and the hand
-    // has moved to the keyboard by then.
     const due = hand.due
     if (due !== undefined) hand.due = due - TO_KEYBOARD_MS - 150
     await hand.click(await find(step.fill))
@@ -324,8 +278,6 @@ export async function act(
     hand.landed = undefined
     await fill(page, hand, step.text)
   } else if ('select' in step) {
-    // A native select's list is drawn outside the page and swallows the next click, so the
-    // hand goes to it and the option is chosen by its label, as Playwright's selectOption does.
     const select = await find(step.select)
     await hand.reach(select)
     await hand.onTime()
@@ -342,7 +294,6 @@ export async function act(
     await hand.onTime()
     if (!hand.passing) await hand.pause((step.seconds ?? 1.2) * 1000)
   } else if ('drag' in step) {
-    // The drop is found before the press: once something is held, what's dragged can cover it.
     const from = await find(step.drag)
     const to = await find(step.to)
     await hand.drag(from, step.at, to, step.toAt)
@@ -365,10 +316,6 @@ export async function act(
   }
 }
 
-/**
- * Turns a step's highlight on: the box of its element (or the box it gives), measured before
- * the action. The time is the clock's; the shoot makes it the video's.
- */
 async function highlightOn(
   page: Page,
   step: Step,
@@ -386,10 +333,7 @@ async function highlightOn(
   return { at: performance.now(), box }
 }
 
-/** Types into the focused field, replacing what's in it. */
 async function fill(page: Page, hand: Hand, text: string): Promise<void> {
-  // A date, time, colour or number input can't be typed into reliably (a controlled number
-  // input moves the caret after each key), so it's set the way Playwright's fill() sets it.
   const field = await page.evaluate((value) => {
     const element = document.activeElement
     const direct = ['date', 'time', 'datetime-local', 'month', 'week', 'color', 'range', 'number']
@@ -409,7 +353,6 @@ async function fill(page: Page, hand: Hand, text: string): Promise<void> {
     return typable ? 'type' : 'none'
   }, text)
   if (field === 'set') return
-  // Select-all with no field focused selects the whole page.
   if (field === 'none') throw new Error("Clicking it didn't focus a field to type into.")
   await hand.toKeyboard()
   await page.keyboard.press('ControlOrMeta+A')
@@ -417,7 +360,6 @@ async function fill(page: Page, hand: Hand, text: string): Promise<void> {
   await hand.type(text)
 }
 
-/** Gives a file to the page: through the control that opens the picker, as a person would. */
 async function upload(page: Page, hand: Hand, file: string, control?: Locator): Promise<void> {
   if (!existsSync(file)) throw new Error(`There's no file at ${file}.`)
   if (control) {
@@ -435,11 +377,6 @@ async function upload(page: Page, hand: Hand, file: string, control?: Locator): 
   await input.first().setInputFiles(file)
 }
 
-/**
- * The element a target names. A pinned target's locator first; when it matches nothing or
- * more than one, its Similo fingerprint. When two elements are equally likely, `ask` stops
- * so the agent can ask the user, and `just_do_it` takes the best and notes it.
- */
 export async function find(
   page: Page,
   target: Target,
@@ -459,8 +396,6 @@ export async function find(
     .waitFor({ state: 'visible', timeout: 10_000 })
     .catch(() => {})
   const count = await locator.count()
-  // A locator that picks by position (`nth=2`) always matches one element, right or not,
-  // so a pinned one is checked by its fingerprint first.
   const positional = 'selector' in target && /\bnth=/.test(target.selector)
   if (positional) {
     const decision = decide(await rank(page, target.fingerprint))
@@ -501,7 +436,6 @@ async function ready(locator: Locator): Promise<Locator> {
   return locator
 }
 
-/** An element in a line: what it says, and where it sits. */
 async function summarise(element: Locator): Promise<string> {
   const print = await fingerprint(element).catch(() => undefined)
   if (!print) return 'an element that is not visible'
@@ -509,26 +443,17 @@ async function summarise(element: Locator): Promise<string> {
   return `${print.tag} "${print.text.slice(0, 40)}"${print.href ? ` (${print.href})` : ''}${inside}`
 }
 
-/** The pointer, moved the way a hand moves it: eased, and slower over longer distances. */
 export class Hand {
   x = 0
   y = 0
   page: Page
-  /** Exploring: no travel and no pauses, only what the page needs to hear. */
   quick: boolean
-  /** Every move and click, with its time, for the cut to draw the cursor from. */
   trail: { t: number; x: number; y: number; click?: true }[] = []
-  /** When the action must land, on a word of the voiceover; the hand arrives early and waits. */
   due: number | undefined
-  /** Each key pressed and when, for the cut's key sounds. */
   keys: { t: number; key: string }[] = []
-  /** On the way through: this move arrives still moving, to flow into the next. */
   passing = false
-  /** Not to press before this (a highlight zooming in). */
   notBefore = 0
-  /** When the mouse button was last let go, if the hand hasn't gone to the keyboard since. */
   private onMouse = 0
-  /** How fast the pointer was going as it passed through, and when, to carry on at. */
   private flow: { speed: number; at: number } | undefined
   constructor(page: Page, quick = false) {
     this.page = page
@@ -539,12 +464,10 @@ export class Hand {
     if (!this.quick) await this.page.waitForTimeout(ms)
   }
 
-  /** Puts the pointer somewhere without travelling. */
   async rest(x: number, y: number): Promise<void> {
     await this.move(x, y)
   }
 
-  /** Moves the mouse, and keeps the move in the trail. */
   private async move(x: number, y: number): Promise<void> {
     await this.page.mouse.move(x, y)
     if (!this.quick) this.trail.push({ t: performance.now(), x, y })
@@ -552,29 +475,19 @@ export class Hand {
     this.y = y
   }
 
-  /** When the action due on a word actually landed. */
   landed: number | undefined
 
-  /** Waits for the moment the action is due, if it has one, and notes when it lands. */
   async onTime(): Promise<void> {
     const wait = this.due === undefined ? 0 : this.due - performance.now()
     if (wait > 0) await this.page.waitForTimeout(wait)
     if (this.due !== undefined) this.landed ??= performance.now()
   }
 
-  /** How long a glide to there takes, in ms: longer for further, up to about 0.9s. */
   travel(x: number, y: number): number {
-    // A little different each time, as no two of a person's moves take quite as long.
     const varied = 0.9 + Math.random() * 0.2
     return Math.min(900, 250 + Math.hypot(x - this.x, y - this.y) * 0.5) * varied
   }
 
-  /**
-   * Moves the pointer the way a hand does: off smoothly, a slight arc on a long move, and
-   * settling at the end. Passing through on the way to the next move, it arrives still moving,
-   * and the next move carries on at that speed. Positions follow the clock, not a frame count,
-   * so a slow mouse event never makes it stutter.
-   */
   async glide(x: number, y: number, ms: number = this.travel(x, y)): Promise<void> {
     if (this.quick) return this.rest(x, y)
     const fromX = this.x
@@ -584,7 +497,6 @@ export class Hand {
     const carried = this.flow && performance.now() - this.flow.at < 400 ? this.flow.speed : 0
     const v0 = Math.min(1.5, (carried * ms) / distance)
     const v1 = this.passing ? 0.35 : 0
-    // Bowed slightly downward, as a hand pivoting at the wrist moves; short moves stay straight.
     const bend = distance > 80 ? Math.min(36, distance * 0.05) : 0
     const side = x >= fromX ? 1 : -1
     const nx = (-(y - fromY) / distance) * side
@@ -601,26 +513,20 @@ export class Hand {
     this.flow = v1 > 0 ? { speed: (v1 * distance) / ms, at: performance.now() } : undefined
   }
 
-  /** After a click, the hand takes a moment to reach the keyboard before the first key. */
   async toKeyboard(): Promise<void> {
     const wait = this.onMouse + TO_KEYBOARD_MS - performance.now()
     if (wait > 0 && !this.quick) await this.page.waitForTimeout(wait)
     this.onMouse = 0
   }
 
-  /** Waits until a highlight has zoomed in, so the press happens inside it. */
   private async whenZoomed(): Promise<void> {
     const wait = this.notBefore - performance.now()
     if (wait > 0 && !this.quick) await this.page.waitForTimeout(wait)
   }
 
-  /** Moves onto an element, to a point on it (its middle unless told). */
   async reach(target: Locator, at?: Point): Promise<{ x: number; y: number }> {
     const spot = await spotOn(target, at)
     let ms = this.travel(spot.x, spot.y)
-    // Due on a word: a hand takes about as long for a distance whatever the deadline, so when
-    // early it rests, then moves briskly (stretched by a quarter at most) to arrive as the word
-    // is said, a moment before to press on it. Stretched further, a move becomes a slow drift.
     if (this.due !== undefined && !this.quick) {
       const left = this.due - performance.now() - (this.passing ? 0 : 250)
       const slowest = ms * 1.25
@@ -648,7 +554,6 @@ export class Hand {
     const held = how.modifiers ?? []
     for (const key of held) await this.page.keyboard.down(key)
     try {
-      // Two presses, the second counted as such, so the page hears the dblclick a person makes.
       const presses = how.double ? 2 : 1
       for (let clickCount = 1; clickCount <= presses; clickCount++) {
         await this.page.mouse.down({ button, clickCount })
@@ -664,11 +569,6 @@ export class Hand {
     }
   }
 
-  /**
-   * Presses on one element, carries it with the button held and lets go on another. The
-   * pointer moves every frame, even when exploring: drag libraries wait for some travel
-   * before they start, and a sortable list reorders as rows are passed.
-   */
   async drag(
     from: Locator,
     at: Point | undefined,
@@ -691,8 +591,6 @@ export class Hand {
       await this.move(start.x + (end.x - start.x) * s, start.y + (end.y - start.y) * s)
       await this.page.waitForTimeout(16)
     }
-    // Over the drop long enough for it to light up, then a nudge, since some libraries test
-    // the target on a move rather than on release.
     await this.move(end.x, end.y)
     await this.page.waitForTimeout(this.quick ? 200 : 350)
     await mouse.move(end.x + 1, end.y)
@@ -701,7 +599,6 @@ export class Hand {
     this.onMouse = performance.now()
   }
 
-  /** Types at a person's pace and rhythm, a key at a time, keeping when each was pressed. */
   async type(text: string): Promise<void> {
     if (this.quick) return this.page.keyboard.type(text)
     await this.toKeyboard()
@@ -709,12 +606,10 @@ export class Hand {
     for (const character of text) {
       await this.page.keyboard.type(character)
       this.keys.push({ t: performance.now(), key: character })
-      // Uneven, as a person types: a beat longer after a space.
       await this.page.waitForTimeout(55 + Math.random() * 60 + (character === ' ' ? 40 : 0))
     }
   }
 
-  /** Presses a key or a combination, like Enter or Meta+K. */
   async key(key: string): Promise<void> {
     await this.toKeyboard()
     await this.onTime()
@@ -722,7 +617,6 @@ export class Hand {
     if (!this.quick) this.keys.push({ t: performance.now(), key })
   }
 
-  /** Turns the wheel where the pointer is, eased in and out. */
   async scroll(pixels: number): Promise<void> {
     await this.onTime()
     const ticks = 15
@@ -734,10 +628,6 @@ export class Hand {
   }
 }
 
-/**
- * A point on an element, in page pixels: `at` as fractions of its box, or its middle. Waits
- * (up to half a second) for the box to stop moving, as one a hover just revealed slides out.
- */
 async function spotOn(target: Locator, at?: Point): Promise<{ x: number; y: number }> {
   let box = await target.boundingBox()
   for (let tries = 0; box && tries < 10; tries++) {
@@ -752,11 +642,6 @@ async function spotOn(target: Locator, at?: Point): Promise<{ x: number; y: numb
   return { x: box.x + box.width * (at?.x ?? 0.5), y: box.y + box.height * (at?.y ?? 0.5) }
 }
 
-/**
- * How far along a move is, 0 to 1, at time k (0 to 1), setting off at speed v0 and arriving
- * at v1 (1 is the move's average speed). At rest at both ends it's a hand's own profile
- * (minimum jerk): quick off the mark, settling gently.
- */
 const flowing = (k: number, v0: number, v1: number): number =>
   v0 * (k - 6 * k ** 3 + 8 * k ** 4 - 3 * k ** 5) +
   (10 * k ** 3 - 15 * k ** 4 + 6 * k ** 5) +

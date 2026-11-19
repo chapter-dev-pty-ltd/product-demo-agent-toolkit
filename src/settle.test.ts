@@ -5,7 +5,6 @@ import type { Browser, Page } from 'playwright-core'
 import { watch } from './settle.ts'
 import { launchBrowser } from './tools.ts'
 
-// Each page is served by a real server, so navigations and slow requests are real.
 const PAGES: Record<string, string> = {
   '/late-navigation': `<button onclick="setTimeout(() => location.href = '/slow-page', 400)">Go</button>`,
   '/slow-page': `<h1>Arrived</h1>`,
@@ -35,8 +34,6 @@ const PAGES: Record<string, string> = {
       <script>let n = 0; setInterval(() => { clock.textContent = '0:' + ++n; bar.style.width = n + 'px' }, 150)
       setInterval(() => fetch('/chunk?n=' + n), 250)</script>
       <button onclick="fetch('/slow-data').then(r => r.text()).then(t => document.body.append(t))">Load</button>`,
-  // Loading shown only on screen: an animation drawn on a canvas and "Loading...", with
-  // nothing else changing, for longer than a timer is waited for.
   '/code-sample': `<pre><code>toast.promise(save, { <span>loading</span>: 'Loading...' })</code></pre>
       <button onclick="document.body.append('Saved')">Save</button>`,
   '/drawn-loading': `<canvas id="c" width="60" height="20"></canvas><div id="out"></div>
@@ -44,12 +41,10 @@ const PAGES: Record<string, string> = {
         out.textContent = 'Loading...'; let x = 0
         const draw = () => { const g = c.getContext('2d'); g.clearRect(0, 0, 60, 20); g.fillRect(x = (x + 4) % 60, 0, 10, 20); requestAnimationFrame(draw) }
         draw(); setTimeout(() => { out.textContent = 'Done' }, 3500)">Start</button>`,
-  // An animation the action starts that never ends, with nothing loading.
   '/looping': `<canvas id="c" width="200" height="200"></canvas>
       <button onclick="let x = 0
         const draw = () => { const g = c.getContext('2d'); g.fillStyle = 'hsl(' + (x += 9) + ',80%,50%)'; g.fillRect(0, 0, 200, 200); requestAnimationFrame(draw) }
         draw(); document.body.append('Started')">Start</button>`,
-  // Something already moving before the action.
   '/moving': `<canvas id="c" width="200" height="200"></canvas>
       <script>let x = 0; const draw = () => { const g = c.getContext('2d'); g.fillStyle = 'hsl(' + (x += 9) + ',80%,50%)'; g.fillRect(0, 0, 200, 200); requestAnimationFrame(draw) }; draw()</script>
       <button onclick="document.body.append('Clicked')">Press</button>`,
@@ -79,7 +74,6 @@ afterAll(async () => {
   server.close()
 })
 
-/** Opens a page, presses its button, and settles. */
 async function pressAndSettle(path: string, cap?: number) {
   const page: Page = await browser.newPage()
   const settler = watch(page)

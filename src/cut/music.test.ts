@@ -12,7 +12,6 @@ describe('musicGraph', () => {
 
   test('a video longer than the track loops it, crossfading a second at each join', () => {
     const graph = musicGraph(track, 3, 300)
-    // 120s, then 119s more for each copy after the first: three copies cover 300s.
     expect(graph[0]).toBe('[3:a]asplit=3[m0][m1][m2]')
     expect(graph[1]).toBe('[m0][m1]acrossfade=d=1:c1=tri:c2=tri[l1]')
     expect(graph[2]).toBe('[l1][m2]acrossfade=d=1:c1=tri:c2=tri[l2]')

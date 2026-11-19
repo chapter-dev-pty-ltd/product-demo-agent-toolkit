@@ -102,7 +102,6 @@ music (false | lofi | a path to an audio file, or { track, volume }, default fal
 It also holds what every video shares: mode (just_do_it | ask), voice, keep (rehearsals and takes kept per video, default 5),
 review (cut also makes the review image, default false).`
 
-// Keys, such as ELEVENLABS_API_KEY: the environment, then the project's .env, then ~/.product-demo/.env.
 loadKeys()
 
 const EXPLORE = new Set([
@@ -123,7 +122,6 @@ const EXPLORE = new Set([
   'end',
 ])
 
-// Explore commands take their own options, read by the browser process.
 const raw = process.argv.slice(2)
 const exploring = EXPLORE.has(raw[0] ?? '')
 const parsed = (() => {
@@ -156,7 +154,6 @@ const warn = (warnings: string[]) => {
   for (const warning of warnings) console.log(`Check: ${warning}`)
 }
 
-/** The video a command names, by its id or words from its title. */
 const videoNamed = async (ref: string | undefined): Promise<Video> => {
   if (!ref)
     throw new Error('Which video? Give its id, or words from its title. `videos` lists them.')
@@ -164,10 +161,6 @@ const videoNamed = async (ref: string | undefined): Promise<Video> => {
 }
 const configOf = (video: Video) => readConfig(filesOf(video).look)
 
-/**
- * Earlier versions kept the config and footage in the project. Nothing reads them now, so say
- * so where it matters, rather than quietly making videos without the user's look.
- */
 const oldProjectFolder = () => {
   if (!existsSync(join('.product-demo', 'config.json'))) return
   console.log(
@@ -239,13 +232,12 @@ try {
         footage = await shoot(film, filmFile, dir, config)
       } catch (error) {
         await rm(dir, { recursive: true, force: true })
-        // A rehearsed film that fails on camera usually flaked (a slow request): one more
-        // try. A decision someone has to make won't change on a second try.
         if (attempt > 1 || error instanceof NeedsDecision) throw error
         const why = error instanceof Error ? error.message : String(error)
         console.log(`The shoot failed, trying once more. ${why}`)
       }
     }
+    // Only now it has finished, so a failed reshoot never costs a good take.
     await pruneRuns(video, 'takes', config.keep)
     warn(footage.warnings)
     console.log(
@@ -255,10 +247,8 @@ try {
     const video = await videoNamed(input)
     const config = await configOf(video)
     const take = await latestTake(video)
-    // Always into the take, and as the video's latest cut; --out is a copy of it besides.
     const out = join(take.dir, 'video.mp4')
     const seconds = await cut(take.dir, out, config)
-    // The look it was cut with, so this cut can be made again however the look changes.
     await writeFile(join(take.dir, 'look.json'), `${JSON.stringify(lookToRaw(config), null, 2)}\n`)
     await copyFile(out, filesOf(video).cut)
     if (values.out) await copyFile(out, values.out)
@@ -271,14 +261,12 @@ try {
   } else if (command === 'studio') {
     const video = await videoNamed(input)
     if (values.serve) {
-      // The studio's own server, started in the background by the command below.
       const take = await latestTake(video)
       console.log(`Studio for ${video.id}: ${await studio(video, take.dir)}`)
     } else {
       const self = [process.execPath, ...process.execArgv, process.argv[1] ?? '']
       const address = await openStudio(video, [...self, 'studio', video.id, '--serve'])
       console.log(`Studio for "${video.title}" (${video.id}): ${address}`)
-      // A session coming to the video fresh gets what was said before it.
       if (!values.say) {
         const recent = await recentChat(video, 6)
         if (recent.length) {
@@ -313,7 +301,6 @@ try {
       film.steps.flatMap((s) => (s.say ? [s.say] : [])),
       config.voice,
     )
-    // Each line, how long it runs, and when each step's word lands in it.
     let current: Spoken | undefined
     for (const [i, step] of film.steps.entries()) {
       if (step.say) {

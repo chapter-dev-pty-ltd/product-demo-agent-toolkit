@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
 
-// Every video lives in the home folder; these tests get one of their own.
 const home = mkdtempSync(join(tmpdir(), 'product-demo-home-'))
 process.env.PRODUCT_DEMO_HOME = home
 const { findVideo, filesOf, latestTake, newRun, newVideo, pruneRuns } = await import('./videos.ts')
@@ -70,7 +69,6 @@ describe('takes', () => {
     const good = await newRun(video, 'takes')
     await writeFile(join(good, 'footage.json'), '{}')
     await pruneRuns(video, 'takes', 1)
-    // A reshoot starts, and fails: nothing was pruned for it.
     await newRun(video, 'takes')
     expect((await latestTake(video)).n).toBe(1)
   })

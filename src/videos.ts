@@ -5,23 +5,16 @@ import { join } from 'node:path'
 import { lookToRaw, readConfig } from './config.ts'
 import { HOME } from './home.ts'
 
-// Each video is a folder of its own in ~/.product-demo/videos, named by a short id that's
-// safe anywhere: its film, its look, its studio chat, the rehearsals and takes of it, and its
-// latest cut. Its title is only for people, so it can be anything and change freely.
-
 export const VIDEOS: string = join(HOME, 'videos')
 
 export interface Video {
   id: string
   title: string
   created: string
-  /** The session that made it, when the agent named one. */
   session?: string | undefined
-  /** Its folder. */
   dir: string
 }
 
-/** Where each of a video's files is. */
 export function filesOf(
   video: Video,
 ): Record<'film' | 'look' | 'chat' | 'cut' | 'explore' | 'studio', string> {
@@ -35,7 +28,6 @@ export function filesOf(
   }
 }
 
-/** A new video, with a copy of the default look. Its title, or the session's name. */
 export async function newVideo(title?: string, session?: string): Promise<Video> {
   await mkdir(VIDEOS, { recursive: true })
   let id: string
@@ -58,16 +50,14 @@ export async function newVideo(title?: string, session?: string): Promise<Video>
   return video
 }
 
-/** Six letters and digits, lowercase, starting with a letter: short to type, safe in a path. */
 function newId(): string {
   const letters = 'abcdefghijklmnopqrstuvwxyz'
   const all = `${letters}0123456789`
-  // randomInt draws evenly; a random byte modulo 26 or 36 would favour some characters.
+  // randomInt, not a random byte modulo 26 or 36, which favours some characters.
   const pick = (from: string) => from[randomInt(from.length)]
   return pick(letters) + Array.from({ length: 5 }, () => pick(all)).join('')
 }
 
-/** Every video, the most recently worked on first. */
 export async function listVideos(): Promise<Video[]> {
   const ids = await readdir(VIDEOS).catch(() => [] as string[])
   const videos = await Promise.all(ids.map((id) => readVideo(id).catch(() => undefined)))
@@ -85,7 +75,6 @@ async function readVideo(id: string): Promise<Video> {
   return { ...about, id, dir }
 }
 
-/** When anything in the video last changed: its film, look, chat or a new take. */
 async function lastWorkedOn(video: Video): Promise<number> {
   const files = filesOf(video)
   const times = await Promise.all(
@@ -99,10 +88,6 @@ async function lastWorkedOn(video: Video): Promise<number> {
   return Math.max(...times)
 }
 
-/**
- * The video named by `ref`: its id, or words from its title. Several titles matching, or
- * none, is an error that lists what there is.
- */
 export async function findVideo(ref: string): Promise<Video> {
   if (/^[a-z][a-z0-9]{5}$/.test(ref) && existsSync(join(VIDEOS, ref, 'video.json'))) {
     return readVideo(ref)
@@ -128,7 +113,6 @@ export async function findVideo(ref: string): Promise<Video> {
 
 export type RunKind = 'takes' | 'rehearsals'
 
-/** A folder for a new take or rehearsal of the video, numbered after the last. */
 export async function newRun(video: Video, kind: RunKind): Promise<string> {
   const dir = join(video.dir, kind)
   await mkdir(dir, { recursive: true })
@@ -138,10 +122,6 @@ export async function newRun(video: Video, kind: RunKind): Promise<string> {
   return run
 }
 
-/**
- * Deletes all but the last `keep` takes or rehearsals of the video. Run only once a new one
- * has finished, so one that fails never costs a good one.
- */
 export async function pruneRuns(video: Video, kind: RunKind, keep: number): Promise<void> {
   const dir = join(video.dir, kind)
   const numbers = await runNumbers(dir)
@@ -158,7 +138,6 @@ async function runNumbers(dir: string): Promise<number[]> {
     .sort((a, b) => a - b)
 }
 
-/** The video's latest finished take: its folder and number. */
 export async function latestTake(video: Video): Promise<{ dir: string; n: number }> {
   const dir = join(video.dir, 'takes')
   for (const n of (await runNumbers(dir)).reverse()) {

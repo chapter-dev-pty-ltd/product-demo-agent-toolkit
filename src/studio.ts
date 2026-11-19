@@ -25,18 +25,6 @@ import type { Footage } from './perform.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
 import { filesOf, latestTake, type Video } from './videos.ts'
 
-// The studio: plays footage on the stage in a local page, with a panel beside it to change the
-// look (backdrop, frame, cursor) and the music, and see and hear it at once. The stage is the
-// same page the cut photographs, served over HTTP, so what plays is what the cut renders.
-//
-// It is also where the user talks to their agent about one video. Each video has a studio of
-// its own: a server running in the background, with the video's chat in its chat.json. The
-// agent runs `studio <video>`, which starts that server if it isn't running, waits for the
-// user's next message there, prints it and exits: an agent that's woken when a background
-// command ends is woken by the message. Changes the agent makes to the video's look or film
-// show in the page as they're saved. Two sessions on two videos have two studios.
-
-/** Where a video's studio keeps what it needs: the chat, its port while it runs, its log. */
 function placesOf(video: Video) {
   const dir = filesOf(video).studio
   return {
@@ -46,67 +34,43 @@ function placesOf(video: Video) {
     log: join(dir, 'server.log'),
   }
 }
-/** How long a studio nobody is using (no page open, no agent listening) stays open. */
 const IDLE_MS = 30 * 60_000
-/** The ports the studio tries, in order: 4000 and up (3000 is usually the app being filmed). */
+// From 4000: 3000 is usually the app being filmed.
 const PORTS = Array.from({ length: 100 }, (_, i) => 4000 + i)
 
-/** What the studio changes: the look, and the music under it. */
 interface Settings extends Look {
   music: Music | false
 }
 
-/**
- * Settings as the page holds them: plain strings, with `"own"` for the project's own file from
- * the config (its backdrop picture, cursor SVG or music), which the page can't name otherwise.
- */
 interface PageSettings {
   backdrop: string
   display: string
-  /** How much of the video the window fills, 0.5 to 1. */
   fill: number
   cursor: { style: string; size: number; label?: string | undefined; tip?: [number, number] }
   music: false | { track: string; volume: number }
 }
 
-/** A message in the chat: from the user in the page, or from the agent. */
 export interface StudioMessage {
   from: 'you' | 'agent'
   text: string
-  /** Where in the take the user was when they sent it, in seconds. */
   at?: number
   sent: string
-  /**
-   * Whether the agent has dealt with it: it's read once the agent replies after being given
-   * it (the user's messages only). Until then each wait gives it again, so an agent that
-   * stopped before replying doesn't lose it.
-   */
   read?: boolean
-  /** Whether an agent has been given it. */
   delivered?: boolean
-  /** Changes to the film the user attached from the script, which need a reshoot. */
   changes?: string[]
-  /** The film they're to, when there are changes. */
   film?: string
 }
 
-/** A step of the film as the script tab shows it. */
 interface ScriptStep {
-  /** What it does, in words: "Click", "Type into". */
   action: string
-  /** What it does it to: the element, the key, the address. */
   what?: string
-  /** What it types, for a step that types (editable, with a reshoot). */
   text?: string
   say?: string
   note?: string
-  /** When it starts in the take, if the shoot recorded it. */
   at?: number
-  /** Its highlight as the film has it now, which changes with another cut. */
   highlight?: Highlight
 }
 
-/** Who is listening: names the agent gave, for the page to show. */
 interface Agent {
   session?: string | undefined
   agent?: string | undefined
@@ -114,10 +78,6 @@ interface Agent {
 
 const own = (value: unknown): value is ProjectFile => typeof value === 'object' && value !== null
 
-/**
- * The project's own files the page can pick (its backdrop picture, cursor SVG and music): the
- * config's, and any it named before, so picking another backdrop doesn't lose your own.
- */
 interface Own {
   backdrop?: ProjectFile | undefined
   cursor?: ProjectFile | undefined
@@ -125,7 +85,6 @@ interface Own {
   music?: ProjectFile | undefined
 }
 
-/** What the page is built from, out of the config. */
 function fromConfig(config: Config, hold: number, was: Own = {}) {
   const settings: Settings = {
     backdrop: config.backdrop,
@@ -152,11 +111,8 @@ function fromConfig(config: Config, hold: number, was: Own = {}) {
   return { settings, mine, extras }
 }
 
-/**
- * Whether a request may reach the studio on `port`. Only by its own name (a page that
- * rebinds its own domain to this machine is turned away), and from no page but its own (a
- * site open in another tab can't post to it). The agent's commands send no Origin.
- */
+// Host turns away DNS rebinding; Origin turns away other sites' pages. The agent's
+// commands send no Origin, and must also carry the token to act as the agent.
 export function trusted(
   port: number,
   host: string | undefined,
@@ -167,7 +123,6 @@ export function trusted(
   return !origin || names.some((name) => origin === `http://${name}`)
 }
 
-/** Serves the studio for this video's take and returns its address. */
 export async function studio(
   video: Video,
   footageDir: string,
@@ -179,17 +134,14 @@ export async function studio(
   const { footage, highlights, length, title } = await prepare(footageDir)
   const hold = Math.max(1, footage.film.ending?.hold ?? 2)
   let { settings, mine, extras } = fromConfig(config, hold)
-  // Each change is saved to the config as it's made, one write after another.
   let saving = Promise.resolve()
   const staged = (lit: typeof highlights) =>
     stageFiles(footageDir, footage, lit, () => settings, length, title)
   let stage = staged(highlights)
-  // The film the take was shot from: its highlights change with a cut, so the stage follows it.
   let filmText = await readFile(footage.source, 'utf8').catch(() => '')
   const restage = async () => void (stage = staged((await prepare(footageDir)).highlights))
   const library = (path: string) => new URL(`../library/${path}`, import.meta.url)
 
-  // The chat, the pages open on it, and the agents waiting for the user's next message.
   const boot = Date.now().toString(36)
   await mkdir(places.dir, { recursive: true })
   const chat: StudioMessage[] = await readFile(places.chat, 'utf8').then(JSON.parse, () => [])
@@ -200,8 +152,6 @@ export async function studio(
   const emit = (event: object) => {
     for (const page of pages) page.write(`data: ${JSON.stringify(event)}\n\n`)
   }
-  // Gives the user's unread messages to the agent that's been waiting longest: new ones, and
-  // any given before that the agent never replied to.
   const deliver = async () => {
     const unread = chat.filter((m) => m.from === 'you' && !m.read)
     const waiter = waiters.shift()
@@ -216,7 +166,6 @@ export async function studio(
     emit({ type: 'agent', agent })
   }
 
-  // The video's look, as the agent (or anyone) saves it: the page reloads to show it.
   let settling: NodeJS.Timeout | undefined
   const watcher = watch(video.dir, (_, name) => {
     if (name !== 'look.json') return
@@ -228,15 +177,12 @@ export async function studio(
       if (!next) return
       const fresh = fromConfig(next, hold, mine)
       const same = (a: typeof fresh) => JSON.stringify([toPage(a.settings), a.extras])
-      // The studio's own saves come back here too, and change nothing.
       if (same(fresh) === same({ settings, mine, extras })) return
       ;({ settings, mine, extras } = fresh)
       emit({ type: 'config' })
     }, 150)
   })
 
-  // The film, as the agent edits it: the page reloads to show it. The studio's own edits
-  // (a highlight's look) come back here too, and change nothing.
   const filmWatcher = watch(dirname(footage.source), (_, name) => {
     if (name !== basename(footage.source)) return
     setTimeout(async () => {
@@ -248,8 +194,6 @@ export async function studio(
     }, 150)
   })
 
-  // The port it gets, and a secret only the agent's commands know (they read it from the
-  // video's server.json): waiting, replying as the agent and stopping need it.
   let port: number | undefined
   const token = randomBytes(24).toString('hex')
   const server = createServer(async (req, res) => {
@@ -264,7 +208,7 @@ export async function studio(
     }
     const fromAgent = req.headers.authorization === `Bearer ${token}`
     try {
-      // The stage is served at / for the studio's frame; opened in a tab, / is the studio.
+      // The studio's frame loads the stage from /, so only a tab is sent on to the studio.
       if (path === '/' && req.headers['sec-fetch-dest'] === 'document') {
         res.writeHead(302, { location: '/studio' })
         return res.end()
@@ -302,7 +246,6 @@ export async function studio(
           : []
         if (!text && !changes.length) return send(400, 'text/plain', 'Nothing to send')
         const from = raw.from === 'agent' ? 'agent' : 'you'
-        // The agent's reply means it has dealt with what it was given.
         if (from === 'agent') {
           for (const m of chat) if (m.from === 'you' && m.delivered) m.read = true
         }
@@ -332,7 +275,6 @@ export async function studio(
         whileIdle()
         agent = { ...who, listening: true }
         emit({ type: 'agent', agent })
-        // An agent that stops waiting (it was stopped, or quit) isn't listening any more.
         res.on('close', () => {
           const i = waiters.indexOf(waiter)
           if (i < 0) return
@@ -357,11 +299,9 @@ export async function studio(
         }
         return send(200, 'application/json', JSON.stringify(script))
       }
-      // A highlight's look (style, colour, zoom) only needs a cut: it's saved to the film.
       if (path === '/studio/highlight' && req.method === 'POST') {
         const change = JSON.parse(await body(req))
         const raw = JSON.parse(await readFile(footage.source, 'utf8'))
-        // The step as shot, found in the film as it is now: it may have moved since.
         const at = sameStep(footage.film.steps, raw.steps ?? [], Number(change.step))
         if (at < 0) {
           return send(
@@ -398,13 +338,11 @@ export async function studio(
         await saving
         return send(200, 'application/json', JSON.stringify(toPage(settings)))
       }
-      // The video's look back to the default as it is now; the watcher reloads the page.
       if (path === '/studio/look/use-default' && req.method === 'POST') {
         const fresh = lookToRaw(await readConfig())
         await writeFile(lookFile, `${JSON.stringify(fresh, null, 2)}\n`)
         return send(200, 'application/json', '{}')
       }
-      // This video's look as the default for videos made from now on.
       if (path === '/studio/look/make-default' && req.method === 'POST') {
         const shared = await readRaw(CONFIG_FILE)
         const look = lookToRaw(await readConfig(lookFile))
@@ -417,7 +355,6 @@ export async function studio(
       if (thumb?.[1] && (BACKDROPS as readonly string[]).includes(thumb[1])) {
         return send(200, 'image/jpeg', await readFile(library(`backdrops/${thumb[1]}.jpg`)))
       }
-      // The project's own files, and our music, for the page to show and play.
       const kind = path.match(/^\/studio\/own\/(backdrop|cursor|music)$/)?.[1] as
         'backdrop' | 'cursor' | 'music' | undefined
       const file = kind && mine[kind]?.file
@@ -436,13 +373,10 @@ export async function studio(
       if (!served) return send(404, 'text/plain', 'Not found')
       return send(200, served.contentType, served.body)
     } catch (error) {
-      // The details go to the server's log, not to whoever asked.
       console.log(error)
       if (!res.headersSent) send(400, 'text/plain', `That didn't work. See ${places.log}`)
     }
   })
-  // Closing: by the agent (`studio --stop`), or by itself once nobody has used it for a while
-  // (no page open, no agent listening), so studios don't pile up in the background.
   const close = async () => {
     clearTimeout(idle)
     watcher.close()
@@ -459,10 +393,10 @@ export async function studio(
   }
   whileIdle()
 
-  // The page's events and a waiting agent stay open for as long as they need.
+  // Node ends a request after 5 minutes by default; the event stream and a wait last as
+  // long as the user takes.
   server.requestTimeout = 0
   server.timeout = 0
-  // The first free port of ours, written down for the studio commands to find.
   let found: number | undefined
   for (const next of ports) {
     const free = await new Promise<boolean>((done, fail) => {
@@ -478,19 +412,15 @@ export async function studio(
   }
   if (found === undefined) throw new Error(`No free port for the studio in ${ports.join(', ')}.`)
   port = found
-  // The listeners for finding a port are done with; an error from now on goes to the log
-  // rather than taking the studio down.
   server.removeAllListeners('error')
   server.on('error', (error) => console.log(error))
-  // Readable only by the user: it holds the agent's secret. A file left from before is
-  // replaced rather than rewritten, so it can't keep looser permissions.
   const about = { port, pid: process.pid, token }
+  // writeFile's mode only applies to a new file, and this one holds the token.
   await rm(places.server, { force: true })
   await writeFile(places.server, `${JSON.stringify(about)}\n`, { mode: 0o600 })
   return `http://localhost:${port}/studio`
 }
 
-/** Where this video's studio is running, and its secret, if it's running. */
 interface Running {
   port: number
   token: string
@@ -505,12 +435,10 @@ async function runningPort(video: Video): Promise<Running | undefined> {
     () => undefined,
   )
   if (!running?.port) return undefined
-  // The file can outlive the studio, and something else can have the port since: ask it.
   const about = await call(running, 'GET', '/studio/ping').then(JSON.parse, () => undefined)
   return about?.studio && about.video === video.id ? running : undefined
 }
 
-/** Where this video's studio is running, or an error saying how to open it. */
 async function studioPort(video: Video): Promise<Running> {
   const port = await runningPort(video)
   if (!port) {
@@ -521,11 +449,6 @@ async function studioPort(video: Video): Promise<Running> {
   return port
 }
 
-/**
- * Makes sure the video's studio is running on its latest take, starting its server in the
- * background with `serve` (the command that runs it) if it isn't, and returns its address. A
- * studio on an older take, from before a reshoot, is stopped first.
- */
 export async function openStudio(video: Video, serve: string[]): Promise<string> {
   const take = await latestTake(video)
   const port = await runningPort(video)
@@ -552,7 +475,6 @@ export async function openStudio(video: Video, serve: string[]): Promise<string>
   throw new Error(`The studio didn't start. See ${places.log}`)
 }
 
-/** Stops the video's studio, if it's running. */
 export async function stopStudio(video: Video): Promise<boolean> {
   const port = await runningPort(video)
   if (!port) return false
@@ -562,23 +484,19 @@ export async function stopStudio(video: Video): Promise<boolean> {
   )
 }
 
-/** Puts the agent's message in the video's studio chat. */
 export async function sayInStudio(video: Video, text: string): Promise<void> {
   const payload = JSON.stringify({ from: 'agent', text })
   await call(await studioPort(video), 'POST', '/studio/chat', payload)
 }
 
-/** Waits for the user's next messages in the video's studio (or returns any not yet read). */
 export async function waitForStudio(video: Video, who: Agent): Promise<StudioMessage[]> {
   const query = new URLSearchParams(
     Object.entries(who).filter((entry): entry is [string, string] => Boolean(entry[1])),
   )
-  // Nothing back means the studio stopped while it waited.
   const text = await call(await studioPort(video), 'GET', `/studio/wait?${query}`)
   return text ? JSON.parse(text) : []
 }
 
-/** The last `count` messages in the video's chat, oldest first. */
 export async function recentChat(video: Video, count: number): Promise<StudioMessage[]> {
   const chat: StudioMessage[] = await readFile(placesOf(video).chat, 'utf8').then(
     JSON.parse,
@@ -587,10 +505,6 @@ export async function recentChat(video: Video, count: number): Promise<StudioMes
   return chat.slice(-count)
 }
 
-/**
- * A request to the studio's server, as the agent (with its secret), with no timeout: a wait
- * can last as long as the user.
- */
 function call(
   { port, token }: Running,
   method: string,
@@ -611,10 +525,6 @@ function call(
   })
 }
 
-/**
- * Where step `i` of the film as shot is in the film as it is now: the same place if it's
- * still there, else the one step that does the same thing (its direction aside), else -1.
- */
 export function sameStep(shot: unknown[], now: unknown[], i: number): number {
   const bare = (step: unknown) => {
     if (!step || typeof step !== 'object') return ''
@@ -628,7 +538,6 @@ export function sameStep(shot: unknown[], now: unknown[], i: number): number {
   return matches.length === 1 ? (matches[0] ?? -1) : -1
 }
 
-/** The take's steps in words, timed from the shoot, with the film's highlights as they are now. */
 function scriptOf(footage: Footage, film: Film): ScriptStep[] {
   const start = footage.frames[0]?.at ?? 0
   return footage.film.steps.map((step, i) => {
@@ -644,7 +553,6 @@ function scriptOf(footage: Footage, film: Film): ScriptStep[] {
   })
 }
 
-/** A step as a person would say it. */
 function words(step: Step): Pick<ScriptStep, 'action' | 'what' | 'text'> {
   if ('visit' in step) return { action: 'Open', what: step.visit }
   if ('click' in step) {
@@ -670,7 +578,6 @@ function words(step: Step): Pick<ScriptStep, 'action' | 'what' | 'text'> {
   return { action: step.wait.gone ? 'Wait for this to go:' : 'Wait for', what: step.wait.text }
 }
 
-/** An element's name for people: its label or text, never its selector if there's better. */
 function nameOf(target: Target): string {
   if ('fingerprint' in target) {
     const { label, text, name, alt } = target.fingerprint
@@ -680,7 +587,6 @@ function nameOf(target: Target): string {
   if ('role' in target) return target.name || target.role
   if ('text' in target) return target.text
   if ('css' in target) {
-    // .ytp-volume-slider-handle → "volume slider handle": the words in the selector.
     const words = target.css
       .replace(/^[#.]/, '')
       .split(/[-_\s.#]+/)
@@ -713,7 +619,6 @@ function body(req: IncomingMessage): Promise<string> {
   })
 }
 
-/** The settings as the page holds them, with the project's own files as "own". */
 function toPage(settings: Settings): PageSettings {
   const { cursor, music } = settings
   return {
@@ -730,15 +635,11 @@ function toPage(settings: Settings): PageSettings {
   }
 }
 
-/**
- * Settings from the page, checked the way the config checks them: "own" is the project's own
- * file, and anything off keeps what was.
- */
 function fromPage(raw: Partial<PageSettings>, was: Settings, mine: Own): Settings {
   const cursor: Partial<PageSettings['cursor']> = raw.cursor ?? {}
   const style = String(cursor.style)
   const size = Number(cursor.size ?? was.cursor.size)
-  // A label left out keeps the one there is; an empty one clears it.
+  // Left out, the label stays; only an empty one clears it.
   const label =
     typeof cursor.label === 'string' ? cursor.label.trim().slice(0, 30) : (was.cursor.label ?? '')
   const backdrop = String(raw.backdrop)
@@ -771,7 +672,6 @@ function fromPage(raw: Partial<PageSettings>, was: Settings, mine: Own): Setting
             : was.cursor.style,
       size: Number.isFinite(size) ? Math.min(3, Math.max(0.5, size)) : was.cursor.size,
       ...(label ? { label } : {}),
-      // An SVG of the project's own keeps the tip the config gave it.
       ...(style === 'own' && mine.tip ? { tip: mine.tip } : {}),
     },
     music:
@@ -793,14 +693,12 @@ function fromPage(raw: Partial<PageSettings>, was: Settings, mine: Own): Setting
   }
 }
 
-/** Writes the studio's settings into the video's look, keeping its sound as it is. */
 async function saveLook(lookFile: string, settings: Settings): Promise<void> {
   const config = await readConfig(lookFile)
   const look = lookToRaw({ ...config, ...settings })
   await writeFile(lookFile, `${JSON.stringify(look, null, 2)}\n`)
 }
 
-/** The studio page: the stage over a timeline, and the look's settings on the right. */
 function page(
   look: PageSettings,
   extras: { owned: Record<string, string | null>; music: readonly string[]; hold: number },
@@ -835,7 +733,6 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
 .primary:hover { background: #262626; }
 .primary:disabled { background: var(--muted); color: var(--faint); cursor: default; }
 
-/* Editor: the preview over the transport and the timeline */
 .editor { display: grid; grid-template-rows: 1fr auto auto; min-width: 0; min-height: 0; }
 #viewer { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 20px 24px 12px; }
 #screen { position: relative; flex: none; border-radius: 10px; box-shadow: 0 12px 32px rgb(0 0 0 / .08), 0 2px 6px rgb(0 0 0 / .04); }
@@ -860,7 +757,6 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
 .field[hidden] { display: none; }
 #time span { color: var(--faint); }
 
-/* Timeline */
 .timeline { --label: 148px; position: relative; border-top: 1px solid var(--line); user-select: none; padding-bottom: 10px; }
 .ruler, .track { display: grid; grid-template-columns: var(--label) 1fr; }
 .ruler { height: 28px; }
@@ -896,7 +792,6 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
 #playhead span { position: absolute; top: 5px; left: 0; transform: translateX(-50%); height: 18px; padding: 0 6px; border-radius: 5px;
   background: var(--text); color: #fff; font: 500 10px/18px var(--mono); white-space: nowrap; }
 
-/* Settings panel */
 aside { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
 .video { padding: 16px 20px 4px; display: flex; flex-direction: column; gap: 2px; }
 .video b { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -942,7 +837,6 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px;
 input[type=text] { width: 100%; height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 10px; font: inherit; color: var(--text); outline: none; }
 input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 0 0 / .05); }
 
-/* Chat with the agent */
 .panel.chat:not([hidden]) { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
 .agent { display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--line); color: var(--dim); font-size: 12px; }
 .agent i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); flex: none; }
@@ -971,7 +865,6 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
 .x { border: 0; background: none; color: inherit; opacity: .6; cursor: pointer; padding: 0 4px; font-size: 15px; line-height: 1; }
 .x:hover { opacity: 1; }
 
-/* The script */
 .panel.script:not([hidden]) { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
 .script-head { display: flex; justify-content: space-between; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--line); color: var(--dim); font-size: 12px; }
 .script-head span:first-child { font-family: var(--mono); }
@@ -1117,13 +1010,10 @@ const ICON_PAUSE = '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3.5" y
 const viewer = $('viewer'), screen = $('screen');
 let frame, data, length = 0, t = 0, playing = false, last = 0;
 
-// The stage is 1920x1080; the screen is that, scaled to fit the viewer.
-// The screen is a whole, even number of pixels each way, so it sits on the pixel grid, and the
-// stage is stretched to fill it exactly: no sliver of anything behind shows at its edges. The
-// corners are rounded on the stage itself, so the curve is drawn at its full size.
 const fit = () => {
   const w = viewer.clientWidth - 48, h = viewer.clientHeight - 32;
   const k = Math.max(0.05, Math.min(w / ${CANVAS.width}, h / ${CANVAS.height}));
+  // Whole, even pixels: a fractional box shows what's behind it at its edges.
   const even = (n) => Math.max(2, Math.floor(n / 2) * 2);
   const width = even(${CANVAS.width} * k), height = even(${CANVAS.height} * k);
   screen.style.width = width + 'px';
@@ -1136,7 +1026,6 @@ const fit = () => {
 };
 new ResizeObserver(fit).observe(viewer);
 
-// A new look loads a fresh stage behind the one showing, seeks it to now, then swaps it in.
 let loading = false, again = false;
 const load = () => {
   if (loading) return void (again = true);
@@ -1158,7 +1047,6 @@ const load = () => {
   fit();
 };
 
-// The timeline: the pages the take visits, its clicks, and any highlights.
 const lanes = [];
 let musicClip;
 const pct = (s) => (s / length) * 100 + '%';
@@ -1173,7 +1061,6 @@ const track = (name, sub, icon) => {
 };
 const timeline = () => {
   const ruler = $('ruler');
-  // A label every step, and a dot between: every second when the step is 5s, say.
   const step = [1, 2, 5, 10, 15, 30, 60].find((s) => length / s <= 12) || 60;
   const per = step % 5 === 0 ? 5 : 2;
   for (let i = 0; (i * step) / per <= length; i++) {
@@ -1189,7 +1076,6 @@ const timeline = () => {
   const pointer = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="m3 3 10 3.6-4.6 1.8L6.6 13z"/></svg>';
   const spark = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="2.5" y="4" width="11" height="8" rx="2"/></svg>';
   const pages = track('Page', '', globe);
-  // A page shown again (a reload, a route that changed nothing) stays one clip.
   const addresses = (data.addresses.length ? data.addresses : [{ at: 0, label: 'Screen' }])
     .filter((a, i, all) => i === 0 || a.label !== all[i - 1].label);
   addresses.forEach((a, i) => {
@@ -1199,7 +1085,6 @@ const timeline = () => {
     clip.style.left = 'calc(' + pct(a.at) + ' + 1px)';
     clip.style.width = 'calc(' + pct(end - a.at) + ' - 2px)';
     clip.title = a.label;
-    // The site's own icon where it has one, then its host, then the rest of the address, quieter.
     const slash = a.label.indexOf('/');
     const host = slash < 0 ? a.label : a.label.slice(0, slash);
     const name = document.createElement('span');
@@ -1252,7 +1137,6 @@ const timeline = () => {
   show();
 };
 
-// Click or drag anywhere on the timeline to move the playhead.
 const timelineEl = document.querySelector('.timeline');
 const scrubTo = (e) => {
   const lane = $('ruler').getBoundingClientRect();
@@ -1272,8 +1156,8 @@ const show = () => {
   $('playhead-time').textContent = clock(t);
   $('draft-at').textContent = 'At ' + clock(t);
   if (typeof showCurrent === 'function') showCurrent();
-  // Only when it changes: an icon swapped between press and release loses the click.
   const icon = playing ? ICON_PAUSE : ICON_PLAY;
+  // The icon is only swapped when it changes: swapped between press and release, the click is lost.
   if ($('play').dataset.icon !== String(playing)) { $('play').dataset.icon = String(playing); $('play').innerHTML = icon; }
   const lane = $('ruler').getBoundingClientRect(), box = timelineEl.getBoundingClientRect();
   if (length) $('playhead').style.left = lane.left - box.left + (t / length) * lane.width + 'px';
@@ -1281,13 +1165,10 @@ const show = () => {
 window.addEventListener('resize', show);
 const seek = async () => { if (frame) await frame.contentWindow.stage.seek(t); show(); audio(); };
 
-// The music under the take, as the cut mixes it: looped, at its volume (the cut lifts the
-// voiceover by 1.6 rather than lowering this), and faded out over the ending's hold.
 const player = new Audio();
 player.loop = true;
 const musicSrc = (m) => m.track === 'own' ? '/studio/own/music' : '/studio/music/' + m.track;
 
-// The music's waveform on its clip: the loudest moment in each slice, looped as the cut loops it.
 const wave = async (src) => {
   if (musicClip.dataset.wave === (src || '')) return;
   musicClip.dataset.wave = src || '';
@@ -1355,7 +1236,6 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'ArrowRight') { t = Math.min(length, t + 1); seek(); }
 });
 
-// The panel.
 const visual = (l) => JSON.stringify([l.backdrop, l.display, l.fill, l.cursor]);
 let shown = visual(look);
 const send = async () => {
@@ -1364,7 +1244,6 @@ const send = async () => {
   const res = await fetch('/studio/settings', { method: 'POST', body: JSON.stringify(look) });
   look = await res.json();
   render();
-  // Only a change to how it looks needs a fresh stage; the music is played here.
   if (visual(look) !== shown) { shown = visual(look); load(); }
 };
 const change = (patch) => {
@@ -1463,7 +1342,6 @@ for (const tab of document.querySelectorAll('[role=tab]')) {
 }
 const openTab = () => document.querySelector('[role=tab][aria-selected=true]').dataset.tab;
 
-// The agent: who's listening, the chat, and the config changes it makes.
 let chat = [], agent = null;
 const esc = (text) => text.replace(/[&<>"]/g, (c) => '&#' + c.charCodeAt(0) + ';');
 const showAgent = () => {
@@ -1510,7 +1388,6 @@ $('composer').onsubmit = async (e) => {
   keep(':draft', '');
   const res = await fetch('/studio/chat', { method: 'POST', body: JSON.stringify({ text, at: t, changes }) });
   if (!res.ok) return;
-  // Sent changes leave the script's tray: the agent has them now.
   for (const [key, c] of Object.entries(pending)) if (changes.includes(c.label)) delete pending[key];
   attached = [];
   keep(':pending', pending);
@@ -1521,8 +1398,6 @@ $('composer').onsubmit = async (e) => {
 $('draft').onkeydown = (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('composer').requestSubmit(); }
 };
-// The script: the film's steps in words. A highlight's look shows at once (it only needs a
-// cut); the other changes need a reshoot, so they wait in the tray to go to the agent.
 const TAKE = ${JSON.stringify(take)};
 let script = { steps: [] }, expanded = -1, current = -1;
 const kept = (key, fallback) => { try { return JSON.parse(sessionStorage.getItem(TAKE + key)) ?? fallback; } catch { return fallback; } };
@@ -1561,7 +1436,6 @@ const setHighlight = async (i, change) => {
   }
   script.steps[i].highlight = await res.json();
   showScript();
-  // A fresh stage, and the timeline drawn again from it, for the highlight's new look.
   $('tracks').innerHTML = $('ruler').innerHTML = '';
   lanes.length = 0;
   data = undefined;
@@ -1673,7 +1547,6 @@ const showScript = () => {
     $('tray-list').appendChild(li);
   }
 };
-// The step playing now, lit as the take plays.
 const showCurrent = () => {
   let now = -1;
   script.steps.forEach((s, i) => { if (s.at !== undefined && s.at <= t + 0.01) now = i; });
@@ -1701,12 +1574,9 @@ $('tray-send').onclick = () => {
 fetch('/studio/script').then((r) => r.json()).then((x) => { script = x; showScript(); showCurrent(); });
 showAttached();
 
-// A message being written survives the page reloading (when the agent saves a change).
 $('draft').value = kept(':draft', '');
 $('draft').oninput = () => keep(':draft', $('draft').value);
 
-// This video's look and the default: replace one with the other. Neither can be undone, so
-// the first click asks and the second, within a few seconds, does it.
 const askFirst = (button, question, act) => {
   const label = button.textContent;
   let asking;
@@ -1731,7 +1601,6 @@ askFirst($('make-default'), 'Use it for new videos?', async () => {
 const events = new EventSource('/studio/events');
 events.onmessage = (e) => {
   const event = JSON.parse(e.data);
-  // A restarted studio (a new take), or a config the agent changed: show it, at the same moment.
   if ((event.type === 'hello' && event.boot !== BOOT) || event.type === 'config') {
     return location.replace('/studio?t=' + t.toFixed(2) + '&tab=' + openTab());
   }

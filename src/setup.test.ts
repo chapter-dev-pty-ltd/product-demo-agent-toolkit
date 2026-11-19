@@ -8,21 +8,17 @@ import { refusal } from './voice/elevenlabs.ts'
 const KEY = 'ELEVENLABS_API_KEY'
 const dir = mkdtempSync(join(tmpdir(), 'product-demo-keys-'))
 
-/** A .env file with this in it, and where it is. */
 function dotenv(name: string, text: string): string {
   const file = join(dir, name)
   writeFileSync(file, text)
   return file
 }
 
-// A project's own .env, as most have: the app's settings, and nothing about a voice.
 const project = dotenv('project.env', 'DATABASE_URL=postgres://localhost/app\nAPP_URL=http://x\n')
 const home = dotenv('home.env', `${KEY}=saved-for-every-project\n`)
 const missing = join(dir, 'no-such.env')
 
 describe('loadKeys', () => {
-  // These two use the real process.env, which turns whatever it's given into a string: a
-  // key that isn't there must not become the word "undefined".
   const mine = process.env[KEY]
   beforeEach(() => {
     delete process.env[KEY]
