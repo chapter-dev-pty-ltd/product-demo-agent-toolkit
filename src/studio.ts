@@ -9,19 +9,14 @@ import {
   CURSORS,
   DISPLAYS,
   MUSIC,
-  CONFIG_FILE,
-  LOOK_KEYS,
   isHex,
   lookToRaw,
   readConfig,
-  readRaw,
   type Config,
   type Music,
   type ProjectFile,
 } from './config.ts'
 import { prepare } from './cut/cut.ts'
-import { readFilm, type Film, type Highlight, type Step, type Target } from './film.ts'
-import type { Footage } from './perform.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
 import { filesOf, latestTake, type Video } from './videos.ts'
 
@@ -57,18 +52,7 @@ export interface StudioMessage {
   sent: string
   read?: boolean
   delivered?: boolean
-  changes?: string[]
-  film?: string
-}
-
-interface ScriptStep {
-  action: string
-  what?: string
-  text?: string
-  say?: string
-  note?: string
-  at?: number
-  highlight?: Highlight
+  by?: string
 }
 
 interface Agent {
@@ -241,10 +225,7 @@ export async function studio(
         const raw = JSON.parse(await body(req))
         if (raw.from === 'agent' && !fromAgent) return send(403, 'text/plain', 'Not allowed.')
         const text = String(raw.text ?? '').trim()
-        const changes = Array.isArray(raw.changes)
-          ? raw.changes.map(String).filter(Boolean).slice(0, 50)
-          : []
-        if (!text && !changes.length) return send(400, 'text/plain', 'Nothing to send')
+        if (!text) return send(400, 'text/plain', 'Nothing to send')
         const from = raw.from === 'agent' ? 'agent' : 'you'
         if (from === 'agent') {
           for (const m of chat) if (m.from === 'you' && m.delivered) m.read = true
@@ -255,8 +236,8 @@ export async function studio(
           text,
           ...(Number.isFinite(at) ? { at: Math.round(at * 10) / 10 } : {}),
           sent: new Date().toISOString(),
-          ...(changes.length ? { changes, film: relative(process.cwd(), footage.source) } : {}),
           ...(from === 'you' ? { read: false } : {}),
+          ...(from === 'agent' && agent?.agent ? { by: agent.agent } : {}),
         })
         await saveChat()
         emit({ type: 'chat', chat })
@@ -291,65 +272,11 @@ export async function studio(
         send(200, 'application/json', '{}')
         return await close()
       }
-      if (path === '/studio/script') {
-        const film = await readFilm(footage.source).catch(() => footage.film)
-        const script = {
-          source: relative(process.cwd(), footage.source),
-          steps: scriptOf(footage, film),
-        }
-        return send(200, 'application/json', JSON.stringify(script))
-      }
-      if (path === '/studio/highlight' && req.method === 'POST') {
-        const change = JSON.parse(await body(req))
-        const raw = JSON.parse(await readFile(footage.source, 'utf8'))
-        const at = sameStep(footage.film.steps, raw.steps ?? [], Number(change.step))
-        if (at < 0) {
-          return send(
-            409,
-            'text/plain',
-            "The film has changed since this take, so this step can't be found in it. Ask your agent, or change it after the next shoot.",
-          )
-        }
-        const lit = raw.steps[at].highlight
-        if (!lit) return send(400, 'text/plain', 'That step has no highlight.')
-        if (['box', 'magnify', 'cursor'].includes(change.style)) lit.style = change.style
-        if (isHex(String(change.colour))) lit.colour = change.colour
-        const zoom = Number(change.zoom)
-        if (change.zoom !== undefined && Number.isFinite(zoom)) {
-          lit.zoom = Math.round(Math.min(1, Math.max(0, zoom)) * 100) / 100
-        }
-        const text = `${JSON.stringify(raw, null, 2)}\n`
-        await writeFile(footage.source, text)
-        const valid = await readFilm(footage.source).then(
-          () => true,
-          () => false,
-        )
-        if (!valid) {
-          await writeFile(footage.source, filmText)
-          return send(400, 'text/plain', 'That highlight is not valid.')
-        }
-        filmText = text
-        await restage()
-        return send(200, 'application/json', JSON.stringify(lit))
-      }
       if (path === '/studio/settings' && req.method === 'POST') {
         settings = fromPage(JSON.parse(await body(req)), settings, mine)
         saving = saving.then(() => saveLook(lookFile, settings)).catch((e) => void console.log(e))
         await saving
         return send(200, 'application/json', JSON.stringify(toPage(settings)))
-      }
-      if (path === '/studio/look/use-default' && req.method === 'POST') {
-        const fresh = lookToRaw(await readConfig())
-        await writeFile(lookFile, `${JSON.stringify(fresh, null, 2)}\n`)
-        return send(200, 'application/json', '{}')
-      }
-      if (path === '/studio/look/make-default' && req.method === 'POST') {
-        const shared = await readRaw(CONFIG_FILE)
-        const look = lookToRaw(await readConfig(lookFile))
-        for (const key of LOOK_KEYS) shared[key] = look[key]
-        await mkdir(dirname(CONFIG_FILE), { recursive: true })
-        await writeFile(CONFIG_FILE, `${JSON.stringify(shared, null, 2)}\n`)
-        return send(200, 'application/json', '{}')
       }
       const thumb = path.match(/^\/studio\/backdrops\/([a-z-]+)\.jpg$/)
       if (thumb?.[1] && (BACKDROPS as readonly string[]).includes(thumb[1])) {
@@ -377,18 +304,24 @@ export async function studio(
       if (!res.headersSent) send(400, 'text/plain', `That didn't work. See ${places.log}`)
     }
   })
+  let closed = false
   const close = async () => {
+    if (closed) return
+    closed = true
     clearTimeout(idle)
     watcher.close()
     filmWatcher.close()
     for (const open of [...pages, ...waiters.map((w) => w.res)]) open.end()
     server.closeAllConnections()
-    await rm(places.server, { force: true })
+    // A newer studio for this video may have written its own record over this one's.
+    const record = await readFile(places.server, 'utf8').then(JSON.parse, () => undefined)
+    if (record?.pid === process.pid) await rm(places.server, { force: true })
     server.close()
   }
   let idle: NodeJS.Timeout | undefined
   function whileIdle() {
     clearTimeout(idle)
+    if (closed) return
     if (pages.size === 0 && waiters.length === 0) idle = setTimeout(() => void close(), IDLE_MS)
   }
   whileIdle()
@@ -523,77 +456,6 @@ function call(
     req.on('error', fail)
     req.end(payload)
   })
-}
-
-export function sameStep(shot: unknown[], now: unknown[], i: number): number {
-  const bare = (step: unknown) => {
-    if (!step || typeof step !== 'object') return ''
-    const { highlight: _h, say: _s, on: _o, note: _n, ...action } = step as Record<string, unknown>
-    return JSON.stringify(action)
-  }
-  const wanted = bare(shot[i])
-  if (!wanted) return -1
-  if (bare(now[i]) === wanted) return i
-  const matches = now.flatMap((step, j) => (bare(step) === wanted ? [j] : []))
-  return matches.length === 1 ? (matches[0] ?? -1) : -1
-}
-
-function scriptOf(footage: Footage, film: Film): ScriptStep[] {
-  const start = footage.frames[0]?.at ?? 0
-  return footage.film.steps.map((step, i) => {
-    const at = footage.steps?.[i]
-    const highlight = film.steps[sameStep(footage.film.steps, film.steps, i)]?.highlight
-    return {
-      ...words(step),
-      ...(step.say ? { say: step.say } : {}),
-      ...(step.note ? { note: step.note } : {}),
-      ...(at !== undefined ? { at: Math.max(0, at - start) } : {}),
-      ...(highlight ? { highlight } : {}),
-    }
-  })
-}
-
-function words(step: Step): Pick<ScriptStep, 'action' | 'what' | 'text'> {
-  if ('visit' in step) return { action: 'Open', what: step.visit }
-  if ('click' in step) {
-    const how = step.right ? 'Right-click' : step.double ? 'Double-click' : 'Click'
-    const held = step.modifiers?.length ? ` holding ${step.modifiers.join('+')}` : ''
-    return { action: how, what: nameOf(step.click) + held }
-  }
-  if ('fill' in step) return { action: 'Type into', what: nameOf(step.fill), text: step.text }
-  if ('select' in step) return { action: `Choose "${step.option}" in`, what: nameOf(step.select) }
-  if ('type' in step) return { action: 'Type', text: step.type }
-  if ('press' in step) return { action: 'Press', what: step.press }
-  if ('hover' in step) return { action: 'Hover over', what: nameOf(step.hover) }
-  if ('drag' in step)
-    return { action: 'Drag', what: `${nameOf(step.drag)} onto ${nameOf(step.to)}` }
-  if ('scroll' in step) {
-    return {
-      action: `Scroll ${step.scroll}`,
-      ...(step.in ? { what: `in ${nameOf(step.in)}` } : {}),
-    }
-  }
-  if ('upload' in step) return { action: 'Upload', what: basename(step.upload) }
-  if (typeof step.wait === 'number') return { action: 'Wait', what: `${step.wait}s` }
-  return { action: step.wait.gone ? 'Wait for this to go:' : 'Wait for', what: step.wait.text }
-}
-
-function nameOf(target: Target): string {
-  if ('fingerprint' in target) {
-    const { label, text, name, alt } = target.fingerprint
-    const best = [label, text, alt, name].find((value) => value?.trim())
-    if (best) return best.trim().length > 48 ? `${best.trim().slice(0, 46)}…` : best.trim()
-  }
-  if ('role' in target) return target.name || target.role
-  if ('text' in target) return target.text
-  if ('css' in target) {
-    const words = target.css
-      .replace(/^[#.]/, '')
-      .split(/[-_\s.#]+/)
-      .filter((w) => w.length > 3 || /^(add|new|tab|nav|bar|row|box|key|up)$/.test(w))
-    return words.length ? words.join(' ') : target.css
-  }
-  return target.locator
 }
 
 const MEDIA: Record<string, string> = {
@@ -733,7 +595,7 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
 .primary:hover { background: #262626; }
 .primary:disabled { background: var(--muted); color: var(--faint); cursor: default; }
 
-.editor { display: grid; grid-template-rows: 1fr auto auto; min-width: 0; min-height: 0; }
+.editor { display: grid; grid-template-rows: auto 1fr auto auto; min-width: 0; min-height: 0; }
 #viewer { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 20px 24px 12px; }
 #screen { position: relative; flex: none; border-radius: 10px; box-shadow: 0 12px 32px rgb(0 0 0 / .08), 0 2px 6px rgb(0 0 0 / .04); }
 #screen iframe { position: absolute; left: 0; top: 0; width: ${CANVAS.width}px; height: ${CANVAS.height}px; border: 0; transform-origin: 0 0; }
@@ -793,15 +655,13 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
   background: var(--text); color: #fff; font: 500 10px/18px var(--mono); white-space: nowrap; }
 
 aside { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-.video { padding: 16px 20px 4px; display: flex; flex-direction: column; gap: 2px; }
+.video { padding: 12px 24px 0; display: flex; min-width: 0; }
 .video b { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.video span { font: 12px var(--mono); color: var(--faint); }
-.look-source { display: flex; align-items: center; gap: 12px; margin: -18px -20px 18px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--soft); font-size: 12px; color: var(--dim); }
-.look-source span { flex: 1; }
-.look-source button { border: 0; background: none; padding: 0; font-weight: 500; color: var(--text); cursor: pointer; }
-.look-source button:hover { text-decoration: underline; }
-.tabs { display: flex; gap: 18px; padding: 0 20px; border-bottom: 1px solid var(--line); }
-.tabs button { border: 0; background: none; padding: 12px 0 10px; color: var(--dim); font-weight: 500; cursor: pointer; border-bottom: 1.5px solid transparent; margin-bottom: -1px; }
+.tabs { display: flex; gap: 14px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; background: none; padding: 12px 2px 10px; color: var(--dim); font-weight: 500; cursor: pointer; border-bottom: 1.5px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.15s; }
+.panel:not([hidden]) { animation: panel-in 0.24s cubic-bezier(0.2, 0, 0, 1); }
+.panel.leaving { opacity: 0; transform: translateY(-4px); filter: blur(0.5px); transition: opacity 0.09s, transform 0.09s, filter 0.09s; }
+@keyframes panel-in { from { opacity: 0; transform: translateY(8px); filter: blur(0.5px); } }
 .tabs button[aria-selected="true"] { color: var(--text); border-color: var(--text); }
 .panel { flex: 1; overflow-y: auto; padding: 18px 20px 24px; }
 .panel[hidden] { display: none; }
@@ -838,74 +698,53 @@ input[type=text] { width: 100%; height: 36px; padding: 0 11px; border: 1px solid
 input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 0 0 / .05); }
 
 .panel.chat:not([hidden]) { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
-.agent { display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--line); color: var(--dim); font-size: 12px; }
-.agent i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); flex: none; }
-.agent.listening i { background: var(--green); }
-.agent.working i { background: var(--amber); }
-.agent b { color: var(--text); font-weight: 500; }
-#messages { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+.status { flex: none; box-sizing: border-box; display: flex; align-items: center; gap: 8px; height: 32px; padding: 12px 12px 0 20px; overflow: hidden; color: var(--dim); font-size: 12px; transition: opacity 0.25s, height 0.25s 0.25s, padding 0.25s 0.25s; }
+.status.gone { opacity: 0; height: 0; padding-top: 0; }
+.status:not(.gone) + #messages { padding-top: 10px; }
+.status .label { flex: 1; }
+.status .close { border: 0; background: none; padding: 2px 6px; border-radius: 6px; color: var(--faint); font-size: 15px; line-height: 1; cursor: pointer; opacity: 0; transition: opacity 0.15s; }
+.status:hover .close { opacity: 1; }
+.status .close:hover { color: var(--text); background: var(--muted); }
+.status .avatar { width: 14px; height: 14px; border: 0; background: none; }
+.status .avatar:empty { display: none; }
+.status .avatar svg { width: 13px; height: 13px; }
+.status.off .avatar { filter: grayscale(1); opacity: 0.4; }
+.avatar { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex: none; background: var(--bg); border: 1px solid var(--line); transition: filter 0.3s, opacity 0.3s; }
+.avatar svg { width: 14px; height: 14px; fill: var(--text); }
+.avatar.claude svg { fill: #d97757; }
+.msg .avatar { width: 20px; height: 20px; border-radius: 6px; }
+.msg .avatar svg { width: 12px; height: 12px; }
+.msg .avatar.claude { background: #d97757; border-color: transparent; }
+.msg .avatar.claude svg { fill: #fff; }
+.avatar span { font-size: 11px; font-weight: 600; color: var(--text); }
+#messages { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; transition: padding-top 0.25s 0.25s; }
 #messages .empty { color: var(--faint); font-size: 12px; text-align: center; margin: auto 12px; }
 .msg { max-width: 88%; white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg.you { align-self: flex-end; background: var(--muted); padding: 8px 12px; border-radius: 14px 14px 4px 14px; }
-.msg.agent { align-self: flex-start; }
+.msg.agent { align-self: flex-start; display: flex; gap: 10px; max-width: 94%; }
+.msg.agent .body { min-width: 0; padding-top: 1px; }
+.msg.agent .who { font-size: 12px; font-weight: 500; color: var(--dim); margin-bottom: 2px; }
+.msg .dots { display: flex; gap: 4px; padding: 8px 0 4px; }
+.msg .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); animation: typing 1.2s infinite ease-in-out; }
+.msg .dots i:nth-child(2) { animation-delay: 0.15s; }
+.msg .dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing { 0%, 60%, 100% { opacity: 0.25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .panel:not([hidden]) { animation: none; } .panel.leaving { transition: none; } .msg .dots i { animation: none; } .status { transition: none; } .msg .dots i { opacity: 0.6; } }
 .msg .meta { display: flex; gap: 6px; align-items: center; margin-top: 4px; color: var(--faint); font-size: 11px; }
 .msg.you .meta { justify-content: flex-end; }
-.msg .at { border: 0; padding: 1px 6px; border-radius: 6px; background: var(--bg); font: 11px var(--mono); color: var(--dim); cursor: pointer; }
-.msg .at:hover { color: var(--text); }
+.msg .at { border: 0; padding: 0; background: none; font: 11px var(--mono); color: var(--faint); cursor: pointer; }
+.msg .at:hover { color: var(--dim); text-decoration: underline; }
 .composer { margin: 0 12px 12px; border: 1px solid var(--line); border-radius: 14px; padding: 8px; }
 .composer:focus-within { border-color: var(--line-strong); box-shadow: 0 0 0 3px rgb(0 0 0 / .04); }
 .composer textarea { width: 100%; border: 0; outline: none; resize: none; font: inherit; color: var(--text); padding: 4px 6px; min-height: 40px; }
 .composer .row { display: flex; justify-content: space-between; align-items: center; }
 .composer .row small { color: var(--faint); font: 11px var(--mono); padding-left: 6px; }
 .composer .primary { height: 28px; padding: 0 12px; }
-.attached { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; padding: 5px 6px 5px 10px; background: #fef3c7; color: #92400e; border-radius: 8px; font-size: 12px; }
-.attached[hidden] { display: none; }
-.attached span { flex: 1; }
-.msg ul.changes { margin: 6px 0 0; padding-left: 16px; font-size: 12px; color: var(--dim); }
-.x { border: 0; background: none; color: inherit; opacity: .6; cursor: pointer; padding: 0 4px; font-size: 15px; line-height: 1; }
-.x:hover { opacity: 1; }
 
-.panel.script:not([hidden]) { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
-.script-head { display: flex; justify-content: space-between; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--line); color: var(--dim); font-size: 12px; }
-.script-head span:first-child { font-family: var(--mono); }
-.script-head [hidden] { display: none; }
-#steps { flex: 1; overflow-y: auto; padding: 8px 12px 16px; }
-.step .head { width: 100%; display: flex; gap: 10px; align-items: flex-start; text-align: left; border: 0; background: none; padding: 8px; border-radius: 10px; cursor: pointer; }
-.step .head:hover { background: var(--soft); }
-.step.current .head { background: var(--muted); }
-.step .n { flex: none; width: 20px; height: 20px; border-radius: 6px; background: var(--muted); color: var(--dim); font: 500 11px/20px var(--mono); text-align: center; }
-.step.current .n { background: var(--text); color: #fff; }
-.step .line { flex: 1; min-width: 0; color: var(--dim); overflow-wrap: anywhere; }
-.step .line b { color: var(--text); font-weight: 500; }
-.step .line q { color: var(--text); font: 12px var(--mono); }
-.step .at { font: 11px var(--mono); color: var(--faint); padding-top: 2px; }
-.step.deleted .line { text-decoration: line-through; }
-.step .chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px 8px 38px; margin-top: -2px; }
-.chip { font-size: 11px; padding: 1px 7px; border-radius: 6px; background: var(--soft); border: 1px solid var(--line); color: var(--dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip.lit { background: var(--violet-bg); border-color: transparent; color: #4c1d95; }
-.chip.edited { background: #fef3c7; border-color: transparent; color: #92400e; }
-.step .editor { margin: 0 8px 10px 38px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; gap: 14px; }
-.editor .f { display: flex; justify-content: space-between; font-weight: 500; font-size: 12px; margin-bottom: 6px; }
-.editor .f small { color: var(--faint); font-weight: 400; }
-.editor textarea { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; color: var(--text); outline: none; resize: vertical; }
-.editor textarea:focus { border-color: var(--text); }
-.editor .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.editor .row + .row { margin-top: 8px; }
-.editor input[type=color] { width: 30px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; cursor: pointer; }
-.small { height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font-weight: 500; font-size: 12px; cursor: pointer; }
-.small:hover { border-color: var(--line-strong); }
-.small:disabled { color: var(--faint); cursor: default; border-color: var(--line); }
-.small.danger { color: #dc2626; }
-#tray { border-top: 1px solid var(--line); padding: 12px 16px; background: var(--soft); }
-#tray[hidden] { display: none; }
-#tray .top { display: flex; justify-content: space-between; align-items: center; font-weight: 500; }
-#tray .top .primary { height: 30px; }
-#tray ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 132px; overflow-y: auto; }
-#tray li { display: flex; gap: 6px; font-size: 12px; color: var(--dim); align-items: flex-start; }
-#tray li span { flex: 1; }
 </style></head><body>
 
 <section class="editor">
+  <div class="video"><b title="${title}">${title}</b></div>
   <div id="viewer"><div id="screen"></div></div>
   <div class="transport">
     <div class="left">
@@ -923,31 +762,19 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
 </section>
 
 <aside>
-  <div class="video"><b title="${title}">${title}</b><span>${video.id} · take ${take}</span></div>
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected="true" data-tab="chat">Agent</button>
-    <button role="tab" aria-selected="false" data-tab="script">Script</button>
     <button role="tab" aria-selected="false" data-tab="settings">Configuration</button>
   </div>
   <div class="panel chat" id="chat">
-    <div class="agent" id="agent"><i></i><span></span></div>
+    <div class="status gone" id="agent"><span class="avatar"></span><span class="label"></span><button class="close" type="button" aria-label="Dismiss">×</button></div>
     <div id="messages"></div>
     <form class="composer" id="composer">
-      <div class="attached" id="attached" hidden></div>
       <textarea id="draft" rows="2" placeholder="Ask your agent for a change…"></textarea>
       <div class="row"><small id="draft-at"></small><button class="primary" type="submit">Send</button></div>
     </form>
   </div>
-  <div class="panel script" id="script" hidden>
-    <div class="script-head"><span id="script-source"></span><span id="script-hint" hidden>Shoot again to link steps to the video</span></div>
-    <div id="steps"></div>
-    <div id="tray" hidden>
-      <div class="top"><span id="tray-count"></span><button class="primary" id="tray-send">Send to agent</button></div>
-      <ul id="tray-list"></ul>
-    </div>
-  </div>
   <div class="panel" id="settings" hidden>
-    <div class="look-source"><span>Saved with this video</span><button type="button" id="use-default" title="Replace this video's look with your default">Use default</button><button type="button" id="make-default" title="Make this look the default for new videos">Make default</button></div>
     <div class="field">
       <div class="label">Backdrop</div>
       <button class="picker" id="backdrop-picker" aria-expanded="false">
@@ -963,7 +790,7 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
     <div class="field">
       <label for="fill">Window size <small id="fill-value"></small></label>
       <input id="fill" type="range" min="0.5" max="1" step="0.01">
-      <div class="range-ends"><span>Smaller</span><span>Fills the video</span></div>
+      <div class="range-ends"><span>Smaller</span><span>Larger</span></div>
     </div>
     <div class="field">
       <div class="label">Cursor <small id="cursor-name" style="font-family: inherit"></small></div>
@@ -1155,7 +982,6 @@ const show = () => {
   $('time').innerHTML = clock(t) + ' <span>/ ' + clock(length) + '</span>';
   $('playhead-time').textContent = clock(t);
   $('draft-at').textContent = 'At ' + clock(t);
-  if (typeof showCurrent === 'function') showCurrent();
   const icon = playing ? ICON_PAUSE : ICON_PLAY;
   // The icon is only swapped when it changes: swapped between press and release, the click is lost.
   if ($('play').dataset.icon !== String(playing)) { $('play').dataset.icon = String(playing); $('play').innerHTML = icon; }
@@ -1308,7 +1134,7 @@ const flatTile = make($('backdrops'), 'colour', (l) => { l.className = 'colour';
 const flatPicker = flatTile.querySelector('input');
 flatPicker.oninput = () => change({ backdrop: flatPicker.value });
 for (const name of ['none', 'browser']) {
-  make($('display'), name, (b) => { b.textContent = name === 'none' ? 'None' : 'Browser window'; b.onclick = () => change({ display: name }); });
+  make($('display'), name, (b) => { b.textContent = name === 'none' ? 'None' : 'Browser'; b.onclick = () => change({ display: name }); });
 }
 for (const [name, fill] of Object.entries(CURSORS)) {
   make($('cursor'), name, (b) => { b.style.background = fill; b.onclick = () => change({ cursor: { style: name } }); });
@@ -1336,34 +1162,69 @@ const labelInput = $('label');
 labelInput.oninput = () => change({ cursor: { label: labelInput.value } });
 for (const tab of document.querySelectorAll('[role=tab]')) {
   tab.onclick = () => {
+    if (tab.getAttribute('aria-selected') === 'true') return;
     for (const other of document.querySelectorAll('[role=tab]')) other.setAttribute('aria-selected', String(other === tab));
-    for (const name of ['settings', 'chat', 'script']) $(name).hidden = tab.dataset.tab !== name;
+    const from = document.querySelector('.panel:not([hidden])');
+    const swap = () => {
+      from?.classList.remove('leaving');
+      for (const name of ['settings', 'chat']) $(name).hidden = tab.dataset.tab !== name;
+    };
+    if (!from || matchMedia('(prefers-reduced-motion: reduce)').matches) return swap();
+    from.classList.add('leaving');
+    setTimeout(swap, 90);
   };
 }
 const openTab = () => document.querySelector('[role=tab][aria-selected=true]').dataset.tab;
 
-let chat = [], agent = null;
+let chat = [], agent = null, lastAgent = '', wasConnected = false, fading;
+$('agent').querySelector('.close').onclick = () => { clearTimeout(fading); $('agent').classList.add('gone'); };
 const esc = (text) => text.replace(/[&<>"]/g, (c) => '&#' + c.charCodeAt(0) + ';');
+const ICONS = { claude: "m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z", openai: "M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z" };
+const avatar = (el, name) => {
+  const brand = /claude/i.test(name) ? 'claude' : /codex|gpt|openai/i.test(name) ? 'openai' : '';
+  el.className = 'avatar' + (brand ? ' ' + brand : '');
+  el.innerHTML = brand ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + ICONS[brand] + '"/></svg>'
+    : '<span>' + esc((name || 'A').trim().charAt(0).toUpperCase()) + '</span>';
+  return el;
+};
 const showAgent = () => {
-  const who = agent && esc([agent.session, agent.agent].filter(Boolean).join(' · '));
-  $('agent').className = 'agent' + (agent ? (agent.listening ? ' listening' : ' working') : '');
-  $('agent').querySelector('span').innerHTML = !agent ? 'No agent connected. Ask yours to open the studio.'
-    : agent.listening ? 'Connected to <b>' + (who || 'your agent') + '</b>'
-    : '<b>' + (who || 'Your agent') + '</b> is working on it…';
+  if (agent?.agent) lastAgent = agent.agent;
+  const status = $('agent');
+  if (agent?.agent || lastAgent) avatar(status.querySelector('.avatar'), agent?.agent || lastAgent);
+  status.title = agent ? [agent.agent || 'Your agent', agent.session].filter(Boolean).join(' · ') : '';
+  if (!agent) {
+    clearTimeout(fading);
+    status.className = 'status off';
+    status.querySelector('.label').textContent = 'Not connected. Ask your agent to open the studio.';
+  } else if (status.classList.contains('off') || !wasConnected) {
+    status.className = 'status';
+    status.querySelector('.label').textContent = 'Connected';
+    clearTimeout(fading);
+    fading = setTimeout(() => status.classList.add('gone'), 5000);
+  }
+  wasConnected = Boolean(agent);
+};
+const agentRow = (name) => {
+  const el = document.createElement('div');
+  el.className = 'msg agent';
+  el.appendChild(avatar(document.createElement('div'), name));
+  const body = document.createElement('div');
+  body.className = 'body';
+  const who = document.createElement('div');
+  who.className = 'who';
+  who.textContent = name || 'Your agent';
+  body.appendChild(who);
+  el.appendChild(body);
+  return [el, body];
 };
 const showChat = () => {
   const list = $('messages');
   list.innerHTML = chat.length ? '' : '<div class="empty">Messages go to your agent, with the moment in the take you were at.</div>';
   for (const m of chat) {
-    const el = document.createElement('div');
-    el.className = 'msg ' + m.from;
-    el.textContent = m.text;
-    if (m.changes) {
-      const ul = document.createElement('ul');
-      ul.className = 'changes';
-      for (const c of m.changes) { const li = document.createElement('li'); li.textContent = c; ul.appendChild(li); }
-      el.appendChild(ul);
-    }
+    const [el, body] = m.from === 'agent' ? agentRow(m.by || agent?.agent || lastAgent) : [document.createElement('div')];
+    const box = body || el;
+    if (!body) el.className = 'msg you';
+    box.append(m.text);
     const meta = document.createElement('div');
     meta.className = 'meta';
     if (typeof m.at === 'number') {
@@ -1373,230 +1234,35 @@ const showChat = () => {
       at.onclick = () => { t = Math.min(length, m.at); seek(); };
       meta.appendChild(at);
     }
-    if (m.from === 'you' && !m.read) meta.append(m.delivered ? 'With the agent' : 'Not read yet');
-    if (meta.childNodes.length) el.appendChild(meta);
+    if (m.from === 'you' && !m.read && !m.delivered) meta.append('Not read yet');
+    if (meta.childNodes.length) box.appendChild(meta);
     list.appendChild(el);
+  }
+  if (agent && !agent.listening && chat.some((m) => m.from === 'you' && !m.read)) {
+    const [typing, body] = agentRow(agent.agent || lastAgent);
+    typing.title = 'Working on it';
+    body.insertAdjacentHTML('beforeend', '<div class="dots"><i></i><i></i><i></i></div>');
+    list.appendChild(typing);
   }
   list.scrollTop = list.scrollHeight;
 };
 $('composer').onsubmit = async (e) => {
   e.preventDefault();
   const text = $('draft').value.trim();
-  if (!text && !attached.length) return;
-  const changes = attached;
+  if (!text) return;
   $('draft').value = '';
   keep(':draft', '');
-  const res = await fetch('/studio/chat', { method: 'POST', body: JSON.stringify({ text, at: t, changes }) });
-  if (!res.ok) return;
-  for (const [key, c] of Object.entries(pending)) if (changes.includes(c.label)) delete pending[key];
-  attached = [];
-  keep(':pending', pending);
-  keep(':attached', attached);
-  showAttached();
-  showScript();
+  await fetch('/studio/chat', { method: 'POST', body: JSON.stringify({ text, at: t }) });
 };
 $('draft').onkeydown = (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('composer').requestSubmit(); }
 };
 const TAKE = ${JSON.stringify(take)};
-let script = { steps: [] }, expanded = -1, current = -1;
 const kept = (key, fallback) => { try { return JSON.parse(sessionStorage.getItem(TAKE + key)) ?? fallback; } catch { return fallback; } };
 const keep = (key, value) => { try { sessionStorage.setItem(TAKE + key, JSON.stringify(value)); } catch {} };
-let pending = kept(':pending', {});
-let attached = kept(':attached', []);
-const sentence = (s) => s.action + (s.what ? ' ' + s.what : '') + (s.text !== undefined ? ' "' + s.text + '"' : '');
-const about = (i) => 'step ' + (i + 1) + ' (' + sentence(script.steps[i]) + ')';
-const LABELS = {
-  text: (i, v) => 'Type "' + v + '" in ' + about(i),
-  say: (i, v) => v ? 'Make the voiceover of ' + about(i) + ' "' + v + '"' : 'Remove the voiceover from ' + about(i),
-  delete: (i) => 'Delete ' + about(i),
-  move: (i, v) => 'Move ' + about(i) + (v < 0 ? ' up ' : ' down ') + Math.abs(v) + (Math.abs(v) === 1 ? ' place' : ' places'),
-  highlight: (i, v) => (v === 'add' ? 'Add a highlight to ' : 'Remove the highlight from ') + about(i),
-};
-const propose = (i, kind, value) => {
-  const key = i + ':' + kind;
-  if (value === undefined) delete pending[key];
-  else pending[key] = { step: i, kind, value, label: LABELS[kind](i, value) };
-  keep(':pending', pending);
-  showScript();
-};
-const node = (tag, className, text) => {
-  const el = document.createElement(tag);
-  if (className) el.className = className;
-  if (text !== undefined) el.textContent = text;
-  return el;
-};
-const button = (text, onclick, className = 'small') => { const b = node('button', className, text); b.type = 'button'; b.onclick = onclick; return b; };
-const setHighlight = async (i, change) => {
-  const res = await fetch('/studio/highlight', { method: 'POST', body: JSON.stringify({ step: i, ...change }) });
-  if (!res.ok) {
-    $('script-hint').textContent = await res.text();
-    $('script-hint').hidden = false;
-    return;
-  }
-  script.steps[i].highlight = await res.json();
-  showScript();
-  $('tracks').innerHTML = $('ruler').innerHTML = '';
-  lanes.length = 0;
-  data = undefined;
-  load();
-};
-const editor = (i, s) => {
-  const box = node('div', 'editor');
-  const field = (name, value, placeholder, commit) => {
-    const wrap = node('div');
-    const label = node('div', 'f', name);
-    label.appendChild(node('small', '', 'Needs a reshoot'));
-    const input = node('textarea');
-    input.rows = 2;
-    input.value = value;
-    input.placeholder = placeholder;
-    input.onchange = () => commit(input.value.trim());
-    wrap.append(label, input);
-    box.appendChild(wrap);
-  };
-  if (s.text !== undefined) field('Typed text', pending[i + ':text']?.value ?? s.text, '', (v) => propose(i, 'text', v === s.text || !v ? undefined : v));
-  field('Voiceover', pending[i + ':say']?.value ?? s.say ?? '', 'No voiceover on this step', (v) => propose(i, 'say', v === (s.say ?? '') ? undefined : v));
-  const lit = node('div');
-  const head = node('div', 'f', 'Highlight');
-  lit.appendChild(head);
-  const change = pending[i + ':highlight'];
-  if (change) {
-    lit.appendChild(node('div', 'row')).append(node('span', 'chip edited', change.value === 'add' ? 'Added, needs a reshoot' : 'Removed, needs a reshoot'), button('Undo', () => propose(i, 'highlight')));
-  } else if (s.highlight) {
-    head.appendChild(node('small', '', 'Shows now'));
-    const style = s.highlight.style || 'box';
-    const seg = node('div', 'segmented');
-    for (const name of ['box', 'magnify', 'cursor']) {
-      const b = button(pretty(name), () => setHighlight(i, { style: name }), '');
-      pressed(b, name === style);
-      seg.appendChild(b);
-    }
-    lit.appendChild(seg);
-    const row = lit.appendChild(node('div', 'row'));
-    if (style === 'box') {
-      const colour = node('input');
-      colour.type = 'color';
-      colour.value = s.highlight.colour || '#ff3b30';
-      colour.onchange = () => setHighlight(i, { colour: colour.value });
-      row.appendChild(colour);
-    }
-    if (style !== 'cursor') {
-      const zoom = node('input');
-      zoom.type = 'range'; zoom.min = 0; zoom.max = 1; zoom.step = 0.05;
-      zoom.value = s.highlight.zoom ?? 0;
-      zoom.title = 'Zoom';
-      zoom.style.flex = '1';
-      const fill = () => zoom.style.setProperty('--fill', zoom.value * 100 + '%');
-      fill();
-      zoom.oninput = fill;
-      zoom.onchange = () => setHighlight(i, { zoom: Number(zoom.value) });
-      row.append(node('span', 'chip', 'Zoom'), zoom);
-    }
-    lit.appendChild(node('div', 'row')).appendChild(button('Remove highlight', () => propose(i, 'highlight', 'remove')));
-  } else {
-    lit.appendChild(node('div', 'row')).appendChild(button('Add highlight', () => propose(i, 'highlight', 'add')));
-  }
-  box.appendChild(lit);
-  const moved = pending[i + ':move']?.value || 0;
-  const move = (d) => propose(i, 'move', moved + d || undefined);
-  const actions = node('div', 'row');
-  const up = button('Move up', () => move(-1)), down = button('Move down', () => move(1));
-  up.disabled = i + moved <= 0;
-  down.disabled = i + moved >= script.steps.length - 1;
-  const gone = pending[i + ':delete'];
-  actions.append(up, down, gone ? button('Keep step', () => propose(i, 'delete')) : button('Delete step', () => propose(i, 'delete', true), 'small danger'));
-  box.appendChild(actions);
-  return box;
-};
-const showScript = () => {
-  const list = $('steps');
-  list.innerHTML = '';
-  $('script-source').textContent = script.source || '';
-  $('script-hint').hidden = !script.steps.length || script.steps.some((s) => s.at !== undefined);
-  script.steps.forEach((s, i) => {
-    const row = node('div', 'step' + (i === current ? ' current' : '') + (pending[i + ':delete'] ? ' deleted' : ''));
-    const head = button('', () => {
-      expanded = expanded === i ? -1 : i;
-      if (s.at !== undefined) { t = Math.min(length, s.at); seek(); }
-      showScript();
-    }, 'head');
-    head.appendChild(node('span', 'n', String(i + 1)));
-    const line = head.appendChild(node('span', 'line', s.action + ' '));
-    if (s.what) line.appendChild(node('b', '', s.what));
-    const typed = pending[i + ':text']?.value ?? s.text;
-    if (typed !== undefined) line.append(' ', node('q', '', typed));
-    if (s.at !== undefined) head.appendChild(node('span', 'at', clock(s.at)));
-    row.appendChild(head);
-    const chips = node('div', 'chips');
-    const say = pending[i + ':say'] ? pending[i + ':say'].value : s.say;
-    if (say) chips.appendChild(node('span', 'chip', '“' + say + '”')).title = say;
-    if (s.highlight && !pending[i + ':highlight']) chips.appendChild(node('span', 'chip lit', pretty(s.highlight.style || 'box')));
-    if (Object.values(pending).some((c) => c.step === i)) chips.appendChild(node('span', 'chip edited', 'Needs a reshoot'));
-    if (chips.childNodes.length) row.appendChild(chips);
-    if (expanded === i) row.appendChild(editor(i, s));
-    list.appendChild(row);
-  });
-  const changes = Object.entries(pending);
-  $('tray').hidden = !changes.length;
-  $('tray-count').textContent = changes.length + (changes.length === 1 ? ' change needs' : ' changes need') + ' a reshoot';
-  $('tray-list').innerHTML = '';
-  for (const [key, c] of changes) {
-    const li = node('li');
-    li.append(node('span', '', c.label), button('×', () => { delete pending[key]; keep(':pending', pending); showScript(); }, 'x'));
-    $('tray-list').appendChild(li);
-  }
-};
-const showCurrent = () => {
-  let now = -1;
-  script.steps.forEach((s, i) => { if (s.at !== undefined && s.at <= t + 0.01) now = i; });
-  if (now === current) return;
-  current = now;
-  $('steps').querySelectorAll('.step').forEach((row, i) => row.classList.toggle('current', i === current));
-  if (playing && !$('script').hidden) $('steps').children[current]?.scrollIntoView({ block: 'nearest' });
-};
-const showAttached = () => {
-  const el = $('attached');
-  el.hidden = !attached.length;
-  el.innerHTML = '';
-  if (!attached.length) return;
-  const label = node('span', '', attached.length + (attached.length === 1 ? ' script change' : ' script changes') + ' attached');
-  label.title = attached.join('\\n');
-  el.append(label, button('×', () => { attached = []; keep(':attached', attached); showAttached(); }, 'x'));
-};
-$('tray-send').onclick = () => {
-  attached = Object.values(pending).map((c) => c.label);
-  keep(':attached', attached);
-  document.querySelector('[role=tab][data-tab=chat]').click();
-  showAttached();
-  $('draft').focus();
-};
-fetch('/studio/script').then((r) => r.json()).then((x) => { script = x; showScript(); showCurrent(); });
-showAttached();
 
 $('draft').value = kept(':draft', '');
 $('draft').oninput = () => keep(':draft', $('draft').value);
-
-const askFirst = (button, question, act) => {
-  const label = button.textContent;
-  let asking;
-  button.onclick = async () => {
-    if (!asking) {
-      button.textContent = question;
-      asking = setTimeout(() => { button.textContent = label; asking = undefined; }, 3000);
-      return;
-    }
-    clearTimeout(asking);
-    asking = undefined;
-    button.textContent = label;
-    await act();
-  };
-};
-askFirst($('use-default'), "Replace this video's look?", () => fetch('/studio/look/use-default', { method: 'POST' }));
-askFirst($('make-default'), 'Use it for new videos?', async () => {
-  const res = await fetch('/studio/look/make-default', { method: 'POST' });
-  if (res.ok) { $('make-default').textContent = 'Saved as default'; setTimeout(() => ($('make-default').textContent = 'Make default'), 1600); }
-});
 
 const events = new EventSource('/studio/events');
 events.onmessage = (e) => {
@@ -1605,7 +1271,7 @@ events.onmessage = (e) => {
     return location.replace('/studio?t=' + t.toFixed(2) + '&tab=' + openTab());
   }
   if ('chat' in event) { chat = event.chat; showChat(); }
-  if ('agent' in event) { agent = event.agent; showAgent(); }
+  if ('agent' in event) { agent = event.agent; showAgent(); showChat(); }
 };
 const query = new URLSearchParams(location.search);
 t = Math.max(0, Number(query.get('t')) || 0);

@@ -87,10 +87,16 @@ Paths in a look are relative to the file they're in.
 
 ## Studio
 
-`product-demo-agent-toolkit studio <video>` opens a video in a local page: play it, change its
-look and see it at once, edit its script, and chat with the agent working on it. Your agent
-opens it for you. Each video has its own studio and chat, so two sessions on two videos each
-have their own, and any session can pick up a video later: the chat so far comes with it.
+![The studio open in a browser: the video with its timeline of pages, clicks, music and highlights, and a chat where Claude Code changed the cursor to purple without a reshoot](docs/studio.webp)
+
+Ask your agent to open the studio, and it gives you a local page for the video it's making.
+Watch it, change its look and see it straight away, and tell your agent what to change: your
+message reaches it in your terminal, and its reply comes back to the page. A change to the look
+is a recut in seconds; a change to what the video does is a reshoot, and your agent says so.
+
+Each video has its own studio and chat, so two sessions on two videos each have their own, and
+any session can pick a video up later with the chat so far. To open one yourself, run
+`product-demo-agent-toolkit studio <video>`.
 
 ## Features
 

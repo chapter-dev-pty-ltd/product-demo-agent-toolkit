@@ -280,13 +280,7 @@ try {
       if (!messages.length) console.log('The studio closed.')
       for (const m of messages) {
         const at = m.at === undefined ? '' : ` (at ${m.at.toFixed(1)}s in the take)`
-        console.log(`The user says${at}: ${m.text || '(no words, only changes)'}`)
-        if (m.changes) {
-          console.log(
-            `With changes to its film (${filesOf(video).film}), which need a rehearsal and a reshoot:`,
-          )
-          for (const change of m.changes) console.log(`- ${change}`)
-        }
+        console.log(`The user says${at}: ${m.text}`)
       }
       if (messages.length)
         console.log(
