@@ -2,24 +2,17 @@ import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import type { Fingerprint } from './similo.ts'
 
-/**
- * An element. Written by hand: its accessible role and name, its visible text, or a CSS
- * selector. Pinned by `explore`: the locator Playwright's codegen would write for it, and
- * its Similo fingerprint for when that locator finds nothing or more than one.
- */
 export type Target =
   | { role: string; name: string }
   | { text: string }
   | { css: string }
   | { locator: string; selector: string; fingerprint: Fingerprint }
 
-/** Where on an element, as fractions of its box: 0,0 is its top left, 1,1 its bottom right. */
 export interface Point {
   x: number
   y: number
 }
 
-/** Keys held through a click. */
 export type Key = 'Shift' | 'Control' | 'Alt' | 'Meta' | 'ControlOrMeta'
 export const KEYS: readonly Key[] = ['Shift', 'Control', 'Alt', 'Meta', 'ControlOrMeta']
 
@@ -42,34 +35,20 @@ export type Step = (
   | { upload: string; into?: Target | undefined }
   | { wait: { text: string; gone?: boolean | undefined } | number }
 ) & {
-  /** Why the step is there, or anything odd about it. Read by people and agents, never run. */
   note?: string | undefined
-  /** Points at something once the step is done: a red box, with the camera zoomed toward it. */
   highlight?: Highlight | undefined
-  /** A line of voiceover, spoken from the start of this step. */
   say?: string | undefined
-  /** The word or phrase, in this step's line or one still being spoken, that the action lands on. */
   on?: string | undefined
 }
 
-/**
- * What a step highlights: its own element, or `box` (x, y, width, height in the screen's
- * pixels). `zoom` runs from 0, none, to 1, the box filling the view. It holds for `seconds`.
- */
 export interface Highlight {
-  /**
-   * `box` outlines it in `colour`; `magnify` lifts it out of the screen, bigger; `cursor`
-   * circles it once with the cursor and leaves the screen as it is.
-   */
   style?: 'box' | 'magnify' | 'cursor' | undefined
-  /** The outline's colour, as hex. Red if left out. */
   colour?: string | undefined
   box?: number[] | undefined
   zoom?: number | undefined
   seconds?: number | undefined
 }
 
-/** The element a step acts on, if it has one: what a highlight points at by default. */
 export function stepTarget(step: Step): Target | undefined {
   if ('click' in step) return step.click
   if ('fill' in step) return step.fill
@@ -81,10 +60,8 @@ export function stepTarget(step: Step): Target | undefined {
   return undefined
 }
 
-/** A demo to perform: the app to open, the steps to take on it, and how long to hold the ending. */
 export interface Film {
   app: string
-  /** What the film is for and what it has to show. Read by people and agents, never run. */
   notes?: string | undefined
   steps: Step[]
   ending?: { hold: number } | undefined
@@ -209,7 +186,6 @@ const film: z.ZodType<Film> = z.strictObject({
   ending: z.strictObject({ hold: z.number().nonnegative() }).optional(),
 })
 
-/** Reads a JSON file, saying plainly when it doesn't parse. */
 export async function readJson(path: string): Promise<unknown> {
   try {
     return JSON.parse(await readFile(path, 'utf8'))
@@ -221,7 +197,6 @@ export async function readJson(path: string): Promise<unknown> {
   }
 }
 
-/** How the video looks and sounds: the project's choice, in its config, never a film's. */
 const LOOK = ['backdrop', 'display', 'window', 'cursor', 'sound', 'music', 'voice']
 
 export async function readFilm(path: string): Promise<Film> {
@@ -241,7 +216,6 @@ export async function readFilm(path: string): Promise<Film> {
   return parsed.data
 }
 
-/** A step in a sentence, for messages: `click link "COBOL"`, with its note if it has one. */
 export function describeStep(step: Step): string {
   const said = say(step)
   return step.note ? `${said}, noted: "${step.note}"` : said

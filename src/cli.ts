@@ -74,7 +74,6 @@ cursor (black | pink | lime | macos | a hex | a path to your own .svg, or { styl
 music (false | lofi | a path to an audio file, or { track, volume }, default false),
 keep (rehearsals and shoots kept per film, default 10), review (cut also makes the review image, default false).`
 
-// Keys, such as ELEVENLABS_API_KEY: the environment, then the project's .env, then ~/.product-demo/.env.
 loadKeys()
 
 const EXPLORE = new Set([
@@ -95,7 +94,6 @@ const EXPLORE = new Set([
   'end',
 ])
 
-// Explore commands take their own options, read by the browser process.
 const raw = process.argv.slice(2)
 const exploring = EXPLORE.has(raw[0] ?? '')
 const parsed = (() => {
@@ -153,8 +151,6 @@ try {
       try {
         footage = await shoot(film, resolve(input), dir, config)
       } catch (error) {
-        // A rehearsed film that fails on camera usually flaked (a slow request): one more
-        // try. A decision someone has to make won't change on a second try.
         if (attempt > 1 || error instanceof NeedsDecision) throw error
         const why = error instanceof Error ? error.message : String(error)
         console.log(`The shoot failed, trying once more. ${why}`)
@@ -178,7 +174,6 @@ try {
       film.steps.flatMap((s) => (s.say ? [s.say] : [])),
       config.voice,
     )
-    // Each line, how long it runs, and when each step's word lands in it.
     let current: Spoken | undefined
     for (const [i, step] of film.steps.entries()) {
       if (step.say) {

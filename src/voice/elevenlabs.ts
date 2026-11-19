@@ -1,10 +1,6 @@
 import type { VoiceProvider, Word } from '../voice.ts'
 
-// ElevenLabs, through its text-to-speech with-timestamps endpoint: the audio, and when each
-// character is spoken, from which the words are put together. Its key is ELEVENLABS_API_KEY.
-
 const BASE = process.env.ELEVENLABS_BASE_URL ?? 'https://api.elevenlabs.io'
-/** Steady delivery: Chapter found lower stability over-acted. */
 const SETTINGS = { stability: 0.85, similarity_boost: 0.8, style: 0 }
 
 export const elevenlabs: VoiceProvider = {
@@ -14,7 +10,6 @@ export const elevenlabs: VoiceProvider = {
     const response = await fetch(`${BASE}/v1/user`, { headers: { 'xi-api-key': key } })
     if (response.ok) return undefined
     const why = await response.text()
-    // A key limited to some things is still a key: this only asks who it belongs to.
     if (why.includes('missing_permissions')) return undefined
     return refusal(response.status, why)
   },
@@ -28,7 +23,6 @@ export const elevenlabs: VoiceProvider = {
       model_id: choice.model ?? 'eleven_v4',
       voice_settings: SETTINGS,
     })
-    // Busy or rate-limited: wait and try again, a little longer each time.
     for (const wait of [2000, 6000, 15000, 0]) {
       const response = await fetch(url, {
         method: 'POST',
@@ -53,19 +47,13 @@ export const elevenlabs: VoiceProvider = {
   },
 }
 
-/**
- * What ElevenLabs said was wrong, in a line: its own message when it sends one
- * ({"detail":{"message":"Invalid API key",…}}), not the JSON around it.
- */
 export function refusal(status: number, body: string): string {
   let message: unknown
   try {
     const { detail }: { detail?: unknown } = JSON.parse(body)
     message =
       typeof detail === 'object' && detail !== null && 'message' in detail ? detail.message : detail
-  } catch {
-    // Not JSON, so it's said as it came.
-  }
+  } catch {}
   const said = typeof message === 'string' && message ? message : body.slice(0, 300)
   return `ElevenLabs said ${status}: ${said.trim().replace(/\.$/, '')}`
 }

@@ -1,24 +1,14 @@
 import type { Page } from 'playwright-core'
 
-// A canvas-like surface (a drawing board, a slide editor, a map) draws the things on it as
-// pixels, or as elements with no role, often under a see-through layer that takes the
-// pointer. The accessibility tree lists none of them, so they're read from the screen: on
-// every large area the app handles the pointer on itself, the patches that differ from its
-// background.
-
-/** A thing drawn on a canvas-like surface, in page pixels. */
 export interface Drawn {
   x: number
   y: number
   width: number
   height: number
-  /** Its main colour, as hex. */
   colour: string
-  /** A point on the drawing itself, nearest its middle: an outline's middle is empty. */
   grip: { x: number; y: number }
 }
 
-/** The things drawn on the screen's canvas-like surfaces; none when it has none. */
 export async function findDrawn(page: Page): Promise<Drawn[]> {
   const surfaces = await page.evaluate(scan, null).catch(() => [])
   if (!surfaces.length) return []
@@ -26,14 +16,10 @@ export async function findDrawn(page: Page): Promise<Drawn[]> {
   return page.evaluate(scan, png).catch(() => [])
 }
 
-/** Runs in the page. Without a screenshot, says only whether there are surfaces (one empty entry each). */
 async function scan(png: string | null): Promise<Drawn[]> {
   const W = innerWidth
   const H = innerHeight
-  // Ink is read in 4px cells, so things a few pixels apart stay apart; what's under the
-  // pointer is asked once per 8px.
   const CELL = 4
-  // A surface: a large canvas, or a large element that takes touch gestures for itself.
   const large = (el: Element) => {
     const r = el.getBoundingClientRect()
     const w = Math.min(r.right, W) - Math.max(r.left, 0)
@@ -50,8 +36,6 @@ async function scan(png: string | null): Promise<Drawn[]> {
   const none = { x: 0, y: 0, width: 0, height: 0, colour: '', grip: { x: 0, y: 0 } }
   if (!png) return surfaces.map(() => none)
 
-  // What's under each cell: the surface's own drawing, or the app's interface over it (a
-  // toolbar, a panel), which holds controls.
   const CONTROLS =
     'button,a[href],input,select,textarea,[role=button],[role=toolbar],[role=menu],[role=dialog],[role=tablist],[role=listbox],[role=radiogroup],[role=slider]'
   const hits = new Map<number, Element | null>()
@@ -99,9 +83,6 @@ async function scan(png: string | null): Promise<Drawn[]> {
   const cols = Math.ceil(W / CELL)
   const rows = Math.ceil(H / CELL)
   const on = new Uint8Array(cols * rows)
-  // Interface drawn over a surface without taking the pointer (a hint, a button's shadow)
-  // isn't found by hit-testing: any control, picture or text outside the surfaces, and a
-  // little around it, is ruled out.
   const blocked = new Uint8Array(cols * rows)
   for (const el of document.querySelectorAll('body *')) {
     if (el.closest('[data-product-demo]') || surfaces.some((s) => s.contains(el) || el.contains(s)))
@@ -112,7 +93,6 @@ async function scan(png: string | null): Promise<Drawn[]> {
       el.tagName.toLowerCase() === 'svg' ||
       [...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim())
     const r = el.getBoundingClientRect()
-    // Interface is small; a layer as big as the screen is part of the drawing's stack.
     if (!own || r.width * r.height > W * H * 0.25 || !el.checkVisibility()) continue
     for (
       let row = Math.max(0, Math.floor((r.top - 6) / CELL));
@@ -146,8 +126,6 @@ async function scan(png: string | null): Promise<Drawn[]> {
     Math.abs((c[1] ?? 0) - (background[1] ?? 0)) +
     Math.abs((c[2] ?? 0) - (background[2] ?? 0))
 
-  // Ink: a cell any pixel of which is clearly not the background. Its colour, and where it
-  // is, are its most different pixel's.
   const ink = new Map<number, { colour: readonly number[]; x: number; y: number }>()
   for (let i = 0; i < on.length; i++) {
     if (!on[i]) continue
@@ -167,7 +145,6 @@ async function scan(png: string | null): Promise<Drawn[]> {
     if (most) ink.set(i, most)
   }
 
-  // Touching ink cells are one thing.
   const found: Drawn[] = []
   const done = new Set<number>()
   for (const start of ink.keys()) {

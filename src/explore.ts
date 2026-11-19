@@ -15,11 +15,6 @@ import { watch } from './settle.ts'
 import { fingerprint } from './similo.ts'
 import { launchBrowser } from './tools.ts'
 
-// Exploring: the agent drives a browser one command at a time, off camera, to learn the
-// app and find the path. A small process of ours holds the browser between commands, and
-// every action the agent takes is logged and pinned, for it to write
-// the film from afterwards (log.ts).
-
 const DIR = join('.product-demo', 'explore')
 const SESSION = join(DIR, 'session.json')
 const IDLE_MS = 30 * 60_000
@@ -29,7 +24,6 @@ interface Session {
   token: string
 }
 
-/** Starts a browser on `url` in the background and returns what's on screen. */
 export async function explore(url: string): Promise<string> {
   if (existsSync(SESSION)) {
     throw new Error(
@@ -55,7 +49,6 @@ export async function explore(url: string): Promise<string> {
   return send('look', [])
 }
 
-/** Runs one explore command in the background browser and returns its answer. */
 export async function send(command: string, args: string[]): Promise<string> {
   let session: Session
   try {
@@ -78,7 +71,6 @@ export async function send(command: string, args: string[]): Promise<string> {
   return text
 }
 
-/** The background process: holds the browser and answers commands until `end`. */
 export async function serve(url: string): Promise<void> {
   const config = await readConfig()
   const browser = await launchBrowser()
@@ -89,8 +81,6 @@ export async function serve(url: string): Promise<void> {
   await page.goto(url)
   await settler.settled()
   let looks = 0
-  // What the last look found drawn on canvas-like surfaces, named d1, d2…; stale once an
-  // action has run, since it may have changed the drawing.
   let drawn: Drawn[] = []
   let drawnChanged = false
   const target = async (name: string | undefined, at?: string) => {
@@ -113,19 +103,12 @@ export async function serve(url: string): Promise<void> {
     process.exit(0)
   }
 
-  // The log lives in the file, not here: the agent may add notes to it between commands, so
-  // it is read back before every change and never overwritten from memory. A log that
-  // doesn't parse stops the action before it happens.
   await startLog(url)
   const address = () => {
     const now = new URL(page.url())
     return `${now.pathname}${now.search}${now.hash}`
   }
 
-  /**
-   * Performs a step the way a shoot will, at once, then logs it. The
-   * elements it names were just pinned, so they're used as they are, not found again.
-   */
   const logged = async (step: Step, said: string, aimed: Aimed[] = []) => {
     const log = await readLog()
     const finder: Finder = async (target) => {
@@ -308,8 +291,6 @@ export async function serve(url: string): Promise<void> {
       return logged(step, values.gone ? `"${what}" has gone.` : `"${what}" is on screen.`)
     },
     back: async () => {
-      // A browser can't undo a click, so going back marks the last step undone and replays
-      // the rest in a fresh browser, quickly and off camera. The log keeps every step.
       const log = await readLog()
       const last = log.entries.filter((e) => !e.undone).at(-1)
       if (!last) throw new Error('There are no steps to go back from.')
@@ -356,7 +337,6 @@ export async function serve(url: string): Promise<void> {
       const { command, args }: { command: string; args: string[] } = JSON.parse(body)
       const run = commands[command]
       if (!run) throw new Error(`No explore command named ${command}.`)
-      // Run first: a header sent before the command fails can't be taken back.
       const answer = await run(args)
       response.writeHead(200).end(answer)
     } catch (error) {
@@ -370,13 +350,10 @@ export async function serve(url: string): Promise<void> {
   })
 }
 
-/** An element named by a ref from `look` or by a point on the screen, pinned. */
 interface Aimed {
   element: Locator
   target: Target & { locator: string }
-  /** Where on it, for a point or `--at`. */
   at?: Point
-  /** Takes off the mark a point leaves on its element while the step uses it. */
   release: () => Promise<void>
 }
 
@@ -396,8 +373,6 @@ async function aim(page: Page, name: string | undefined, at?: string): Promise<A
       release: async () => {},
     }
   }
-  // A point: the element drawn there (inside open shadow roots too), pinned like any other,
-  // and where on it the point falls, so a layout that shifts doesn't move the step.
   const x = Number(xy[1])
   const y = Number(xy[2])
   const mark = randomBytes(4).toString('hex')
@@ -419,7 +394,6 @@ async function aim(page: Page, name: string | undefined, at?: string): Promise<A
   )
   if (!box || !box.width || !box.height) throw new Error(`Nothing is drawn at ${x},${y}.`)
   const element = page.locator(`[data-product-demo-at~="${mark}"]`)
-  // Takes off only this mark, at once: both ends of a drag can be on one canvas.
   const release = () =>
     page
       .evaluate((mark) => {
@@ -444,7 +418,6 @@ async function aim(page: Page, name: string | undefined, at?: string): Promise<A
   }
 }
 
-/** `0.9,0.5`: where on an element, as fractions of its box. */
 function fractions(at: string): Point {
   const [x, y] = at.split(',').map(Number)
   if (x === undefined || y === undefined || !Number.isFinite(x) || !Number.isFinite(y))
@@ -452,7 +425,6 @@ function fractions(at: string): Point {
   return { x, y }
 }
 
-/** `Shift+Meta`: the keys held through a click. */
 function keys(held: string | undefined): Key[] {
   if (!held) return []
   return held.split('+').map((name) => {
@@ -462,11 +434,6 @@ function keys(held: string | undefined): Key[] {
   })
 }
 
-/**
- * The small grab handles on screen (resize, rotate, slider knobs, drag grips) and where
- * each one's middle is. Editors draw them as tiny elements named or classed for what they
- * do, often with no accessible name, so the snapshot doesn't list them.
- */
 async function handles(page: Page): Promise<string> {
   const found = await page.evaluate(() => {
     const words = /handle|resize|rotat|knob|grip|thumb|anchor|corner|gap|spacing/i
@@ -476,7 +443,6 @@ async function handles(page: Page): Promise<string> {
       if (box.width < 3 || box.height < 3 || box.width > 48 || box.height > 48) continue
       if (box.bottom < 0 || box.top > innerHeight) continue
       const style = getComputedStyle(element)
-      // Some are marked only by a data attribute, with a see-through hit area.
       const marks = [...element.attributes]
         .filter((a) => a.name.startsWith('data-') && words.test(`${a.name} ${a.value}`))
         .map((a) => `${a.name}=${a.value}`)
@@ -507,20 +473,13 @@ async function handles(page: Page): Promise<string> {
     : 'No small handles on screen. Select the thing first, or look at the screenshot.'
 }
 
-/** The locator Playwright's codegen would write for the element, and its fingerprint. */
 async function pin(element: Locator): Promise<Target & { locator: string }> {
   const best = await element.normalize()
-  // Playwright offers the normalized locator as code; its selector is what replays it.
   const selector: unknown = Reflect.get(best, '_selector')
   if (typeof selector !== 'string') throw new Error('Could not read the locator Playwright chose.')
   return { locator: best.toString(), selector, fingerprint: await fingerprint(element) }
 }
 
-/**
- * The snapshot cut down to what's on screen. A line with a box is kept when its box is in
- * the viewport; a line without one (its text, its link) goes with the line it belongs to.
- * Off-screen elements with refs are counted above and below instead.
- */
 function onScreen(
   snapshot: string,
   height: number,
@@ -552,10 +511,6 @@ function onScreen(
 const PRESSABLE =
   /^(button|link|textbox|searchbox|checkbox|radio|combobox|menuitem|menuitemcheckbox|menuitemradio|tab|option|treeitem|switch|slider|spinbutton)$/
 
-/**
- * A screenshot with each pressable element's ref drawn on it, so the picture and the tree
- * line up: a pressable role, or anything the page gives a pointer cursor.
- */
 async function screenshotWithRefs(
   page: Page,
   snapshot: string,

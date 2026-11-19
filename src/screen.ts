@@ -1,21 +1,11 @@
 import { inflateSync } from 'node:zlib'
 import type { CDPSession, Page } from 'playwright-core'
 
-// Watching the screen itself, the way a viewer does: a tiny copy of the screen, split into a
-// grid of cells, each compared with the one before. A cell changed when its average brightness
-// moved. It sees what the page's code doesn't say: an animated loading image, a picture
-// popping in, a panel sliding open. The copies come from a screencast of their own, which
-// sends one whenever the page repaints and, unlike a screenshot, never disturbs the page.
-
-/** How many page pixels a cell is across: the copy is an eighth of the size, 6px a cell. */
 export const CELL = 48
 const SCALE = 1 / 8
-/** How often the newest copy is looked at. */
 const TICK_MS = 100
-/** How long samples are kept: enough to see what was changing before an action. */
 const KEEP_MS = 3000
 
-/** One look: when, and which cells changed since the last. */
 export interface Sample {
   at: number
   changed: Set<number>
@@ -23,12 +13,10 @@ export interface Sample {
 
 export interface ScreenWatch {
   samples: Sample[]
-  /** How many cells there are across and down, for working out which cells a box covers. */
   cols: number
   rows: number
 }
 
-/** Watches the screen for as long as the page is open. */
 export function watchScreen(page: Page): ScreenWatch {
   const size = page.viewportSize() ?? { width: 1440, height: 900 }
   const watched: ScreenWatch = {
@@ -37,8 +25,6 @@ export function watchScreen(page: Page): ScreenWatch {
     rows: Math.floor(size.height / CELL),
   }
   let before: number[] | undefined
-  // The newest copy not yet looked at: looked at on the next tick, so the last change is
-  // always seen, however fast they come.
   let newest: string | undefined
   const look = (data: string) => {
     const now = performance.now()
@@ -75,7 +61,6 @@ export function watchScreen(page: Page): ScreenWatch {
   return watched
 }
 
-/** The cells a box covers, in page pixels. */
 export function cellsIn(box: number[], cols: number, rows: number): number[] {
   const [x = 0, y = 0, width = 0, height = 0] = box
   const out: number[] = []
@@ -102,7 +87,6 @@ interface Picture {
   pixels: Buffer
 }
 
-/** Each cell's average brightness, row by row. */
 function brightness(picture: Picture, size: number): number[] {
   const cols = Math.floor(picture.width / size)
   const rows = Math.floor(picture.height / size)
@@ -123,7 +107,6 @@ function brightness(picture: Picture, size: number): number[] {
   return out
 }
 
-/** Reads the 8-bit RGB or RGBA PNG Chrome takes screenshots as. */
 export function decodePng(file: Buffer): Picture {
   let at = 8
   let width = 0
@@ -144,7 +127,6 @@ export function decodePng(file: Buffer): Picture {
   const raw = inflateSync(Buffer.concat(data))
   const stride = width * channels
   const pixels = Buffer.alloc(height * stride)
-  // Each row is filtered against the one above and the pixel to its left; undo that.
   for (let y = 0; y < height; y++) {
     const filter = raw[y * (stride + 1)] ?? 0
     for (let x = 0; x < stride; x++) {
