@@ -66,8 +66,7 @@ Your agent opens it for you, or open it yourself with `product-demo-agent-toolki
 ## Customizable Config
 
 The toolkit is ready to roll by default, but if you want to customize it, you can do that too!
-Everything is kept in `~/.product-demo`, outside your projects. Its `config.json` is the default
-look for new videos, and every setting is optional, for example:
+For example:
 
 ```json
 {
