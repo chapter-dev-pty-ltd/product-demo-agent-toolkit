@@ -128,18 +128,26 @@ export async function findVideo(ref: string): Promise<Video> {
 
 export type RunKind = 'takes' | 'rehearsals'
 
-/** A folder for a new take or rehearsal of the video, numbered, keeping only the last `keep`. */
-export async function newRun(video: Video, kind: RunKind, keep: number): Promise<string> {
+/** A folder for a new take or rehearsal of the video, numbered after the last. */
+export async function newRun(video: Video, kind: RunKind): Promise<string> {
   const dir = join(video.dir, kind)
   await mkdir(dir, { recursive: true })
-  const numbers = await runNumbers(dir)
-  for (const n of numbers.slice(0, Math.max(0, numbers.length - (keep - 1)))) {
-    await rm(join(dir, String(n)), { recursive: true, force: true })
-  }
-  const next = (numbers.at(-1) ?? 0) + 1
+  const next = ((await runNumbers(dir)).at(-1) ?? 0) + 1
   const run = join(dir, String(next))
   await mkdir(run)
   return run
+}
+
+/**
+ * Deletes all but the last `keep` takes or rehearsals of the video. Run only once a new one
+ * has finished, so one that fails never costs a good one.
+ */
+export async function pruneRuns(video: Video, kind: RunKind, keep: number): Promise<void> {
+  const dir = join(video.dir, kind)
+  const numbers = await runNumbers(dir)
+  for (const n of numbers.slice(0, Math.max(0, numbers.length - keep))) {
+    await rm(join(dir, String(n)), { recursive: true, force: true })
+  }
 }
 
 async function runNumbers(dir: string): Promise<number[]> {

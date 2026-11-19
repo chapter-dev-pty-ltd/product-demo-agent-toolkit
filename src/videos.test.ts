@@ -7,7 +7,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 // Every video lives in the home folder; these tests get one of their own.
 const home = mkdtempSync(join(tmpdir(), 'product-demo-home-'))
 process.env.PRODUCT_DEMO_HOME = home
-const { findVideo, filesOf, latestTake, newRun, newVideo } = await import('./videos.ts')
+const { findVideo, filesOf, latestTake, newRun, newVideo, pruneRuns } = await import('./videos.ts')
 const { readConfig } = await import('./config.ts')
 
 beforeAll(async () => {
@@ -57,17 +57,28 @@ describe('takes', () => {
   test('are numbered, and only the last few are kept', async () => {
     const video = await newVideo('Takes')
     for (let i = 0; i < 4; i++) {
-      const dir = await newRun(video, 'takes', 3)
+      const dir = await newRun(video, 'takes')
       await writeFile(join(dir, 'footage.json'), '{}')
+      await pruneRuns(video, 'takes', 3)
     }
     expect((await readdir(join(video.dir, 'takes'))).sort()).toEqual(['2', '3', '4'])
     expect((await latestTake(video)).n).toBe(4)
   })
 
+  test("aren't lost to a new one that never finishes, even keeping only one", async () => {
+    const video = await newVideo('Keep one')
+    const good = await newRun(video, 'takes')
+    await writeFile(join(good, 'footage.json'), '{}')
+    await pruneRuns(video, 'takes', 1)
+    // A reshoot starts, and fails: nothing was pruned for it.
+    await newRun(video, 'takes')
+    expect((await latestTake(video)).n).toBe(1)
+  })
+
   test("skip a take that never finished, and say when there isn't one", async () => {
     const video = await newVideo('Unfinished')
     await expect(latestTake(video)).rejects.toThrow(/has no takes yet/)
-    const done = await newRun(video, 'takes', 5)
+    const done = await newRun(video, 'takes')
     await writeFile(join(done, 'footage.json'), '{}')
     await mkdir(join(video.dir, 'takes', '2'))
     expect((await latestTake(video)).n).toBe(1)

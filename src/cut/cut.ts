@@ -67,12 +67,6 @@ export async function cut(
   extra = '',
 ): Promise<number> {
   const { footage, highlights, length, title } = await prepare(footageDir)
-  const look = {
-    backdrop: config.backdrop,
-    cursor: config.cursor,
-    display: config.display,
-    window: config.window,
-  }
   const browser = await launchBrowser()
   try {
     const page = await openStage(
@@ -80,7 +74,7 @@ export async function cut(
       footageDir,
       footage,
       highlights,
-      look,
+      config,
       length,
       title,
       extra,

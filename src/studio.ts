@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { openSync, watch } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, request, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -45,6 +46,8 @@ function placesOf(video: Video) {
     log: join(dir, 'server.log'),
   }
 }
+/** How long a studio nobody is using (no page open, no agent listening) stays open. */
+const IDLE_MS = 30 * 60_000
 /** The ports the studio tries, in order: 4000 and up (3000 is usually the app being filmed). */
 const PORTS = Array.from({ length: 100 }, (_, i) => 4000 + i)
 
@@ -149,6 +152,21 @@ function fromConfig(config: Config, hold: number, was: Own = {}) {
   return { settings, mine, extras }
 }
 
+/**
+ * Whether a request may reach the studio on `port`. Only by its own name (a page that
+ * rebinds its own domain to this machine is turned away), and from no page but its own (a
+ * site open in another tab can't post to it). The agent's commands send no Origin.
+ */
+export function trusted(
+  port: number,
+  host: string | undefined,
+  origin: string | undefined,
+): boolean {
+  const names = [`localhost:${port}`, `127.0.0.1:${port}`]
+  if (!host || !names.includes(host)) return false
+  return !origin || names.some((name) => origin === `http://${name}`)
+}
+
 /** Serves the studio for this video's take and returns its address. */
 export async function studio(
   video: Video,
@@ -189,6 +207,7 @@ export async function studio(
     const waiter = waiters.shift()
     if (!waiter) return
     if (!unread.length) return void waiters.unshift(waiter)
+    whileIdle()
     for (const m of unread) m.delivered = true
     await saveChat()
     waiter.res.end(JSON.stringify(unread))
@@ -229,6 +248,10 @@ export async function studio(
     }, 150)
   })
 
+  // The port it gets, and a secret only the agent's commands know (they read it from the
+  // video's server.json): waiting, replying as the agent and stopping need it.
+  let port: number | undefined
+  const token = randomBytes(24).toString('hex')
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://studio')
     const path = url.pathname
@@ -236,6 +259,10 @@ export async function studio(
       res.writeHead(status, { 'content-type': contentType, 'cache-control': 'no-store' })
       res.end(body)
     }
+    if (port === undefined || !trusted(port, req.headers.host, req.headers.origin)) {
+      return send(403, 'text/plain', 'Not allowed.')
+    }
+    const fromAgent = req.headers.authorization === `Bearer ${token}`
     try {
       // The stage is served at / for the studio's frame; opened in a tab, / is the studio.
       if (path === '/' && req.headers['sec-fetch-dest'] === 'document') {
@@ -259,11 +286,16 @@ export async function studio(
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' })
         res.write(`data: ${JSON.stringify({ type: 'hello', boot, chat, agent })}\n\n`)
         pages.add(res)
-        req.on('close', () => pages.delete(res))
+        whileIdle()
+        req.on('close', () => {
+          pages.delete(res)
+          whileIdle()
+        })
         return
       }
       if (path === '/studio/chat' && req.method === 'POST') {
         const raw = JSON.parse(await body(req))
+        if (raw.from === 'agent' && !fromAgent) return send(403, 'text/plain', 'Not allowed.')
         const text = String(raw.text ?? '').trim()
         const changes = Array.isArray(raw.changes)
           ? raw.changes.map(String).filter(Boolean).slice(0, 50)
@@ -289,6 +321,7 @@ export async function studio(
         return send(200, 'application/json', '{}')
       }
       if (path === '/studio/wait') {
+        if (!fromAgent) return send(403, 'text/plain', 'Not allowed.')
         const who = {
           session: url.searchParams.get('session') ?? undefined,
           agent: url.searchParams.get('agent') ?? undefined,
@@ -296,6 +329,7 @@ export async function studio(
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
         const waiter = { res, who }
         waiters.push(waiter)
+        whileIdle()
         agent = { ...who, listening: true }
         emit({ type: 'agent', agent })
         // An agent that stops waiting (it was stopped, or quit) isn't listening any more.
@@ -303,6 +337,7 @@ export async function studio(
           const i = waiters.indexOf(waiter)
           if (i < 0) return
           waiters.splice(i, 1)
+          whileIdle()
           const last = waiters.at(-1)
           agent = last ? { ...last.who, listening: true } : null
           emit({ type: 'agent', agent })
@@ -310,13 +345,9 @@ export async function studio(
         return await deliver()
       }
       if (path === '/studio/stop' && req.method === 'POST') {
+        if (!fromAgent) return send(403, 'text/plain', 'Not allowed.')
         send(200, 'application/json', '{}')
-        watcher.close()
-        filmWatcher.close()
-        for (const open of [...pages, ...waiters.map((w) => w.res)]) open.end()
-        server.closeAllConnections()
-        await rm(places.server, { force: true })
-        return server.close()
+        return await close()
       }
       if (path === '/studio/script') {
         const film = await readFilm(footage.source).catch(() => footage.film)
@@ -330,7 +361,16 @@ export async function studio(
       if (path === '/studio/highlight' && req.method === 'POST') {
         const change = JSON.parse(await body(req))
         const raw = JSON.parse(await readFile(footage.source, 'utf8'))
-        const lit = raw.steps?.[Number(change.step)]?.highlight
+        // The step as shot, found in the film as it is now: it may have moved since.
+        const at = sameStep(footage.film.steps, raw.steps ?? [], Number(change.step))
+        if (at < 0) {
+          return send(
+            409,
+            'text/plain',
+            "The film has changed since this take, so this step can't be found in it. Ask your agent, or change it after the next shoot.",
+          )
+        }
+        const lit = raw.steps[at].highlight
         if (!lit) return send(400, 'text/plain', 'That step has no highlight.')
         if (['box', 'magnify', 'cursor'].includes(change.style)) lit.style = change.style
         if (isHex(String(change.colour))) lit.colour = change.colour
@@ -401,11 +441,29 @@ export async function studio(
       if (!res.headersSent) send(400, 'text/plain', `That didn't work. See ${places.log}`)
     }
   })
+  // Closing: by the agent (`studio --stop`), or by itself once nobody has used it for a while
+  // (no page open, no agent listening), so studios don't pile up in the background.
+  const close = async () => {
+    clearTimeout(idle)
+    watcher.close()
+    filmWatcher.close()
+    for (const open of [...pages, ...waiters.map((w) => w.res)]) open.end()
+    server.closeAllConnections()
+    await rm(places.server, { force: true })
+    server.close()
+  }
+  let idle: NodeJS.Timeout | undefined
+  function whileIdle() {
+    clearTimeout(idle)
+    if (pages.size === 0 && waiters.length === 0) idle = setTimeout(() => void close(), IDLE_MS)
+  }
+  whileIdle()
+
   // The page's events and a waiting agent stay open for as long as they need.
   server.requestTimeout = 0
   server.timeout = 0
   // The first free port of ours, written down for the studio commands to find.
-  let port: number | undefined
+  let found: number | undefined
   for (const next of ports) {
     const free = await new Promise<boolean>((done, fail) => {
       server.once('error', (error: NodeJS.ErrnoException) =>
@@ -414,30 +472,46 @@ export async function studio(
       server.listen(next, '127.0.0.1', () => done(true))
     })
     if (free) {
-      port = next
+      found = next
       break
     }
   }
-  if (port === undefined) throw new Error(`No free port for the studio in ${ports.join(', ')}.`)
+  if (found === undefined) throw new Error(`No free port for the studio in ${ports.join(', ')}.`)
+  port = found
+  // The listeners for finding a port are done with; an error from now on goes to the log
+  // rather than taking the studio down.
   server.removeAllListeners('error')
-  await writeFile(places.server, `${JSON.stringify({ port, pid: process.pid })}\n`)
+  server.on('error', (error) => console.log(error))
+  // Readable only by the user: it holds the agent's secret. A file left from before is
+  // replaced rather than rewritten, so it can't keep looser permissions.
+  const about = { port, pid: process.pid, token }
+  await rm(places.server, { force: true })
+  await writeFile(places.server, `${JSON.stringify(about)}\n`, { mode: 0o600 })
   return `http://localhost:${port}/studio`
 }
 
-/** The port of this video's running studio, if it's running. */
-async function runningPort(video: Video): Promise<number | undefined> {
-  const port = await readFile(placesOf(video).server, 'utf8').then(
-    (text) => Number(JSON.parse(text).port),
-    () => undefined,
-  )
-  if (!port) return undefined
-  // The file can outlive the studio, and something else can have the port since: ask it.
-  const about = await call(port, 'GET', '/studio/ping').then(JSON.parse, () => undefined)
-  return about?.studio && about.video === video.id ? port : undefined
+/** Where this video's studio is running, and its secret, if it's running. */
+interface Running {
+  port: number
+  token: string
 }
 
-/** The port of this video's running studio, or an error saying how to open it. */
-async function studioPort(video: Video): Promise<number> {
+async function runningPort(video: Video): Promise<Running | undefined> {
+  const running = await readFile(placesOf(video).server, 'utf8').then(
+    (text) => {
+      const { port, token } = JSON.parse(text)
+      return { port: Number(port), token: String(token ?? '') }
+    },
+    () => undefined,
+  )
+  if (!running?.port) return undefined
+  // The file can outlive the studio, and something else can have the port since: ask it.
+  const about = await call(running, 'GET', '/studio/ping').then(JSON.parse, () => undefined)
+  return about?.studio && about.video === video.id ? running : undefined
+}
+
+/** Where this video's studio is running, or an error saying how to open it. */
+async function studioPort(video: Video): Promise<Running> {
   const port = await runningPort(video)
   if (!port) {
     throw new Error(
@@ -462,7 +536,7 @@ export async function openStudio(video: Video, serve: string[]): Promise<string>
       () => undefined,
     ))
   if (port && running && running.footage === resolve(take.dir)) {
-    return `http://localhost:${port}/studio`
+    return `http://localhost:${port.port}/studio`
   }
   if (running) await stopStudio(video)
   const places = placesOf(video)
@@ -473,7 +547,7 @@ export async function openStudio(video: Video, serve: string[]): Promise<string>
   for (let i = 0; i < 100; i++) {
     await new Promise((done) => setTimeout(done, 150))
     const started = await runningPort(video)
-    if (started) return `http://localhost:${started}/studio`
+    if (started) return `http://localhost:${started.port}/studio`
   }
   throw new Error(`The studio didn't start. See ${places.log}`)
 }
@@ -513,10 +587,19 @@ export async function recentChat(video: Video, count: number): Promise<StudioMes
   return chat.slice(-count)
 }
 
-/** A request to the studio's server, with no timeout: a wait can last as long as the user. */
-function call(port: number, method: string, path: string, payload?: string): Promise<string> {
+/**
+ * A request to the studio's server, as the agent (with its secret), with no timeout: a wait
+ * can last as long as the user.
+ */
+function call(
+  { port, token }: Running,
+  method: string,
+  path: string,
+  payload?: string,
+): Promise<string> {
   return new Promise((done, fail) => {
-    const req = request({ host: '127.0.0.1', port, method, path }, (res) => {
+    const headers = { authorization: `Bearer ${token}` }
+    const req = request({ host: '127.0.0.1', port, method, path, headers }, (res) => {
       let text = ''
       res.setEncoding('utf8')
       res.on('data', (chunk) => (text += chunk))
@@ -528,12 +611,29 @@ function call(port: number, method: string, path: string, payload?: string): Pro
   })
 }
 
+/**
+ * Where step `i` of the film as shot is in the film as it is now: the same place if it's
+ * still there, else the one step that does the same thing (its direction aside), else -1.
+ */
+export function sameStep(shot: unknown[], now: unknown[], i: number): number {
+  const bare = (step: unknown) => {
+    if (!step || typeof step !== 'object') return ''
+    const { highlight: _h, say: _s, on: _o, note: _n, ...action } = step as Record<string, unknown>
+    return JSON.stringify(action)
+  }
+  const wanted = bare(shot[i])
+  if (!wanted) return -1
+  if (bare(now[i]) === wanted) return i
+  const matches = now.flatMap((step, j) => (bare(step) === wanted ? [j] : []))
+  return matches.length === 1 ? (matches[0] ?? -1) : -1
+}
+
 /** The take's steps in words, timed from the shoot, with the film's highlights as they are now. */
 function scriptOf(footage: Footage, film: Film): ScriptStep[] {
   const start = footage.frames[0]?.at ?? 0
   return footage.film.steps.map((step, i) => {
     const at = footage.steps?.[i]
-    const highlight = film.steps[i]?.highlight
+    const highlight = film.steps[sameStep(footage.film.steps, film.steps, i)]?.highlight
     return {
       ...words(step),
       ...(step.say ? { say: step.say } : {}),
@@ -638,7 +738,9 @@ function fromPage(raw: Partial<PageSettings>, was: Settings, mine: Own): Setting
   const cursor: Partial<PageSettings['cursor']> = raw.cursor ?? {}
   const style = String(cursor.style)
   const size = Number(cursor.size ?? was.cursor.size)
-  const label = typeof cursor.label === 'string' ? cursor.label.trim().slice(0, 30) : ''
+  // A label left out keeps the one there is; an empty one clears it.
+  const label =
+    typeof cursor.label === 'string' ? cursor.label.trim().slice(0, 30) : (was.cursor.label ?? '')
   const backdrop = String(raw.backdrop)
   const music = raw.music
   const track = music ? String(music.track) : ''
@@ -1405,6 +1507,7 @@ $('composer').onsubmit = async (e) => {
   if (!text && !attached.length) return;
   const changes = attached;
   $('draft').value = '';
+  keep(':draft', '');
   const res = await fetch('/studio/chat', { method: 'POST', body: JSON.stringify({ text, at: t, changes }) });
   if (!res.ok) return;
   // Sent changes leave the script's tray: the agent has them now.
@@ -1451,7 +1554,11 @@ const node = (tag, className, text) => {
 const button = (text, onclick, className = 'small') => { const b = node('button', className, text); b.type = 'button'; b.onclick = onclick; return b; };
 const setHighlight = async (i, change) => {
   const res = await fetch('/studio/highlight', { method: 'POST', body: JSON.stringify({ step: i, ...change }) });
-  if (!res.ok) return;
+  if (!res.ok) {
+    $('script-hint').textContent = await res.text();
+    $('script-hint').hidden = false;
+    return;
+  }
   script.steps[i].highlight = await res.json();
   showScript();
   // A fresh stage, and the timeline drawn again from it, for the highlight's new look.
@@ -1594,12 +1701,32 @@ $('tray-send').onclick = () => {
 fetch('/studio/script').then((r) => r.json()).then((x) => { script = x; showScript(); showCurrent(); });
 showAttached();
 
-// This video's look and the default: replace one with the other.
-$('use-default').onclick = () => fetch('/studio/look/use-default', { method: 'POST' });
-$('make-default').onclick = async () => {
+// A message being written survives the page reloading (when the agent saves a change).
+$('draft').value = kept(':draft', '');
+$('draft').oninput = () => keep(':draft', $('draft').value);
+
+// This video's look and the default: replace one with the other. Neither can be undone, so
+// the first click asks and the second, within a few seconds, does it.
+const askFirst = (button, question, act) => {
+  const label = button.textContent;
+  let asking;
+  button.onclick = async () => {
+    if (!asking) {
+      button.textContent = question;
+      asking = setTimeout(() => { button.textContent = label; asking = undefined; }, 3000);
+      return;
+    }
+    clearTimeout(asking);
+    asking = undefined;
+    button.textContent = label;
+    await act();
+  };
+};
+askFirst($('use-default'), "Replace this video's look?", () => fetch('/studio/look/use-default', { method: 'POST' }));
+askFirst($('make-default'), 'Use it for new videos?', async () => {
   const res = await fetch('/studio/look/make-default', { method: 'POST' });
   if (res.ok) { $('make-default').textContent = 'Saved as default'; setTimeout(() => ($('make-default').textContent = 'Make default'), 1600); }
-};
+});
 
 const events = new EventSource('/studio/events');
 events.onmessage = (e) => {

@@ -1,7 +1,7 @@
 import pkg from '../package.json' with { type: 'json' }
 
 export const version: string = pkg.version
-export { lookToRaw, readConfig } from './config.ts'
+export { CONFIG_FILE, lookToRaw, readConfig } from './config.ts'
 export { cut, readFootage, videoLength } from './cut/cut.ts'
 export { review } from './review.ts'
 export {
@@ -11,6 +11,7 @@ export {
   listVideos,
   newRun,
   newVideo,
+  pruneRuns,
   type Video,
 } from './videos.ts'
 export { explore, exploreIn, send, serve } from './explore.ts'

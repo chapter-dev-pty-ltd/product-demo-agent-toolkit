@@ -18,6 +18,7 @@ import {
   review,
   videoLength,
   NeedsDecision,
+  CONFIG_FILE,
   readConfig,
   readFilm,
   rehearse,
@@ -31,6 +32,7 @@ import {
   lookToRaw,
   newRun,
   newVideo,
+  pruneRuns,
   recentChat,
   type Video,
   shoot,
@@ -162,6 +164,17 @@ const videoNamed = async (ref: string | undefined): Promise<Video> => {
 }
 const configOf = (video: Video) => readConfig(filesOf(video).look)
 
+/**
+ * Earlier versions kept the config and footage in the project. Nothing reads them now, so say
+ * so where it matters, rather than quietly making videos without the user's look.
+ */
+const oldProjectFolder = () => {
+  if (!existsSync(join('.product-demo', 'config.json'))) return
+  console.log(
+    `Check: this project has .product-demo/config.json from an earlier version, which isn't read any more. Settings now live in ${CONFIG_FILE}, the default look for new videos: move what you want there, giving your own files by their full path. Old shoots in .product-demo can't be cut by this version.`,
+  )
+}
+
 try {
   if (help) {
     console.log(USAGE)
@@ -171,6 +184,7 @@ try {
     exploreIn(input)
     await serve(args[1])
   } else if (command === 'new') {
+    oldProjectFolder()
     const video = await newVideo(input, values.session)
     console.log(
       `Made "${video.title}": its id is ${video.id}. Every command for it starts with that id.`,
@@ -199,8 +213,14 @@ try {
   } else if (command === 'rehearse') {
     const video = await videoNamed(input)
     const config = await configOf(video)
-    const dir = await newRun(video, 'rehearsals', config.keep)
-    const rehearsal = await rehearse(await readFilm(filesOf(video).film), dir, config)
+    const dir = await newRun(video, 'rehearsals')
+    const rehearsal = await rehearse(await readFilm(filesOf(video).film), dir, config).catch(
+      async (error) => {
+        await rm(dir, { recursive: true, force: true })
+        throw error
+      },
+    )
+    await pruneRuns(video, 'rehearsals', config.keep)
     warn(rehearsal.warnings)
     console.log(
       `Rehearsed ${rehearsal.film.steps.length} steps. Look at each still before shooting:`,
@@ -214,7 +234,7 @@ try {
     let footage: Footage | undefined
     let dir = ''
     for (let attempt = 1; !footage; attempt++) {
-      dir = await newRun(video, 'takes', config.keep)
+      dir = await newRun(video, 'takes')
       try {
         footage = await shoot(film, filmFile, dir, config)
       } catch (error) {
@@ -226,6 +246,7 @@ try {
         console.log(`The shoot failed, trying once more. ${why}`)
       }
     }
+    await pruneRuns(video, 'takes', config.keep)
     warn(footage.warnings)
     console.log(
       `Shot take ${basename(dir)} of "${video.title}" (${footage.end.toFixed(1)}s). Next: product-demo-agent-toolkit cut ${video.id}`,
@@ -234,12 +255,14 @@ try {
     const video = await videoNamed(input)
     const config = await configOf(video)
     const take = await latestTake(video)
-    const out = values.out ?? join(take.dir, 'video.mp4')
+    // Always into the take, and as the video's latest cut; --out is a copy of it besides.
+    const out = join(take.dir, 'video.mp4')
     const seconds = await cut(take.dir, out, config)
     // The look it was cut with, so this cut can be made again however the look changes.
     await writeFile(join(take.dir, 'look.json'), `${JSON.stringify(lookToRaw(config), null, 2)}\n`)
-    if (!values.out) await copyFile(out, filesOf(video).cut)
-    const where = values.out ? out : filesOf(video).cut
+    await copyFile(out, filesOf(video).cut)
+    if (values.out) await copyFile(out, values.out)
+    const where = values.out ?? filesOf(video).cut
     console.log(`Cut take ${take.n} of "${video.title}" into ${where} (${seconds.toFixed(1)}s)`)
     if (config.review) console.log(`Review it: ${await review(out, seconds)}`)
   } else if (command === 'studio' && values.stop) {
@@ -308,6 +331,7 @@ try {
     }
   } else if (command === 'init') {
     for (const line of await init()) console.log(line)
+    oldProjectFolder()
   } else if (command === 'key' && input) {
     if (args[1])
       throw new Error(
