@@ -12,11 +12,12 @@ import {
   isHex,
   lookToRaw,
   readConfig,
+  soundOn,
   type Config,
   type Music,
   type ProjectFile,
 } from './config.ts'
-import { prepare } from './cut/cut.ts'
+import { LIMIT, prepare, STEM_GAIN, stems, stemsOf, type Stem } from './cut/cut.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
 import { filesOf, latestTake, type Video } from './videos.ts'
 
@@ -91,6 +92,7 @@ function fromConfig(config: Config, hold: number, was: Own = {}) {
     },
     music: MUSIC,
     hold,
+    sound: config.sound,
   }
   return { settings, mine, extras }
 }
@@ -117,6 +119,9 @@ export async function studio(
   const config = await readConfig(lookFile)
   const { footage, highlights, length, title } = await prepare(footageDir)
   const hold = Math.max(1, footage.film.ending?.hold ?? 2)
+  const sounds = stems(footageDir, footage, length).catch(
+    (error: Error): Partial<Record<Stem, string>> => (console.log(error.message), {}),
+  )
   let { settings, mine, extras } = fromConfig(config, hold)
   let saving = Promise.resolve()
   const staged = (lit: typeof highlights) =>
@@ -199,7 +204,10 @@ export async function studio(
       }
       if (path === '/studio') {
         const now = toPage(settings)
-        return send(200, 'text/html', page(now, extras, video, footageDir, boot))
+        const audible = stemsOf(footage).filter(
+          (stem) => stem === 'voice' || soundOn(stem, extras.sound),
+        )
+        return send(200, 'text/html', page(now, extras, video, footageDir, boot, audible))
       }
       if (path === '/studio/ping') {
         const about = {
@@ -296,6 +304,9 @@ export async function studio(
       if (track && (MUSIC as readonly string[]).includes(track)) {
         return send(200, 'audio/mpeg', await readFile(library(`music/${track}.mp3`)))
       }
+      const stem = path.match(/^\/studio\/sound\/(click|typing|voice)$/)?.[1] as Stem | undefined
+      const sound = stem && (await sounds)[stem]
+      if (sound) return send(200, 'audio/mp4', await readFile(sound))
       const served = await stage(path)
       if (!served) return send(404, 'text/plain', 'Not found')
       return send(200, served.contentType, served.body)
@@ -567,6 +578,7 @@ function page(
   video: Video,
   footageDir: string,
   boot: string,
+  audible: Stem[],
 ): string {
   const escape = (text: string) =>
     text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
@@ -823,6 +835,9 @@ const BACKDROPS = ${JSON.stringify(BACKDROPS)};
 const OWNED = ${JSON.stringify(extras.owned)};
 const TRACKS = ${JSON.stringify(extras.music)};
 const HOLD = ${extras.hold};
+const STEMS = ${JSON.stringify(audible)};
+const STEM_GAIN = ${STEM_GAIN};
+const LIMIT = ${LIMIT};
 const BOOT = ${JSON.stringify(boot)};
 const fileName = (path) => path.split('/').pop();
 const CURSORS = { black: '#111111', pink: '#ff7ccb', lime: '#b6f24f', macos: 'linear-gradient(135deg,#000 50%,#fff 50%)' };
@@ -835,7 +850,7 @@ const ICON_PLAY = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 2.
 const ICON_PAUSE = '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3.5" y="2.5" width="3" height="11" rx=".8"/><rect x="9.5" y="2.5" width="3" height="11" rx=".8"/></svg>';
 
 const viewer = $('viewer'), screen = $('screen');
-let frame, data, length = 0, t = 0, playing = false, last = 0;
+let frame, data, length = 0, t = 0, playing = false;
 
 const fit = () => {
   const w = viewer.clientWidth - 48, h = viewer.clientHeight - 32;
@@ -989,10 +1004,8 @@ const show = () => {
   if (length) $('playhead').style.left = lane.left - box.left + (t / length) * lane.width + 'px';
 };
 window.addEventListener('resize', show);
-const seek = async () => { if (frame) await frame.contentWindow.stage.seek(t); show(); audio(); };
+const seek = async () => { if (playing) play(); if (frame) await frame.contentWindow.stage.seek(t); show(); };
 
-const player = new Audio();
-player.loop = true;
 const musicSrc = (m) => m.track === 'own' ? '/studio/own/music' : '/studio/music/' + m.track;
 
 const wave = async (src) => {
@@ -1018,40 +1031,89 @@ const wave = async (src) => {
   } catch {}
 };
 let heard = true;
+const mixer = new AudioContext();
+const master = mixer.createGain();
+master.connect(mixer.destination);
+const limiter = mixer.createDynamicsCompressor();
+const limits = { threshold: 20 * Math.log10(LIMIT), knee: 0, ratio: 20, attack: 0.001, release: 0.05 };
+for (const [name, value] of Object.entries(limits)) limiter[name].value = value;
+limiter.connect(master);
+const restore = mixer.createGain();
+restore.gain.value = 1 / STEM_GAIN;
+restore.connect(limiter);
+const musicLevel = mixer.createGain();
+musicLevel.connect(limiter);
+const decode = (url) => fetch(url).then((r) => r.arrayBuffer()).then((b) => mixer.decodeAudioData(b)).catch(() => null);
+const stemBuffers = Promise.all(STEMS.map((stem) => decode('/studio/sound/' + stem)));
+const musicBuffers = {};
+const musicKey = () => look.music ? musicSrc(look.music) : null;
+
+// The playhead is read from the audio clock while playing, so picture and sound can't drift.
+let sources = [], generation = 0, origin = 0, startedAt = 0, playingMusic = null;
+const audioNow = () => origin + mixer.currentTime - startedAt;
+const stop = () => {
+  generation++;
+  for (const s of sources) s.stop();
+  sources = [];
+};
+const start = (buffer, to, when, offset) => {
+  const s = mixer.createBufferSource();
+  s.buffer = buffer;
+  s.connect(to);
+  s.start(when, offset);
+  sources.push(s);
+  return s;
+};
+const level = () => {
+  const g = musicLevel.gain, volume = look.music ? look.music.volume : 0, fade = Math.min(HOLD, length);
+  const at = (time) => startedAt + time - origin;
+  g.cancelScheduledValues(0);
+  g.setValueAtTime(volume * Math.max(0, Math.min(1, (length - audioNow()) / fade)), mixer.currentTime);
+  if (audioNow() < length - fade) g.setValueAtTime(volume, at(length - fade));
+  g.linearRampToValueAtTime(0, at(length));
+};
+const play = async () => {
+  stop();
+  const go = generation;
+  origin = t;
+  startedAt = mixer.currentTime;
+  await mixer.resume();
+  const key = musicKey();
+  const music = key && (musicBuffers[key] ??= decode(key));
+  const [stems, track] = await Promise.all([stemBuffers, music]);
+  if (go !== generation || !playing) return;
+  const when = mixer.currentTime, at = audioNow();
+  for (const b of stems) if (b && at < b.duration) start(b, restore, when, at);
+  if (track) start(track, musicLevel, when, at % track.duration).loop = true;
+  playingMusic = key;
+  level();
+};
 const audio = () => {
-  const on = playing && heard && look.music;
-  if (!on) { player.pause(); return; }
-  const src = musicSrc(look.music);
-  if (player.dataset.src !== src) { player.dataset.src = src; player.src = src; }
-  const fade = Math.min(HOLD, length);
-  player.volume = Math.max(0, Math.min(1, look.music.volume * Math.min(1, (length - t) / fade)));
-  const at = player.duration ? t % player.duration : t;
-  if (player.paused || Math.abs(player.currentTime - at) > 0.3) player.currentTime = at;
-  if (player.paused) player.play().catch(() => {});
+  if (!playing) return;
+  if (playingMusic !== musicKey()) play();
+  else level();
 };
 $('sound').onclick = () => {
   heard = !heard;
   pressed($('sound'), heard);
   $('sound').title = heard ? 'Sound on' : 'Sound off';
   $('waves').style.display = heard ? '' : 'none';
-  audio();
+  master.gain.value = heard ? 1 : 0;
 };
-const tick = async (now) => {
+const tick = async () => {
   if (!playing) return;
-  t += (now - last) / 1000;
-  last = now;
-  if (t >= length) { t = length; playing = false; }
+  t = audioNow();
+  if (t >= length) { t = length; playing = false; stop(); }
   if (frame) await frame.contentWindow.stage.seek(t);
   show();
-  if (!playing || Math.floor(t * 4) !== Math.floor((t - 0.02) * 4)) audio();
   if (playing) requestAnimationFrame(tick);
 };
 const toggle = () => {
   if (!playing && t >= length) t = 0;
   playing = !playing;
   show();
-  if (playing) { last = performance.now(); requestAnimationFrame(tick); }
-  audio();
+  if (playing) { play(); requestAnimationFrame(tick); }
+  else stop();
 };
 $('play').onclick = toggle;
 $('restart').onclick = () => { t = 0; seek(); };
