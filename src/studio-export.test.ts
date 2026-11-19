@@ -112,7 +112,7 @@ test('the export button downloads the rendered file and recovers from a failed r
     await page.locator('#export').click()
     await page
       .getByRole('dialog', { name: 'Export video' })
-      .getByRole('button', { name: 'Export', exact: true })
+      .getByRole('button', { name: 'Export MP4', exact: true })
       .click()
     await page.waitForFunction(() =>
       document.getElementById('export-status')?.textContent?.includes('Export failed'),
@@ -122,15 +122,18 @@ test('the export button downloads the rendered file and recovers from a failed r
       await writeFile(output, 'downloaded mp4')
       return 1
     })
+    vi.mocked(convertExport).mockImplementationOnce(async (_, output, format) => {
+      expect(format).toBe('gif')
+      await writeFile(output, 'downloaded gif')
+    })
     const downloaded = page.waitForEvent('download')
     await page.locator('#export').click()
-    await page
-      .getByRole('dialog', { name: 'Export video' })
-      .getByRole('button', { name: 'Export', exact: true })
-      .click()
+    await page.getByRole('radio', { name: 'GIF', exact: true }).check()
+    expect(await page.locator('#export-description').textContent()).toContain('No audio')
+    await page.getByRole('button', { name: 'Export GIF', exact: true }).click()
     const download = await downloaded
-    expect(download.suggestedFilename()).toBe(video.id + '.mp4')
-    expect(await readFile((await download.path())!, 'utf8')).toBe('downloaded mp4')
+    expect(download.suggestedFilename()).toBe(video.id + '.gif')
+    expect(await readFile((await download.path())!, 'utf8')).toBe('downloaded gif')
   } finally {
     await browser.close()
   }
