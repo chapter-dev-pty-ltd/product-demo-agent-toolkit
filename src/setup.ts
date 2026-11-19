@@ -25,6 +25,8 @@ export function loadKeys(
       continue
     }
     for (const key of keys) {
+      // Only a key that's there: process.env keeps undefined as the word "undefined", which
+      // then counts as a key, is sent to the provider and is turned down.
       const value = found[key]
       if (value && !env[key]) env[key] = value
     }

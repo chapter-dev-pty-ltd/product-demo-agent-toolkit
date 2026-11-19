@@ -1,6 +1,7 @@
 import type { VoiceProvider, Word } from '../voice.ts'
 
 const BASE = process.env.ELEVENLABS_BASE_URL ?? 'https://api.elevenlabs.io'
+/** Steady delivery: Chapter found lower stability over-acted. */
 const SETTINGS = { stability: 0.85, similarity_boost: 0.8, style: 0 }
 
 export const elevenlabs: VoiceProvider = {

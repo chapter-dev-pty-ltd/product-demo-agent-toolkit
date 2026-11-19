@@ -2,7 +2,12 @@
 
 ## Comments
 
-- Never leave comments. The only exception is code that diverges from a rule specified elsewhere (a lint rule, formatter, or convention in this file); then note the reason in a short comment.
+- Never write comments that say what code does or how; agents read that from the code.
+- Comment only what the code can't tell a reader, briefly:
+  - Why it diverges from a rule, spec or convention set elsewhere (a lint rule, the formatter, this file, a paper it implements).
+  - Behaviour outside the repo that it works around (a tool, platform, API or site).
+  - Where a pinned or tuned value came from (a version, a hash, a measured timing).
+- The test: would someone "simplify" the code into a bug without the comment? If not, leave it out.
 
 ## Pull requests
 

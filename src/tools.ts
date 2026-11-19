@@ -23,6 +23,7 @@ export async function launchBrowser(): Promise<Browser> {
   }
 }
 
+// ffmpeg 6.1.1 from github.com/eugeneware/ffmpeg-static, by platform, with each download's sha256.
 const FFMPEG_RELEASE = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1'
 const FFMPEG_BUILDS: Record<string, string> = {
   'darwin-arm64': '8923876afa8db5585022d7860ec7e589af192f441c56793971276d450ed3bbfa',

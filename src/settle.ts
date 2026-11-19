@@ -143,6 +143,7 @@ function watchPage(): void {
   const forget = (id: unknown) => {
     if (typeof id === 'number') timers.delete(id)
   }
+  // Set through Reflect: the DOM's and Node's timer types disagree, and this is the page.
   Reflect.set(window, 'setTimeout', (run: TimerHandler, ms?: number, ...args: unknown[]) => {
     if (typeof run !== 'function' || !short(ms)) return later(run, ms, ...args)
     const id = later(
@@ -198,6 +199,9 @@ function lookAtScreen(): Look {
   )
   if (scheduled.length > 0) moving.push(`${scheduled.length} timers`)
 
+  // Only what a viewer could see counts: on screen, big enough to notice, and not hidden by
+  // visibility or opacity anywhere up its tree. GitHub keeps its spinners in the page after
+  // loading, out of sight; they mustn't count.
   const onScreen = (el: Element) => {
     const box = el.getBoundingClientRect()
     return (
@@ -230,6 +234,9 @@ function lookAtScreen(): Look {
   const images = Array.from(document.images).filter((img) => !img.complete && onScreen(img))
   if (images.length > 0) moving.push(`${images.length} images`)
 
+  // The app saying it's busy: aria-busy, or a progress bar with no value. A class like
+  // "spinner" or "skeleton" only counts when something in it is visibly moving: GitHub keeps
+  // a SpinnerVisible container on screen whose spinner is long gone.
   const moved = document
     .getAnimations()
     .map((a) => (a.effect instanceof KeyframeEffect ? a.effect.target : null))

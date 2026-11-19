@@ -1,5 +1,10 @@
 import type { Locator, Page } from 'playwright-core'
 
+// Similo: find the same element again by how alike it is to the one recorded, not by
+// one selector. Nass et al., "Similarity-based Web Element Localization for Robust
+// Test Automation", ACM TOSEM 32(3), 2023. What we changed from the paper, and why, is
+// noted where it happens; similo.test.ts holds the cases that made us change it.
+
 export interface Fingerprint {
   tag: string
   role: string
@@ -12,6 +17,10 @@ export interface Fingerprint {
   alt: string
   text: string
   label: string
+  /**
+   * The words of the closest container that says more than it does: its row, card or
+   * paragraph. The paper uses text within 50px, which in a list is the rows above and below.
+   */
   neighbours: string
   xpath: string
   idXpath: string
@@ -22,6 +31,12 @@ export interface Fingerprint {
   height: number
 }
 
+/**
+ * The paper's weights, except neighbours (1.5 there): ours leave out the element's own words,
+ * which makes them the sharpest signal in a list of alike rows or cards (see the tests).
+ * Role, label, test id and type are ours: the paper's 14 attributes predate ARIA-heavy apps,
+ * and an icon button has nothing else that says what it is.
+ */
 const WEIGHTS = {
   tag: 1.5,
   id: 1.5,
@@ -82,6 +97,12 @@ export function similarity(target: Fingerprint, candidate: Fingerprint): number 
   return saysSomethingElse(target, candidate) ? score / 2 : score
 }
 
+/**
+ * Not in the paper: an element that says something else entirely is a different element,
+ * however much it looks like the one recorded. "Unpublish" where "Publish" was is the page
+ * in another state, and pressing it would film the wrong thing. Unless the app's own ids
+ * say it's the same element, its score is halved.
+ */
 function saysSomethingElse(target: Fingerprint, candidate: Fingerprint): boolean {
   if (target.id && target.id === candidate.id) return false
   if (target.testId && target.testId === candidate.testId) return false

@@ -326,6 +326,7 @@ describe('rank', () => {
     expect('missing' in decision).toBe(true)
   })
 
+  // 1.5s on a laptop; GitHub's CI machines are slower, so 3s there.
   test('finds one row among 3,000 quickly', async () => {
     const names = Array.from(
       { length: 3000 },
