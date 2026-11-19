@@ -51,6 +51,19 @@ As well as:
 - Real clicking & typing sounds.
 - 1080p at 60fps.
 
+## Studio
+
+![The studio open in a browser: the video with its timeline of pages, clicks, music and highlights, and a chat where Claude Code changed the cursor to purple without a reshoot](docs/studio.webp)
+
+Ask your agent to open the studio, and it gives you a local page for the video it's making.
+Watch it, change its look and see it straight away, and tell your agent what to change: your
+message reaches it in your terminal, and its reply comes back to the page. A change to the look
+is a recut in seconds; a change to what the video does is a reshoot, and your agent says so.
+
+Each video has its own studio and chat, so two sessions on two videos each have their own, and
+any session can pick a video up later with the chat so far. To open one yourself, run
+`product-demo-agent-toolkit studio <video>`.
+
 ## Customizable Config
 
 The toolkit is ready to roll by default, but if you want to customize it, you can do that too!
@@ -84,19 +97,6 @@ Each video is a folder of its own in `~/.product-demo/videos`, named by a short 
 film, its takes, its cut and its studio chat. It takes a copy of the default look into its own
 `look.json` when it's made, so changing the default never changes a video you've already made.
 Paths in a look are relative to the file they're in.
-
-## Studio
-
-![The studio open in a browser: the video with its timeline of pages, clicks, music and highlights, and a chat where Claude Code changed the cursor to purple without a reshoot](docs/studio.webp)
-
-Ask your agent to open the studio, and it gives you a local page for the video it's making.
-Watch it, change its look and see it straight away, and tell your agent what to change: your
-message reaches it in your terminal, and its reply comes back to the page. A change to the look
-is a recut in seconds; a change to what the video does is a reshoot, and your agent says so.
-
-Each video has its own studio and chat, so two sessions on two videos each have their own, and
-any session can pick a video up later with the chat so far. To open one yourself, run
-`product-demo-agent-toolkit studio <video>`.
 
 ## Features
 
