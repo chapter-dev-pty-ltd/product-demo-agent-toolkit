@@ -54,11 +54,12 @@ As well as:
 ## Customizable Config
 
 The toolkit is ready to roll by default, but if you want to customize it, you can do that too!
-Add `.product-demo/config.json` to the project. Every setting is optional, for example:
+Everything is kept in `~/.product-demo`, outside your projects. Its `config.json` is the default
+look for new videos, and every setting is optional, for example:
 
 ```json
 {
-  "backdrop": "./brand/backdrop.png",
+  "backdrop": "/Users/sam/acme/brand/backdrop.png",
   "display": "browser",
   "cursor": { "style": "#2855DB", "size": 1.25, "label": "Agent" },
   "sound": { "click": true, "typing": false },
@@ -76,8 +77,20 @@ Add `.product-demo/config.json` to the project. Every setting is optional, for e
 | `music`    | `false`                                          | `"lofi"`, your own `.mp3`, `.m4a`, `.aac`, `.wav`, `.ogg` or `.flac`, or `{ "track": "lofi", "volume": 0.4 }` (0.25 by default). Looped if the video runs longer, faded out at the end. |
 | `voice`    | Jessica, from ElevenLabs                         | Who speaks the voiceover: `{ "provider": "elevenlabs", "voice": "<voice id>" }`, and optionally a `"model"`.                                                                            |
 | `mode`     | `"just_do_it"`                                   | When something is unclear, make the best choice and note it. `"ask"` stops and asks instead.                                                                                            |
-| `keep`     | `10`                                             | How many rehearsals and shoots of each film to keep.                                                                                                                                    |
+| `keep`     | `5`                                              | How many rehearsals and takes of each video to keep.                                                                                                                                    |
 | `review`   | `false`                                          | Whether `cut` also makes the review image.                                                                                                                                              |
+
+Each video is a folder of its own in `~/.product-demo/videos`, named by a short id, with its
+film, its takes, its cut and its studio chat. It takes a copy of the default look into its own
+`look.json` when it's made, so changing the default never changes a video you've already made.
+Paths in a look are relative to the file they're in.
+
+## Studio
+
+`product-demo-agent-toolkit studio <video>` opens a video in a local page: play it, change its
+look and see it at once, edit its script, and chat with the agent working on it. Your agent
+opens it for you. Each video has its own studio and chat, so two sessions on two videos each
+have their own, and any session can pick up a video later: the chat so far comes with it.
 
 ## Features
 
@@ -94,7 +107,6 @@ And much more.
 
 #### Coming soon
 
-- Local Studio (web application for editing)
 - Support for Safari and Firefox (currently only Chrome)
 - More tasteful defaults
 - Support for mobile product demos

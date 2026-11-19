@@ -9,7 +9,13 @@ import { readJson, stepSchema, type Step } from './film.ts'
 // marks steps undone), and it isn't a film: the agent reads it and writes the film itself,
 // copying in the steps that make the demo. Each step is already in the film's format.
 
-export const LOG: string = join('.product-demo', 'explore', 'log.json')
+/** The folder the log is kept in: the explore folder of the video being explored. */
+let DIR = ''
+export function useLogDir(dir: string): void {
+  DIR = dir
+}
+/** The log of the video being explored. */
+export const logFile = (): string => join(DIR, 'log.json')
 
 export interface LogEntry {
   n: number
@@ -43,7 +49,7 @@ const logSchema: z.ZodType<Log> = z.strictObject({
   ),
 })
 
-export async function readLog(path: string = LOG): Promise<Log> {
+export async function readLog(path: string = logFile()): Promise<Log> {
   if (!existsSync(path))
     throw new Error(
       'There is no explore log yet. Start with `product-demo-agent-toolkit explore <url>`.',
@@ -54,15 +60,15 @@ export async function readLog(path: string = LOG): Promise<Log> {
   return parsed.data
 }
 
-export async function writeLog(log: Log, path: string = LOG): Promise<void> {
+export async function writeLog(log: Log, path: string = logFile()): Promise<void> {
   await writeFile(path, JSON.stringify(log, null, 2))
 }
 
 /** Starts a new log, keeping the last one beside it under the time it was put aside. */
 export async function startLog(app: string): Promise<void> {
-  if (existsSync(LOG)) {
+  if (existsSync(logFile())) {
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
-    await rename(LOG, join('.product-demo', 'explore', `log-${stamp}.json`))
+    await rename(logFile(), join(DIR, `log-${stamp}.json`))
   }
   await writeLog({ app, entries: [] })
 }

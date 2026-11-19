@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { HOME } from './home.ts'
 import { elevenlabs } from './voice/elevenlabs.ts'
 
 // The voiceover. A film's lines are spoken before it's shot, by a provider that also says when
@@ -44,7 +45,7 @@ export interface Spoken {
   words: Word[]
 }
 
-const DIR = join('.product-demo', 'voice')
+const DIR = join(HOME, 'voice')
 
 /** Speaks every line, or takes it from what was spoken before. Two at a time, as providers limit it. */
 export async function speakLines(

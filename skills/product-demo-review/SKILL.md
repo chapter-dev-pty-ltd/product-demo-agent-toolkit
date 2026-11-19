@@ -9,12 +9,12 @@ allowed-tools: Bash(product-demo-agent-toolkit:*)
 You can't watch a video, so `review` lays frames from across it out in one image you can look at.
 
 ```bash
-product-demo-agent-toolkit review            # the latest video; or: product-demo-agent-toolkit review <footage folder>, or the .mp4 cut --out wrote
+product-demo-agent-toolkit review <id>       # the video's latest cut; or the .mp4 that cut --out wrote
 ```
 
-It prints the image's path (`review.jpg`, beside the video). Open it and read it left to right, top to bottom: 24 frames, evenly spaced from the first to the last.
+It prints the image's path (`review.jpg`, in the take's folder). Open it and read it left to right, top to bottom: 24 frames, evenly spaced from the first to the last.
 
-Setting `"review": true` in `.product-demo/config.json` makes `cut` produce it every time.
+Setting `"review": true` in `~/.product-demo/config.json` makes `cut` produce it every time.
 
 ## What to check
 
@@ -25,4 +25,4 @@ Setting `"review": true` in `.product-demo/config.json` makes `cut` produce it e
 
 ## When something is wrong
 
-Say what you saw, frame by frame. If the film can fix it (a wrong step, a missing wait for the result), fix `film.json`, rehearse, shoot and cut again, then review again. If it can't (the app showed an error, or the toolkit can't do what's needed), tell the user rather than handing over the video.
+Say what you saw, frame by frame. If the film can fix it (a wrong step, a missing wait for the result), fix the video's `film.json`, rehearse, shoot and cut again, then review again. If it can't (the app showed an error, or the toolkit can't do what's needed), tell the user rather than handing over the video.

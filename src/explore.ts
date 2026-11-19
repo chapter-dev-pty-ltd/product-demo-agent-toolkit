@@ -9,7 +9,7 @@ import type { Locator, Page } from 'playwright-core'
 import { readConfig } from './config.ts'
 import { findDrawn, type Drawn } from './drawn.ts'
 import { describeStep, KEYS, type Key, type Point, type Step, type Target } from './film.ts'
-import { LOG, readLog, startLog, writeLog } from './log.ts'
+import { logFile, readLog, startLog, useLogDir, writeLog } from './log.ts'
 import { act, find, Hand, type Finder } from './perform.ts'
 import { watch } from './settle.ts'
 import { fingerprint } from './similo.ts'
@@ -20,8 +20,15 @@ import { launchBrowser } from './tools.ts'
 // every action the agent takes is logged and pinned, for it to write
 // the film from afterwards (log.ts).
 
-const DIR = join('.product-demo', 'explore')
-const SESSION = join(DIR, 'session.json')
+// Each video is explored in its own folder, so two sessions can explore two videos at once.
+let DIR = ''
+let SESSION = ''
+/** Explores in `dir`: the explore folder of the video. */
+export function exploreIn(dir: string): void {
+  DIR = dir
+  SESSION = join(dir, 'session.json')
+  useLogDir(dir)
+}
 const IDLE_MS = 30 * 60_000
 
 interface Session {
@@ -43,7 +50,7 @@ export async function explore(url: string): Promise<string> {
     throw new Error(
       'Could not find the product-demo-agent-toolkit script to start the browser with.',
     )
-  spawn(process.execPath, [script, '__serve', url], {
+  spawn(process.execPath, [script, '__serve', DIR, url], {
     detached: true,
     stdio: ['ignore', log, log],
   }).unref()
@@ -61,7 +68,9 @@ export async function send(command: string, args: string[]): Promise<string> {
   try {
     session = JSON.parse(await readFile(SESSION, 'utf8'))
   } catch {
-    throw new Error('Not exploring. Start with `product-demo-agent-toolkit explore <url>`.')
+    throw new Error(
+      'Not exploring this video. Start with `product-demo-agent-toolkit explore <video> <url>`.',
+    )
   }
   const response = await fetch(`http://127.0.0.1:${session.port}/`, {
     method: 'POST',
@@ -70,7 +79,7 @@ export async function send(command: string, args: string[]): Promise<string> {
   }).catch(async () => {
     await rm(SESSION, { force: true })
     throw new Error(
-      'The explore browser has stopped. Start again with `product-demo-agent-toolkit explore <url>`.',
+      'The explore browser has stopped. Start again with `product-demo-agent-toolkit explore <video> <url>`.',
     )
   })
   const text = await response.text()
@@ -338,7 +347,7 @@ export async function serve(url: string): Promise<void> {
     end: async () => {
       const log = await readLog()
       setTimeout(() => void stop(), 100)
-      return `Closed the browser. The log, with ${log.entries.length} steps, is ${LOG}: write film.json from it.`
+      return `Closed the browser. The log, with ${log.entries.length} steps, is ${logFile()}: write the video's film.json, beside it, from it.`
     },
   }
 

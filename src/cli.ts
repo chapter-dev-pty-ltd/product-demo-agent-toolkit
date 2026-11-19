@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { copyFile, rm, writeFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import {
   cut,
@@ -16,14 +17,22 @@ import {
   saveKey,
   review,
   videoLength,
-  latestRun,
   NeedsDecision,
-  newRun,
   readConfig,
   readFilm,
   rehearse,
   send,
   serve,
+  exploreIn,
+  findVideo,
+  filesOf,
+  latestTake,
+  listVideos,
+  lookToRaw,
+  newRun,
+  newVideo,
+  recentChat,
+  type Video,
   shoot,
   speakLines,
   studio,
@@ -39,48 +48,57 @@ import {
 
 const USAGE = `product-demo-agent-toolkit ${version}
 
-0. Get the project ready, and see what's missing (run it first):
+0. Get ready, and see what's missing (run it first):
   product-demo-agent-toolkit init
-  product-demo-agent-toolkit key elevenlabs         Save a voice provider's key for every project (asks for it, hidden, or reads it piped in)
+  product-demo-agent-toolkit key elevenlabs         Save a voice provider's key (asks for it, hidden, or reads it piped in)
 
-1. Explore the app, off camera, to learn it and find the path. Every action is logged, pinned.
+1. Start a video. It gets a short id: every command after this one starts with it.
+  product-demo-agent-toolkit new "<title>" [--session name]   Its title, or else the session's name
+  product-demo-agent-toolkit videos                 Every video: id, title, takes
+
+2. Explore the app, off camera, to learn it and find the path. Every action is logged, pinned.
    Name an element by its ref from look (@e12), or by a point on look's screenshot (640,320):
-  product-demo-agent-toolkit explore <url>          Open the app in a background browser and show the screen
-  product-demo-agent-toolkit look [--all]           What's on screen as an accessibility tree with refs, and a screenshot
-  product-demo-agent-toolkit handles                The small grab handles on screen (resize, rotate, sliders) and where they are
-  product-demo-agent-toolkit click <el> [--double] [--right] [--with Shift+Meta] [--at 0.9,0.5]
-  product-demo-agent-toolkit fill <el> "text"       Click into a field and type, replacing what's there
-  product-demo-agent-toolkit select <el> "option"   Choose an option in a native <select>
-  product-demo-agent-toolkit type "text"            Type where the caret is, like "@Sam" to open a mention menu
-  product-demo-agent-toolkit press <key>            Press a key, like Enter or Meta+K
-  product-demo-agent-toolkit hover <el> [--for 2]   Rest the pointer on an element, to show it or open what it reveals
-  product-demo-agent-toolkit drag <el> <el> [--at x,y] [--to-at x,y]
-  product-demo-agent-toolkit scroll up|down [--in <el>] [--by 600]
-  product-demo-agent-toolkit upload <file> [<el>]   Upload a file through the control that opens the picker
-  product-demo-agent-toolkit visit <path>
-  product-demo-agent-toolkit wait "text" [--gone] | <seconds>
-  product-demo-agent-toolkit back                   Mark the last step undone and return to the screen before it
-  product-demo-agent-toolkit end                    Close the browser
+  product-demo-agent-toolkit explore <video> <url>  Open the app in a background browser and show the screen
+  product-demo-agent-toolkit look <video> [--all]   What's on screen as an accessibility tree with refs, and a screenshot
+  product-demo-agent-toolkit handles <video>        The small grab handles on screen (resize, rotate, sliders) and where they are
+  product-demo-agent-toolkit click <video> <el> [--double] [--right] [--with Shift+Meta] [--at 0.9,0.5]
+  product-demo-agent-toolkit fill <video> <el> "text"     Click into a field and type, replacing what's there
+  product-demo-agent-toolkit select <video> <el> "option" Choose an option in a native <select>
+  product-demo-agent-toolkit type <video> "text"    Type where the caret is, like "@Sam" to open a mention menu
+  product-demo-agent-toolkit press <video> <key>    Press a key, like Enter or Meta+K
+  product-demo-agent-toolkit hover <video> <el> [--for 2] Rest the pointer on an element, to show it or open what it reveals
+  product-demo-agent-toolkit drag <video> <el> <el> [--at x,y] [--to-at x,y]
+  product-demo-agent-toolkit scroll <video> up|down [--in <el>] [--by 600]
+  product-demo-agent-toolkit upload <video> <file> [<el>] Upload a file through the control that opens the picker
+  product-demo-agent-toolkit visit <video> <path>
+  product-demo-agent-toolkit wait <video> "text" [--gone] | <seconds>
+  product-demo-agent-toolkit back <video>           Mark the last step undone and return to the screen before it
+  product-demo-agent-toolkit end <video>            Close the browser
 
-2. Write film.json from the log (.product-demo/explore/log.json), then rehearse it until it's right:
-  product-demo-agent-toolkit voice <film.json>      Speak the film's lines, and show when each step's word lands
-  product-demo-agent-toolkit rehearse <film.json>   A full run without the camera, with a still after each step
+3. Write the video's film.json from its explore log (both are in its folder), then rehearse it until it's right:
+  product-demo-agent-toolkit voice <video>          Speak the film's lines, and show when each step's word lands
+  product-demo-agent-toolkit rehearse <video>       A full run without the camera, with a still after each step
 
-3. Shoot it, and cut the footage into a video:
-  product-demo-agent-toolkit shoot <film.json>
-  product-demo-agent-toolkit cut [footage] [--out video.mp4]
-  product-demo-agent-toolkit review [footage | video.mp4]  An image of frames from across the video, to check it by
-  product-demo-agent-toolkit studio [footage] [--session name] [--agent name] [--say "reply"]
-                                                    Open the take in the studio, then wait for the user's next message there and print it
-  product-demo-agent-toolkit studio --stop          Stop the studio
+4. Shoot it, cut it, and work on it with the user in the studio:
+  product-demo-agent-toolkit shoot <video>          A new take
+  product-demo-agent-toolkit cut <video> [--out video.mp4]  Cut the latest take into the video's video.mp4
+  product-demo-agent-toolkit review <video | video.mp4>     An image of frames from across the video, to check it by
+  product-demo-agent-toolkit studio <video> [--session name] [--agent name] [--say "reply"]
+                                                    Open the video in the studio, then wait for the user's next message there and print it
+  product-demo-agent-toolkit studio <video> --stop  Close its studio
+
+A <video> is its id, or words from its title.
 
 Set up, once: product-demo-agent-toolkit setup   Install the command for good, and the skills for every agent on this machine
              product-demo-agent-toolkit skills [dir]   Just the skills: for every agent found (Claude Code, Codex, Cursor, Gemini CLI, Copilot, OpenCode), or into dir
 
-Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (sky, any of the 22 in library/backdrops, a hex, or a path to your own .jpg/.png/.webp), display (none | browser), window ({ width, height, fill }, default 1600x900 filling 0.92 of the video),
+Everything is kept in ~/.product-demo. Its config.json is the default look for new videos (each video copies it into its own
+look.json, which the studio changes): backdrop (sky, any of the 22 in library/backdrops, a hex, or a path to your own .jpg/.png/.webp),
+display (none | browser), window ({ width, height, fill }, default 1600x900 filling 0.92 of the video),
 cursor (black | pink | lime | macos | a hex | a path to your own .svg, or { style, size, label, tip }), sound (true | false | { click }, default true),
-music (false | lofi | a path to an audio file, or { track, volume }, default false),
-keep (rehearsals and shoots kept per film, default 10), review (cut also makes the review image, default false).`
+music (false | lofi | a path to an audio file, or { track, volume }, default false).
+It also holds what every video shares: mode (just_do_it | ask), voice, keep (rehearsals and takes kept per video, default 5),
+review (cut also makes the review image, default false).`
 
 // Keys, such as ELEVENLABS_API_KEY: the environment, then the project's .env, then ~/.product-demo/.env.
 loadKeys()
@@ -136,36 +154,71 @@ const warn = (warnings: string[]) => {
   for (const warning of warnings) console.log(`Check: ${warning}`)
 }
 
+/** The video a command names, by its id or words from its title. */
+const videoNamed = async (ref: string | undefined): Promise<Video> => {
+  if (!ref)
+    throw new Error('Which video? Give its id, or words from its title. `videos` lists them.')
+  return findVideo(ref)
+}
+const configOf = (video: Video) => readConfig(filesOf(video).look)
+
 try {
   if (help) {
     console.log(USAGE)
   } else if (values.version) {
     console.log(version)
-  } else if (command === '__serve' && input) {
-    await serve(input)
-  } else if (command === 'explore' && input) {
-    console.log(await explore(input))
+  } else if (command === '__serve' && input && args[1]) {
+    exploreIn(input)
+    await serve(args[1])
+  } else if (command === 'new') {
+    const video = await newVideo(input, values.session)
+    console.log(
+      `Made "${video.title}": its id is ${video.id}. Every command for it starts with that id.`,
+    )
+    console.log(`Its folder: ${video.dir}`)
+    console.log(`Next: product-demo-agent-toolkit explore ${video.id} <url>`)
+  } else if (command === 'videos') {
+    const videos = await listVideos()
+    if (!videos.length)
+      console.log('No videos yet. Start one: product-demo-agent-toolkit new "<title>"')
+    for (const video of videos) {
+      const take = await latestTake(video).then(
+        ({ n }) => `take ${n}`,
+        () => 'not shot',
+      )
+      console.log(`${video.id}  ${video.title}  (${take})`)
+    }
+  } else if (command === 'explore' && input && args[1]) {
+    const video = await videoNamed(input)
+    exploreIn(filesOf(video).explore)
+    console.log(await explore(args[1]))
   } else if (command && EXPLORE.has(command)) {
-    console.log(await send(command, args))
-  } else if (command === 'rehearse' && input) {
-    const config = await readConfig()
-    const dir = await newRun('rehearsals', input, config.keep)
-    const rehearsal = await rehearse(await readFilm(input), dir, config)
+    const video = await videoNamed(args[0])
+    exploreIn(filesOf(video).explore)
+    console.log(await send(command, args.slice(1)))
+  } else if (command === 'rehearse') {
+    const video = await videoNamed(input)
+    const config = await configOf(video)
+    const dir = await newRun(video, 'rehearsals', config.keep)
+    const rehearsal = await rehearse(await readFilm(filesOf(video).film), dir, config)
     warn(rehearsal.warnings)
     console.log(
       `Rehearsed ${rehearsal.film.steps.length} steps. Look at each still before shooting:`,
     )
     for (const still of rehearsal.stills) console.log(`  ${still.file}  ${still.step}`)
-  } else if (command === 'shoot' && input) {
-    const config = await readConfig()
-    const film = await readFilm(input)
+  } else if (command === 'shoot') {
+    const video = await videoNamed(input)
+    const config = await configOf(video)
+    const filmFile = filesOf(video).film
+    const film = await readFilm(filmFile)
     let footage: Footage | undefined
     let dir = ''
     for (let attempt = 1; !footage; attempt++) {
-      dir = await newRun('footage', input, config.keep)
+      dir = await newRun(video, 'takes', config.keep)
       try {
-        footage = await shoot(film, resolve(input), dir, config)
+        footage = await shoot(film, filmFile, dir, config)
       } catch (error) {
+        await rm(dir, { recursive: true, force: true })
         // A rehearsed film that fails on camera usually flaked (a slow request): one more
         // try. A decision someone has to make won't change on a second try.
         if (attempt > 1 || error instanceof NeedsDecision) throw error
@@ -175,47 +228,64 @@ try {
     }
     warn(footage.warnings)
     console.log(
-      `Shot ${footage.end.toFixed(1)}s into ${dir}. Next: product-demo-agent-toolkit cut ${dir}`,
+      `Shot take ${basename(dir)} of "${video.title}" (${footage.end.toFixed(1)}s). Next: product-demo-agent-toolkit cut ${video.id}`,
     )
   } else if (command === 'cut') {
-    const config = await readConfig()
-    const from = input ?? (await latestRun('footage', 'footage.json'))
-    const out = values.out ?? join(from, 'video.mp4')
-    const seconds = await cut(from, out, config)
-    console.log(`Cut ${out} (${seconds.toFixed(1)}s)`)
+    const video = await videoNamed(input)
+    const config = await configOf(video)
+    const take = await latestTake(video)
+    const out = values.out ?? join(take.dir, 'video.mp4')
+    const seconds = await cut(take.dir, out, config)
+    // The look it was cut with, so this cut can be made again however the look changes.
+    await writeFile(join(take.dir, 'look.json'), `${JSON.stringify(lookToRaw(config), null, 2)}\n`)
+    if (!values.out) await copyFile(out, filesOf(video).cut)
+    const where = values.out ? out : filesOf(video).cut
+    console.log(`Cut take ${take.n} of "${video.title}" into ${where} (${seconds.toFixed(1)}s)`)
     if (config.review) console.log(`Review it: ${await review(out, seconds)}`)
   } else if (command === 'studio' && values.stop) {
-    console.log((await stopStudio()) ? 'Stopped the studio.' : "The studio isn't running.")
+    const video = await videoNamed(input)
+    console.log((await stopStudio(video)) ? 'Closed its studio.' : "Its studio isn't open.")
   } else if (command === 'studio') {
-    const from = input ?? (await latestRun('footage', 'footage.json'))
+    const video = await videoNamed(input)
     if (values.serve) {
       // The studio's own server, started in the background by the command below.
-      console.log(`Studio for ${from}: ${await studio(from, await readConfig())}`)
+      const take = await latestTake(video)
+      console.log(`Studio for ${video.id}: ${await studio(video, take.dir)}`)
     } else {
       const self = [process.execPath, ...process.execArgv, process.argv[1] ?? '']
-      console.log(
-        `Studio for ${from}: ${await openStudio(from, [...self, 'studio', from, '--serve'])}`,
-      )
-      if (values.say) await sayInStudio(values.say)
+      const address = await openStudio(video, [...self, 'studio', video.id, '--serve'])
+      console.log(`Studio for "${video.title}" (${video.id}): ${address}`)
+      // A session coming to the video fresh gets what was said before it.
+      if (!values.say) {
+        const recent = await recentChat(video, 6)
+        if (recent.length) {
+          console.log('The chat so far:')
+          for (const m of recent) console.log(`  ${m.from === 'you' ? 'User' : 'Agent'}: ${m.text}`)
+        }
+      }
+      if (values.say) await sayInStudio(video, values.say)
       console.log('Waiting for a message from the user in the studio…')
-      const messages = await waitForStudio({ session: values.session, agent: values.agent })
-      if (!messages.length) console.log('The studio stopped.')
+      const messages = await waitForStudio(video, { session: values.session, agent: values.agent })
+      if (!messages.length) console.log('The studio closed.')
       for (const m of messages) {
         const at = m.at === undefined ? '' : ` (at ${m.at.toFixed(1)}s in the take)`
         console.log(`The user says${at}: ${m.text || '(no words, only changes)'}`)
         if (m.changes) {
-          console.log(`With changes to ${m.film}, which need a rehearsal and a reshoot:`)
+          console.log(
+            `With changes to its film (${filesOf(video).film}), which need a rehearsal and a reshoot:`,
+          )
           for (const change of m.changes) console.log(`- ${change}`)
         }
       }
       if (messages.length)
         console.log(
-          'Next: do it, then reply and keep listening, in the background: product-demo-agent-toolkit studio --say "<what you did>"',
+          `Next: do it, then reply and keep listening, in the background: product-demo-agent-toolkit studio ${video.id} --say "<what you did>"`,
         )
     }
-  } else if (command === 'voice' && input) {
-    const config = await readConfig()
-    const film = await readFilm(input)
+  } else if (command === 'voice') {
+    const video = await videoNamed(input)
+    const config = await configOf(video)
+    const film = await readFilm(filesOf(video).film)
     const spoken = await speakLines(
       film.steps.flatMap((s) => (s.say ? [s.say] : [])),
       config.voice,
@@ -259,14 +329,15 @@ try {
       if (!existsSync(input)) throw new Error(`There's no video at ${input}.`)
       console.log(await review(input))
     } else {
-      const from = input ?? (await latestRun('footage', 'footage.json'))
-      const video = join(from, 'video.mp4')
-      if (!existsSync(video)) {
+      const video = await videoNamed(input)
+      const take = await latestTake(video)
+      const file = join(take.dir, 'video.mp4')
+      if (!existsSync(file)) {
         throw new Error(
-          `${from} hasn't been cut yet: product-demo-agent-toolkit cut ${from}. If it was cut to another file, review that: product-demo-agent-toolkit review <video.mp4>`,
+          `Take ${take.n} hasn't been cut yet: product-demo-agent-toolkit cut ${video.id}. If it was cut to another file, review that: product-demo-agent-toolkit review <video.mp4>`,
         )
       }
-      console.log(await review(video, videoLength(await readFootage(from))))
+      console.log(await review(file, videoLength(await readFootage(take.dir))))
     }
   } else {
     console.log(USAGE)

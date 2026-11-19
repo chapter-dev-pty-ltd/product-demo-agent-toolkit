@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { openSync, watch } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, request, type IncomingMessage, type ServerResponse } from 'node:http'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import {
@@ -8,8 +8,12 @@ import {
   CURSORS,
   DISPLAYS,
   MUSIC,
+  CONFIG_FILE,
+  LOOK_KEYS,
   isHex,
+  lookToRaw,
   readConfig,
+  readRaw,
   type Config,
   type Music,
   type ProjectFile,
@@ -18,21 +22,31 @@ import { prepare } from './cut/cut.ts'
 import { readFilm, type Film, type Highlight, type Step, type Target } from './film.ts'
 import type { Footage } from './perform.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
+import { filesOf, latestTake, type Video } from './videos.ts'
 
 // The studio: plays footage on the stage in a local page, with a panel beside it to change the
 // look (backdrop, frame, cursor) and the music, and see and hear it at once. The stage is the
 // same page the cut photographs, served over HTTP, so what plays is what the cut renders.
 //
-// It is also where the user talks to their agent. The server runs on its own, in the
-// background, and keeps the chat in .product-demo/studio/chat.json. The agent runs `studio`,
-// which starts the server if it isn't running, waits for the user's next message, prints it
-// and exits: an agent that's woken when a background command ends is woken by the message.
-// Changes the agent makes to the config show in the page as they're saved.
+// It is also where the user talks to their agent about one video. Each video has a studio of
+// its own: a server running in the background, with the video's chat in its chat.json. The
+// agent runs `studio <video>`, which starts that server if it isn't running, waits for the
+// user's next message there, prints it and exits: an agent that's woken when a background
+// command ends is woken by the message. Changes the agent makes to the video's look or film
+// show in the page as they're saved. Two sessions on two videos have two studios.
 
-const CONFIG_FILE = join('.product-demo', 'config.json')
-const STUDIO_DIR = join('.product-demo', 'studio')
-const CHAT_FILE = join(STUDIO_DIR, 'chat.json')
-const PORT = 4321
+/** Where a video's studio keeps what it needs: the chat, its port while it runs, its log. */
+function placesOf(video: Video) {
+  const dir = filesOf(video).studio
+  return {
+    dir,
+    chat: filesOf(video).chat,
+    server: join(dir, 'server.json'),
+    log: join(dir, 'server.log'),
+  }
+}
+/** The ports the studio tries, in order: 4000 and up (3000 is usually the app being filmed). */
+const PORTS = Array.from({ length: 100 }, (_, i) => 4000 + i)
 
 /** What the studio changes: the look, and the music under it. */
 interface Settings extends Look {
@@ -59,8 +73,14 @@ export interface StudioMessage {
   /** Where in the take the user was when they sent it, in seconds. */
   at?: number
   sent: string
-  /** Whether an agent has been given it (the user's messages only). */
+  /**
+   * Whether the agent has dealt with it: it's read once the agent replies after being given
+   * it (the user's messages only). Until then each wait gives it again, so an agent that
+   * stopped before replying doesn't lose it.
+   */
   read?: boolean
+  /** Whether an agent has been given it. */
+  delivered?: boolean
   /** Changes to the film the user attached from the script, which need a reshoot. */
   changes?: string[]
   /** The film they're to, when there are changes. */
@@ -129,12 +149,15 @@ function fromConfig(config: Config, hold: number, was: Own = {}) {
   return { settings, mine, extras }
 }
 
-/** Serves the studio for this footage and returns its address. */
+/** Serves the studio for this video's take and returns its address. */
 export async function studio(
+  video: Video,
   footageDir: string,
-  config: Config,
-  port: number = PORT,
+  ports: number[] = PORTS,
 ): Promise<string> {
+  const places = placesOf(video)
+  const lookFile = filesOf(video).look
+  const config = await readConfig(lookFile)
   const { footage, highlights, length, title } = await prepare(footageDir)
   const hold = Math.max(1, footage.film.ending?.hold ?? 2)
   let { settings, mine, extras } = fromConfig(config, hold)
@@ -150,22 +173,23 @@ export async function studio(
 
   // The chat, the pages open on it, and the agents waiting for the user's next message.
   const boot = Date.now().toString(36)
-  await mkdir(STUDIO_DIR, { recursive: true })
-  const chat: StudioMessage[] = await readFile(CHAT_FILE, 'utf8').then(JSON.parse, () => [])
-  const saveChat = () => writeFile(CHAT_FILE, `${JSON.stringify(chat, null, 2)}\n`)
+  await mkdir(places.dir, { recursive: true })
+  const chat: StudioMessage[] = await readFile(places.chat, 'utf8').then(JSON.parse, () => [])
+  const saveChat = () => writeFile(places.chat, `${JSON.stringify(chat, null, 2)}\n`)
   const pages = new Set<ServerResponse>()
   const waiters: { res: ServerResponse; who: Agent }[] = []
   let agent: (Agent & { listening: boolean }) | null = null
   const emit = (event: object) => {
     for (const page of pages) page.write(`data: ${JSON.stringify(event)}\n\n`)
   }
-  // Gives the user's unread messages to the agent that's been waiting longest.
+  // Gives the user's unread messages to the agent that's been waiting longest: new ones, and
+  // any given before that the agent never replied to.
   const deliver = async () => {
     const unread = chat.filter((m) => m.from === 'you' && !m.read)
     const waiter = waiters.shift()
     if (!waiter) return
     if (!unread.length) return void waiters.unshift(waiter)
-    for (const m of unread) m.read = true
+    for (const m of unread) m.delivered = true
     await saveChat()
     waiter.res.end(JSON.stringify(unread))
     agent = { ...waiter.who, listening: waiters.length > 0 }
@@ -173,13 +197,15 @@ export async function studio(
     emit({ type: 'agent', agent })
   }
 
-  // The config, as the agent (or anyone) saves it: the page reloads to show it.
+  // The video's look, as the agent (or anyone) saves it: the page reloads to show it.
   let settling: NodeJS.Timeout | undefined
-  const watcher = watch('.product-demo', (_, name) => {
-    if (name !== 'config.json') return
+  const watcher = watch(video.dir, (_, name) => {
+    if (name !== 'look.json') return
     clearTimeout(settling)
     settling = setTimeout(async () => {
-      const next = await readConfig().catch((error: Error) => void console.log(error.message))
+      const next = await readConfig(lookFile).catch(
+        (error: Error) => void console.log(error.message),
+      )
       if (!next) return
       const fresh = fromConfig(next, hold, mine)
       const same = (a: typeof fresh) => JSON.stringify([toPage(a.settings), a.extras])
@@ -211,12 +237,23 @@ export async function studio(
       res.end(body)
     }
     try {
+      // The stage is served at / for the studio's frame; opened in a tab, / is the studio.
+      if (path === '/' && req.headers['sec-fetch-dest'] === 'document') {
+        res.writeHead(302, { location: '/studio' })
+        return res.end()
+      }
       if (path === '/studio') {
         const now = toPage(settings)
-        return send(200, 'text/html', page(now, extras, footageDir, boot))
+        return send(200, 'text/html', page(now, extras, video, footageDir, boot))
       }
       if (path === '/studio/ping') {
-        return send(200, 'application/json', JSON.stringify({ footage: resolve(footageDir) }))
+        const about = {
+          studio: true,
+          video: video.id,
+          footage: resolve(footageDir),
+          pid: process.pid,
+        }
+        return send(200, 'application/json', JSON.stringify(about))
       }
       if (path === '/studio/events') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' })
@@ -233,6 +270,10 @@ export async function studio(
           : []
         if (!text && !changes.length) return send(400, 'text/plain', 'Nothing to send')
         const from = raw.from === 'agent' ? 'agent' : 'you'
+        // The agent's reply means it has dealt with what it was given.
+        if (from === 'agent') {
+          for (const m of chat) if (m.from === 'you' && m.delivered) m.read = true
+        }
         const at = Number(raw.at)
         chat.push({
           from,
@@ -274,6 +315,7 @@ export async function studio(
         filmWatcher.close()
         for (const open of [...pages, ...waiters.map((w) => w.res)]) open.end()
         server.closeAllConnections()
+        await rm(places.server, { force: true })
         return server.close()
       }
       if (path === '/studio/script') {
@@ -312,9 +354,24 @@ export async function studio(
       }
       if (path === '/studio/settings' && req.method === 'POST') {
         settings = fromPage(JSON.parse(await body(req)), settings, mine)
-        saving = saving.then(() => saveSettings(settings)).catch((e) => void console.log(e))
+        saving = saving.then(() => saveLook(lookFile, settings)).catch((e) => void console.log(e))
         await saving
         return send(200, 'application/json', JSON.stringify(toPage(settings)))
+      }
+      // The video's look back to the default as it is now; the watcher reloads the page.
+      if (path === '/studio/look/use-default' && req.method === 'POST') {
+        const fresh = lookToRaw(await readConfig())
+        await writeFile(lookFile, `${JSON.stringify(fresh, null, 2)}\n`)
+        return send(200, 'application/json', '{}')
+      }
+      // This video's look as the default for videos made from now on.
+      if (path === '/studio/look/make-default' && req.method === 'POST') {
+        const shared = await readRaw(CONFIG_FILE)
+        const look = lookToRaw(await readConfig(lookFile))
+        for (const key of LOOK_KEYS) shared[key] = look[key]
+        await mkdir(dirname(CONFIG_FILE), { recursive: true })
+        await writeFile(CONFIG_FILE, `${JSON.stringify(shared, null, 2)}\n`)
+        return send(200, 'application/json', '{}')
       }
       const thumb = path.match(/^\/studio\/backdrops\/([a-z-]+)\.jpg$/)
       if (thumb?.[1] && (BACKDROPS as readonly string[]).includes(thumb[1])) {
@@ -341,70 +398,119 @@ export async function studio(
     } catch (error) {
       // The details go to the server's log, not to whoever asked.
       console.log(error)
-      if (!res.headersSent)
-        send(400, 'text/plain', `That didn't work. See ${STUDIO_DIR}/server.log`)
+      if (!res.headersSent) send(400, 'text/plain', `That didn't work. See ${places.log}`)
     }
   })
   // The page's events and a waiting agent stay open for as long as they need.
   server.requestTimeout = 0
   server.timeout = 0
-  await new Promise<void>((done, fail) => {
-    server.once('error', fail)
-    server.listen(port, '127.0.0.1', done)
-  })
+  // The first free port of ours, written down for the studio commands to find.
+  let port: number | undefined
+  for (const next of ports) {
+    const free = await new Promise<boolean>((done, fail) => {
+      server.once('error', (error: NodeJS.ErrnoException) =>
+        error.code === 'EADDRINUSE' ? done(false) : fail(error),
+      )
+      server.listen(next, '127.0.0.1', () => done(true))
+    })
+    if (free) {
+      port = next
+      break
+    }
+  }
+  if (port === undefined) throw new Error(`No free port for the studio in ${ports.join(', ')}.`)
+  server.removeAllListeners('error')
+  await writeFile(places.server, `${JSON.stringify({ port, pid: process.pid })}\n`)
   return `http://localhost:${port}/studio`
 }
 
-/**
- * Makes sure the studio is running on this footage, starting its server in the background with
- * `serve` (the command that runs it) if it isn't, and returns its address. A studio on other
- * footage, such as the take before a reshoot, is stopped first.
- */
-export async function openStudio(
-  footageDir: string,
-  serve: string[],
-  port: number = PORT,
-): Promise<string> {
-  const address = `http://localhost:${port}/studio`
-  const running = await call(port, 'GET', '/studio/ping').then(
-    (text) => JSON.parse(text) as { footage: string },
+/** The port of this video's running studio, if it's running. */
+async function runningPort(video: Video): Promise<number | undefined> {
+  const port = await readFile(placesOf(video).server, 'utf8').then(
+    (text) => Number(JSON.parse(text).port),
     () => undefined,
   )
-  if (running?.footage === resolve(footageDir)) return address
-  if (running) await stopStudio(port)
-  await mkdir(STUDIO_DIR, { recursive: true })
-  const logFile = join(STUDIO_DIR, 'server.log')
-  const log = openSync(logFile, 'a')
+  if (!port) return undefined
+  // The file can outlive the studio, and something else can have the port since: ask it.
+  const about = await call(port, 'GET', '/studio/ping').then(JSON.parse, () => undefined)
+  return about?.studio && about.video === video.id ? port : undefined
+}
+
+/** The port of this video's running studio, or an error saying how to open it. */
+async function studioPort(video: Video): Promise<number> {
+  const port = await runningPort(video)
+  if (!port) {
+    throw new Error(
+      `The studio for ${video.id} isn't open. Open it with: product-demo-agent-toolkit studio ${video.id}`,
+    )
+  }
+  return port
+}
+
+/**
+ * Makes sure the video's studio is running on its latest take, starting its server in the
+ * background with `serve` (the command that runs it) if it isn't, and returns its address. A
+ * studio on an older take, from before a reshoot, is stopped first.
+ */
+export async function openStudio(video: Video, serve: string[]): Promise<string> {
+  const take = await latestTake(video)
+  const port = await runningPort(video)
+  const running =
+    port &&
+    (await call(port, 'GET', '/studio/ping').then(
+      (text) => JSON.parse(text) as { footage: string },
+      () => undefined,
+    ))
+  if (port && running && running.footage === resolve(take.dir)) {
+    return `http://localhost:${port}/studio`
+  }
+  if (running) await stopStudio(video)
+  const places = placesOf(video)
+  await mkdir(places.dir, { recursive: true })
+  const log = openSync(places.log, 'a')
   const [command = process.execPath, ...args] = serve
   spawn(command, args, { detached: true, stdio: ['ignore', log, log] }).unref()
   for (let i = 0; i < 100; i++) {
     await new Promise((done) => setTimeout(done, 150))
-    if (await call(port, 'GET', '/studio/ping').catch(() => undefined)) return address
+    const started = await runningPort(video)
+    if (started) return `http://localhost:${started}/studio`
   }
-  throw new Error(`The studio didn't start. See ${logFile}`)
+  throw new Error(`The studio didn't start. See ${places.log}`)
 }
 
-/** Stops the studio running in the background, if one is. */
-export async function stopStudio(port: number = PORT): Promise<boolean> {
+/** Stops the video's studio, if it's running. */
+export async function stopStudio(video: Video): Promise<boolean> {
+  const port = await runningPort(video)
+  if (!port) return false
   return call(port, 'POST', '/studio/stop').then(
     () => true,
     () => false,
   )
 }
 
-/** Puts the agent's message in the studio's chat. */
-export async function sayInStudio(text: string, port: number = PORT): Promise<void> {
-  await call(port, 'POST', '/studio/chat', JSON.stringify({ from: 'agent', text }))
+/** Puts the agent's message in the video's studio chat. */
+export async function sayInStudio(video: Video, text: string): Promise<void> {
+  const payload = JSON.stringify({ from: 'agent', text })
+  await call(await studioPort(video), 'POST', '/studio/chat', payload)
 }
 
-/** Waits for the user's next messages in the studio (or returns any not yet read). */
-export async function waitForStudio(who: Agent, port: number = PORT): Promise<StudioMessage[]> {
+/** Waits for the user's next messages in the video's studio (or returns any not yet read). */
+export async function waitForStudio(video: Video, who: Agent): Promise<StudioMessage[]> {
   const query = new URLSearchParams(
     Object.entries(who).filter((entry): entry is [string, string] => Boolean(entry[1])),
   )
   // Nothing back means the studio stopped while it waited.
-  const text = await call(port, 'GET', `/studio/wait?${query}`)
+  const text = await call(await studioPort(video), 'GET', `/studio/wait?${query}`)
   return text ? JSON.parse(text) : []
+}
+
+/** The last `count` messages in the video's chat, oldest first. */
+export async function recentChat(video: Video, count: number): Promise<StudioMessage[]> {
+  const chat: StudioMessage[] = await readFile(placesOf(video).chat, 'utf8').then(
+    JSON.parse,
+    () => [],
+  )
+  return chat.slice(-count)
 }
 
 /** A request to the studio's server, with no timeout: a wait can last as long as the user. */
@@ -585,43 +691,26 @@ function fromPage(raw: Partial<PageSettings>, was: Settings, mine: Own): Setting
   }
 }
 
-/** A setting as the config writes it: the project's own files by their path from the project. */
-const written = <T>(value: T | ProjectFile): T | string =>
-  own(value) ? relative(process.cwd(), value.file) : value
-
-/** Writes the settings into the project's config, keeping everything else in it. */
-async function saveSettings(settings: Settings): Promise<void> {
-  const raw = await readFile(CONFIG_FILE, 'utf8').then(JSON.parse, () => ({}))
-  const { size, label, tip } = settings.cursor
-  const style = written(settings.cursor.style)
-  raw.backdrop = written(settings.backdrop)
-  raw.display = settings.display
-  // The window's size stays as the config has it: only how much of the video it fills changes.
-  if (raw.window || settings.window.fill !== 0.92) {
-    raw.window = { ...raw.window, fill: settings.window.fill }
-  }
-  raw.cursor =
-    size === 1 && !label && !tip
-      ? style
-      : { style, size, ...(label ? { label } : {}), ...(tip ? { tip } : {}) }
-  const { music } = settings
-  raw.music = !music
-    ? false
-    : music.volume === 0.25
-      ? written(music.track)
-      : { track: written(music.track), volume: music.volume }
-  await writeFile(CONFIG_FILE, `${JSON.stringify(raw, null, 2)}\n`)
+/** Writes the studio's settings into the video's look, keeping its sound as it is. */
+async function saveLook(lookFile: string, settings: Settings): Promise<void> {
+  const config = await readConfig(lookFile)
+  const look = lookToRaw({ ...config, ...settings })
+  await writeFile(lookFile, `${JSON.stringify(look, null, 2)}\n`)
 }
 
 /** The studio page: the stage over a timeline, and the look's settings on the right. */
 function page(
   look: PageSettings,
   extras: { owned: Record<string, string | null>; music: readonly string[]; hold: number },
+  video: Video,
   footageDir: string,
   boot: string,
 ): string {
-  const take = basename(footageDir).replace(/</g, '&lt;')
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Studio · ${take}</title>
+  const escape = (text: string) =>
+    text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
+  const title = escape(video.title)
+  const take = escape(basename(footageDir))
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${title} · Studio</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -637,7 +726,7 @@ function page(
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   font: 13px/1.45 Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; }
-body { display: grid; grid-template-columns: 1fr 340px; height: 100vh; }
+body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh; }
 
 .primary { height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--text); color: #fff;
   font-weight: 500; cursor: pointer; }
@@ -646,9 +735,8 @@ body { display: grid; grid-template-columns: 1fr 340px; height: 100vh; }
 
 /* Editor: the preview over the transport and the timeline */
 .editor { display: grid; grid-template-rows: 1fr auto auto; min-width: 0; min-height: 0; }
-#viewer { position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 20px 24px 12px; }
-#screen { position: relative; overflow: hidden; border-radius: 12px; background: #111;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / .06), 0 12px 32px rgb(0 0 0 / .08); }
+#viewer { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 20px 24px 12px; }
+#screen { position: relative; flex: none; border-radius: 10px; box-shadow: 0 12px 32px rgb(0 0 0 / .08), 0 2px 6px rgb(0 0 0 / .04); }
 #screen iframe { position: absolute; left: 0; top: 0; width: ${CANVAS.width}px; height: ${CANVAS.height}px; border: 0; transform-origin: 0 0; }
 #screen iframe.loading { visibility: hidden; }
 .transport { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 16px;
@@ -699,6 +787,13 @@ body { display: grid; grid-template-columns: 1fr 340px; height: 100vh; }
 
 /* Settings panel */
 aside { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.video { padding: 16px 20px 4px; display: flex; flex-direction: column; gap: 2px; }
+.video b { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.video span { font: 12px var(--mono); color: var(--faint); }
+.look-source { display: flex; align-items: center; gap: 12px; margin: -18px -20px 18px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--soft); font-size: 12px; color: var(--dim); }
+.look-source span { flex: 1; }
+.look-source button { border: 0; background: none; padding: 0; font-weight: 500; color: var(--text); cursor: pointer; }
+.look-source button:hover { text-decoration: underline; }
 .tabs { display: flex; gap: 18px; padding: 0 20px; border-bottom: 1px solid var(--line); }
 .tabs button { border: 0; background: none; padding: 12px 0 10px; color: var(--dim); font-weight: 500; cursor: pointer; border-bottom: 1.5px solid transparent; margin-bottom: -1px; }
 .tabs button[aria-selected="true"] { color: var(--text); border-color: var(--text); }
@@ -824,6 +919,7 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
 </section>
 
 <aside>
+  <div class="video"><b title="${title}">${title}</b><span>${video.id} · take ${take}</span></div>
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected="true" data-tab="chat">Agent</button>
     <button role="tab" aria-selected="false" data-tab="script">Script</button>
@@ -847,6 +943,7 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
     </div>
   </div>
   <div class="panel" id="settings" hidden>
+    <div class="look-source"><span>Saved with this video</span><button type="button" id="use-default" title="Replace this video's look with your default">Use default</button><button type="button" id="make-default" title="Make this look the default for new videos">Make default</button></div>
     <div class="field">
       <div class="label">Backdrop</div>
       <button class="picker" id="backdrop-picker" aria-expanded="false">
@@ -910,12 +1007,21 @@ const viewer = $('viewer'), screen = $('screen');
 let frame, data, length = 0, t = 0, playing = false, last = 0;
 
 // The stage is 1920x1080; the screen is that, scaled to fit the viewer.
+// The screen is a whole, even number of pixels each way, so it sits on the pixel grid, and the
+// stage is stretched to fill it exactly: no sliver of anything behind shows at its edges. The
+// corners are rounded on the stage itself, so the curve is drawn at its full size.
 const fit = () => {
   const w = viewer.clientWidth - 48, h = viewer.clientHeight - 32;
   const k = Math.max(0.05, Math.min(w / ${CANVAS.width}, h / ${CANVAS.height}));
-  screen.style.width = ${CANVAS.width} * k + 'px';
-  screen.style.height = ${CANVAS.height} * k + 'px';
-  for (const f of screen.querySelectorAll('iframe')) f.style.transform = 'scale(' + k + ')';
+  const even = (n) => Math.max(2, Math.floor(n / 2) * 2);
+  const width = even(${CANVAS.width} * k), height = even(${CANVAS.height} * k);
+  screen.style.width = width + 'px';
+  screen.style.height = height + 'px';
+  const sx = width / ${CANVAS.width}, sy = height / ${CANVAS.height};
+  for (const f of screen.querySelectorAll('iframe')) {
+    f.style.transform = 'scale(' + sx + ',' + sy + ')';
+    f.style.clipPath = 'inset(0 round ' + 10 / sx + 'px / ' + 10 / sy + 'px)';
+  }
 };
 new ResizeObserver(fit).observe(viewer);
 
@@ -1224,7 +1330,7 @@ const showChat = () => {
       at.onclick = () => { t = Math.min(length, m.at); seek(); };
       meta.appendChild(at);
     }
-    if (m.from === 'you' && !m.read) meta.append('Not read yet');
+    if (m.from === 'you' && !m.read) meta.append(m.delivered ? 'With the agent' : 'Not read yet');
     if (meta.childNodes.length) el.appendChild(meta);
     list.appendChild(el);
   }
@@ -1424,6 +1530,13 @@ $('tray-send').onclick = () => {
 };
 fetch('/studio/script').then((r) => r.json()).then((x) => { script = x; showScript(); showCurrent(); });
 showAttached();
+
+// This video's look and the default: replace one with the other.
+$('use-default').onclick = () => fetch('/studio/look/use-default', { method: 'POST' });
+$('make-default').onclick = async () => {
+  const res = await fetch('/studio/look/make-default', { method: 'POST' });
+  if (res.ok) { $('make-default').textContent = 'Saved as default'; setTimeout(() => ($('make-default').textContent = 'Make default'), 1600); }
+};
 
 const events = new EventSource('/studio/events');
 events.onmessage = (e) => {

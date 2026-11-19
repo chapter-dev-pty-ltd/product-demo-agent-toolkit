@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
+import { HOME } from './home.ts'
 import type { VoiceChoice } from './voice.ts'
 
 /** The backdrops in library/backdrops, by name. */
@@ -48,7 +49,7 @@ function isOneOf<T extends string>(list: readonly T[], value: string): value is 
   return list.some((item) => item === value)
 }
 
-/** A file of the project's own, from a path in the config, relative to the project. */
+/** A file of the user's own, from a path in the config or a video's look (made absolute). */
 export interface ProjectFile {
   file: string
 }
@@ -224,8 +225,8 @@ const config: z.ZodType<Config> = z.strictObject({
     .number()
     .int()
     .min(1)
-    .default(10)
-    .describe('How many rehearsals and shoots of each film to keep. Older ones are deleted.'),
+    .default(5)
+    .describe('How many rehearsals and takes of each video to keep. Older ones are deleted.'),
   review: z
     .boolean()
     .default(false)
@@ -238,19 +239,76 @@ const config: z.ZodType<Config> = z.strictObject({
     ),
 })
 
-const CONFIG_FILE: string = join('.product-demo', 'config.json')
+/** The default look for new videos, and the settings every video shares. */
+export const CONFIG_FILE: string = join(HOME, 'config.json')
 
-/** The project's config, with defaults for anything it doesn't set. */
-export async function readConfig(): Promise<Config> {
-  let raw: unknown = {}
+/**
+ * The settings that make up a video's look and sound. Each video keeps its own copy in its
+ * look.json, taken from the default when it's made, so a later change to the default never
+ * changes a video that already exists.
+ */
+export const LOOK_KEYS = ['backdrop', 'display', 'window', 'cursor', 'sound', 'music'] as const
+export type LookSettings = Pick<Config, (typeof LOOK_KEYS)[number]>
+
+/**
+ * The settings for a video: the shared config, with its look from `lookFile` when it has one.
+ * Without one, the default look.
+ */
+export async function readConfig(lookFile?: string): Promise<Config> {
+  const shared = await readRaw(CONFIG_FILE)
+  const look = lookFile ? await readRaw(lookFile) : {}
+  const raw = { ...shared, ...look }
+  const parsed = config.safeParse(raw)
+  if (!parsed.success) {
+    const where = lookFile ? `${CONFIG_FILE} with ${lookFile}` : CONFIG_FILE
+    throw new Error(`${where} is not valid:\n${z.prettifyError(parsed.error)}`)
+  }
+  return parsed.data
+}
+
+/** A settings file as it's written, with its own files' paths made absolute (or {} if none). */
+export async function readRaw(file: string): Promise<Record<string, unknown>> {
+  let raw: Record<string, unknown> = {}
   try {
-    const { $schema: _, ...rest } = JSON.parse(await readFile(CONFIG_FILE, 'utf8'))
+    const { $schema: _, ...rest } = JSON.parse(await readFile(file, 'utf8'))
     raw = rest
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
-  const parsed = config.safeParse(raw)
-  if (!parsed.success)
-    throw new Error(`${CONFIG_FILE} is not valid:\n${z.prettifyError(parsed.error)}`)
-  return parsed.data
+  // A path is relative to the file it's written in, so it means the same file wherever the
+  // settings are read from.
+  const base = dirname(file)
+  const path = (value: unknown) =>
+    typeof value === 'string' && /[/\\]|\.\w+$/.test(value) && !value.startsWith('#')
+      ? resolve(base, value)
+      : value
+  const inside = (value: unknown, key: string) =>
+    value && typeof value === 'object' && key in value
+      ? { ...value, [key]: path((value as Record<string, unknown>)[key]) }
+      : path(value)
+  if ('backdrop' in raw) raw.backdrop = path(raw.backdrop)
+  if ('cursor' in raw) raw.cursor = inside(raw.cursor, 'style')
+  if ('music' in raw) raw.music = inside(raw.music, 'track')
+  return raw
+}
+
+/** A look as it's written in a file: its own files by path, the rest as they are. */
+export function lookToRaw(look: LookSettings): Record<string, unknown> {
+  const written = <T>(value: T | ProjectFile): T | string =>
+    typeof value === 'object' && value !== null && 'file' in value ? value.file : value
+  const { size, label, tip } = look.cursor
+  const music = look.music
+  return {
+    backdrop: written(look.backdrop),
+    display: look.display,
+    window: look.window,
+    cursor: {
+      style: written(look.cursor.style),
+      size,
+      ...(label ? { label } : {}),
+      ...(tip ? { tip } : {}),
+    },
+    sound: look.sound,
+    music: music ? { track: written(music.track), volume: music.volume } : false,
+  }
 }

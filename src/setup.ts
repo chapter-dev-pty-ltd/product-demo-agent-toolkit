@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { appendFile, chmod, cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
+import { HOME } from './home.ts'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseEnv } from 'node:util'
@@ -13,7 +14,7 @@ import { PROVIDERS, type VoiceProvider } from './voice.ts'
 // Getting a project ready, and keeping keys. A key is looked for in the environment, then the
 // project's .env, then ~/.product-demo/.env, so one saved there works in every project.
 
-const HOME_ENV = join(homedir(), '.product-demo', '.env')
+const HOME_ENV = join(HOME, '.env')
 
 /**
  * Loads the voice providers' keys from the project's .env, then the home one. Only those keys:
@@ -135,7 +136,8 @@ export async function init(): Promise<string[]> {
   if (existsSync('.git') || existsSync('.gitignore')) {
     const ignore = existsSync('.gitignore') ? await readFile('.gitignore', 'utf8') : ''
     const lines = new Set(ignore.split('\n').map((line) => line.trim().replace(/\/$/, '')))
-    const missing = ['.product-demo/', '.env'].filter((l) => !lines.has(l.replace(/\/$/, '')))
+    // Videos are kept in ~/.product-demo, not the project: only a key in .env needs keeping out.
+    const missing = ['.env'].filter((l) => !lines.has(l.replace(/\/$/, '')))
     if (missing.length > 0) {
       const gap = ignore && !ignore.endsWith('\n') ? '\n' : ''
       await appendFile('.gitignore', `${gap}${missing.join('\n')}\n`)
