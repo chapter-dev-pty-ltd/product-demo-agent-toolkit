@@ -12,11 +12,12 @@ import {
   isHex,
   lookToRaw,
   readConfig,
+  soundOn,
   type Config,
   type Music,
   type ProjectFile,
 } from './config.ts'
-import { prepare } from './cut/cut.ts'
+import { prepare, stems, type Stem } from './cut/cut.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
 import { filesOf, latestTake, type Video } from './videos.ts'
 
@@ -91,8 +92,20 @@ function fromConfig(config: Config, hold: number, was: Own = {}) {
     },
     music: MUSIC,
     hold,
+    sound: config.sound,
   }
   return { settings, mine, extras }
+}
+
+export function byteRange(
+  header: string | undefined,
+  size: number,
+): { from: number; to: number } | 'unsatisfiable' | undefined {
+  const [, start = '', end = ''] = header?.match(/^bytes=(\d*)-(\d*)$/) ?? []
+  if (!start && !end) return undefined
+  const from = start ? Number(start) : Math.max(0, size - Number(end))
+  const to = start && end ? Math.min(Number(end), size - 1) : size - 1
+  return from < size && from <= to ? { from, to } : 'unsatisfiable'
 }
 
 // Host turns away DNS rebinding; Origin turns away other sites' pages. The agent's
@@ -117,6 +130,9 @@ export async function studio(
   const config = await readConfig(lookFile)
   const { footage, highlights, length, title } = await prepare(footageDir)
   const hold = Math.max(1, footage.film.ending?.hold ?? 2)
+  const sounds = stems(footageDir, footage, length).catch(
+    (error: Error): Partial<Record<Stem, string>> => (console.log(error.message), {}),
+  )
   let { settings, mine, extras } = fromConfig(config, hold)
   let saving = Promise.resolve()
   const staged = (lit: typeof highlights) =>
@@ -184,8 +200,28 @@ export async function studio(
     const url = new URL(req.url ?? '/', 'http://studio')
     const path = url.pathname
     const send = (status: number, contentType: string, body: Buffer | string) => {
-      res.writeHead(status, { 'content-type': contentType, 'cache-control': 'no-store' })
-      res.end(body)
+      const head = { 'content-type': contentType, 'cache-control': 'no-store' }
+      if (status !== 200 || !Buffer.isBuffer(body)) {
+        res.writeHead(status, head)
+        return res.end(body)
+      }
+      const size = body.length
+      const part = byteRange(req.headers.range, size)
+      if (part === 'unsatisfiable') {
+        res.writeHead(416, { ...head, 'content-range': `bytes */${size}` })
+        return res.end()
+      }
+      if (!part) {
+        res.writeHead(200, { ...head, 'accept-ranges': 'bytes' })
+        return res.end(body)
+      }
+      res.writeHead(206, {
+        ...head,
+        'accept-ranges': 'bytes',
+        'content-range': `bytes ${part.from}-${part.to}/${size}`,
+        'content-length': part.to - part.from + 1,
+      })
+      res.end(body.subarray(part.from, part.to + 1))
     }
     if (port === undefined || !trusted(port, req.headers.host, req.headers.origin)) {
       return send(403, 'text/plain', 'Not allowed.')
@@ -199,7 +235,10 @@ export async function studio(
       }
       if (path === '/studio') {
         const now = toPage(settings)
-        return send(200, 'text/html', page(now, extras, video, footageDir, boot))
+        const heard = (Object.keys(await sounds) as Stem[]).filter(
+          (stem) => stem === 'voice' || soundOn(stem, extras.sound),
+        )
+        return send(200, 'text/html', page(now, extras, video, footageDir, boot, heard))
       }
       if (path === '/studio/ping') {
         const about = {
@@ -296,6 +335,9 @@ export async function studio(
       if (track && (MUSIC as readonly string[]).includes(track)) {
         return send(200, 'audio/mpeg', await readFile(library(`music/${track}.mp3`)))
       }
+      const stem = path.match(/^\/studio\/sound\/(click|typing|voice)$/)?.[1] as Stem | undefined
+      const sound = stem && (await sounds)[stem]
+      if (sound) return send(200, 'audio/mp4', await readFile(sound))
       const served = await stage(path)
       if (!served) return send(404, 'text/plain', 'Not found')
       return send(200, served.contentType, served.body)
@@ -567,6 +609,7 @@ function page(
   video: Video,
   footageDir: string,
   boot: string,
+  heard: Stem[],
 ): string {
   const escape = (text: string) =>
     text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
@@ -823,6 +866,7 @@ const BACKDROPS = ${JSON.stringify(BACKDROPS)};
 const OWNED = ${JSON.stringify(extras.owned)};
 const TRACKS = ${JSON.stringify(extras.music)};
 const HOLD = ${extras.hold};
+const STEMS = ${JSON.stringify(heard)};
 const BOOT = ${JSON.stringify(boot)};
 const fileName = (path) => path.split('/').pop();
 const CURSORS = { black: '#111111', pink: '#ff7ccb', lime: '#b6f24f', macos: 'linear-gradient(135deg,#000 50%,#fff 50%)' };
@@ -1018,7 +1062,13 @@ const wave = async (src) => {
   } catch {}
 };
 let heard = true;
+const stems = STEMS.map((stem) => Object.assign(new Audio('/studio/sound/' + stem), { preload: 'auto' }));
 const audio = () => {
+  for (const s of stems) {
+    if (!playing || !heard || t >= (s.duration || Infinity)) { s.pause(); continue; }
+    if (s.paused || Math.abs(s.currentTime - t) > 0.3) s.currentTime = t;
+    if (s.paused) s.play().catch(() => {});
+  }
   const on = playing && heard && look.music;
   if (!on) { player.pause(); return; }
   const src = musicSrc(look.music);

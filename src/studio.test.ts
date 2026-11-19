@@ -1,5 +1,26 @@
 import { describe, expect, test } from 'vitest'
-import { trusted } from './studio.ts'
+import { byteRange, trusted } from './studio.ts'
+
+describe('the part of a file the browser asks for', () => {
+  test('a span, an open end, and the last bytes', () => {
+    expect(byteRange('bytes=0-', 100)).toEqual({ from: 0, to: 99 })
+    expect(byteRange('bytes=10-19', 100)).toEqual({ from: 10, to: 19 })
+    expect(byteRange('bytes=90-500', 100)).toEqual({ from: 90, to: 99 })
+    expect(byteRange('bytes=-30', 100)).toEqual({ from: 70, to: 99 })
+    expect(byteRange('bytes=-500', 100)).toEqual({ from: 0, to: 99 })
+  })
+
+  test('the whole file when it asks for no part', () => {
+    expect(byteRange(undefined, 100)).toBeUndefined()
+    expect(byteRange('bytes=-', 100)).toBeUndefined()
+    expect(byteRange('bytes=0-9,20-29', 100)).toBeUndefined()
+  })
+
+  test('nothing past the end', () => {
+    expect(byteRange('bytes=100-', 100)).toBe('unsatisfiable')
+    expect(byteRange('bytes=20-10', 100)).toBe('unsatisfiable')
+  })
+})
 
 describe('who may reach the studio', () => {
   test('its own page, by either of its names', () => {

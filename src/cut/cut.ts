@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { once } from 'node:events'
 import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { soundOn, type Config, type Music } from '../config.ts'
+import { soundOn, type Config, type Music, type Sound } from '../config.ts'
 import { readFilm } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
@@ -69,30 +69,10 @@ export async function cut(
       extra,
     )
     const camera = await page.context().newCDPSession(page)
-    const start = footage.frames[0]?.at ?? 0
     const ffmpeg = await findFfmpeg()
     const music = config.music ? await musicTrack(ffmpeg, config.music) : undefined
     const sound = soundArgs(
-      [
-        {
-          files: CLICKS,
-          times: soundOn('click', config.sound) ? footage.clicks.map((c) => c.at - start) : [],
-          volume: 1,
-        },
-        ...Object.entries(KEYS).map(([kind, files]) => ({
-          files,
-          times: soundOn('typing', config.sound)
-            ? (footage.keys ?? []).filter((k) => keyKind(k.key) === kind).map((k) => k.at - start)
-            : [],
-          volume: 0.7,
-        })),
-        ...(footage.lines ?? []).map((l) => ({
-          files: [l.file],
-          times: [l.at - start],
-          volume: 1.6,
-          vary: false,
-        })),
-      ],
+      Object.values(soundTracks(footage, config.sound)).flat(),
       length,
       music && { ...music, fade: Math.max(1, footage.film.ending?.hold ?? 2) },
     )
@@ -141,6 +121,55 @@ interface Track {
   times: number[]
   volume: number
   vary?: boolean
+}
+
+export type Stem = 'click' | 'typing' | 'voice'
+
+function soundTracks(footage: Footage, sound: Sound): Record<Stem, Track[]> {
+  const start = footage.frames[0]?.at ?? 0
+  return {
+    click: [
+      {
+        files: CLICKS,
+        times: soundOn('click', sound) ? footage.clicks.map((c) => c.at - start) : [],
+        volume: 1,
+      },
+    ],
+    typing: Object.entries(KEYS).map(([kind, files]) => ({
+      files,
+      times: soundOn('typing', sound)
+        ? (footage.keys ?? []).filter((k) => keyKind(k.key) === kind).map((k) => k.at - start)
+        : [],
+      volume: 0.7,
+    })),
+    voice: (footage.lines ?? []).map((l) => ({
+      files: [l.file],
+      times: [l.at - start],
+      volume: 1.6,
+      vary: false,
+    })),
+  }
+}
+
+export async function stems(
+  footageDir: string,
+  footage: Footage,
+  length: number,
+): Promise<Partial<Record<Stem, string>>> {
+  const ffmpeg = await findFfmpeg()
+  const made: Partial<Record<Stem, string>> = {}
+  for (const [stem, tracks] of Object.entries(soundTracks(footage, true)) as [Stem, Track[]][]) {
+    const args = soundArgs(tracks, length, undefined, false)
+    if (args.length === 0) continue
+    const out = join(footageDir, `${stem}.m4a`)
+    const run = spawn(ffmpeg, ['-loglevel', 'error', '-y', ...args, out], {
+      stdio: ['ignore', 'ignore', 'inherit'],
+    })
+    const [code] = await once(run, 'exit')
+    if (code !== 0) throw new Error(`ffmpeg failed with code ${code} making the ${stem} sound.`)
+    made[stem] = out
+  }
+  return made
 }
 
 function pick(t: number, of: number): number {
@@ -199,13 +228,14 @@ export function musicGraph(music: MusicTrack, input: number, length: number): st
   return graph
 }
 
-function soundArgs(tracks: Track[], length: number, music?: MusicTrack): string[] {
+function soundArgs(tracks: Track[], length: number, music?: MusicTrack, video = true): string[] {
   const inputs: string[] = []
   const graph: string[] = []
   const played: string[] = []
+  const last = () => inputs.length / 2 - (video ? 0 : 1)
   if (music) {
     inputs.push('-i', music.file)
-    graph.push(...musicGraph(music, inputs.length / 2, length))
+    graph.push(...musicGraph(music, last(), length))
     played.push('[music]')
   }
   for (const [n, track] of tracks.entries()) {
@@ -224,7 +254,7 @@ function soundArgs(tracks: Track[], length: number, music?: MusicTrack): string[
         ? file
         : fileURLToPath(new URL(`../library/sounds/${file}`, import.meta.url))
       inputs.push('-i', path)
-      const input = inputs.length / 2
+      const input = last()
       const mine = track.times.flatMap((_, i) => (picks[i] === k ? [`[s${n}_${i}]`] : []))
       graph.push(
         mine.length
@@ -249,5 +279,5 @@ function soundArgs(tracks: Track[], length: number, music?: MusicTrack): string[
   )
   // prettier-ignore
   return [...inputs, '-filter_complex', graph.join(';'),
-    '-map', '0:v', '-map', '[a]', '-c:a', 'aac', '-b:a', '160k']
+    ...(video ? ['-map', '0:v'] : []), '-map', '[a]', '-c:a', 'aac', '-b:a', '160k']
 }
