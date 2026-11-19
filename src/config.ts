@@ -4,7 +4,6 @@ import { join, resolve } from 'node:path'
 import { z } from 'zod'
 import type { VoiceChoice } from './voice.ts'
 
-/** The backdrops in library/backdrops, by name. */
 export const BACKDROPS = [
   'halo',
   'sky',
@@ -30,14 +29,11 @@ export const BACKDROPS = [
   'peach-dawn',
 ] as const
 
-/** How the app is shown: on the backdrop as it is, or in a browser window. */
 export const DISPLAYS = ['none', 'browser'] as const
 export type Display = (typeof DISPLAYS)[number]
 
-/** The cursors the cut can draw: the rounded arrow in three colours, or a Mac's pointer. */
 export const CURSORS = ['black', 'pink', 'lime', 'macos'] as const
 
-/** A colour as hex, like `#8fd3ff`. */
 export type Hex = `#${string}`
 
 export function isHex(value: string): value is Hex {
@@ -48,12 +44,10 @@ function isOneOf<T extends string>(list: readonly T[], value: string): value is 
   return list.some((item) => item === value)
 }
 
-/** A file of the project's own, from a path in the config, relative to the project. */
 export interface ProjectFile {
   file: string
 }
 
-/** The file at a path from the config, or an issue saying it isn't there. */
 function projectFile(path: string, context: z.RefinementCtx): ProjectFile {
   const file = resolve(path)
   if (!existsSync(file))
@@ -61,7 +55,6 @@ function projectFile(path: string, context: z.RefinementCtx): ProjectFile {
   return { file }
 }
 
-/** A library backdrop, a flat colour, or a picture of the project's own. */
 export type Backdrop = (typeof BACKDROPS)[number] | Hex | ProjectFile
 
 const backdropSchema = z.string().transform((value, context): Backdrop => {
@@ -74,7 +67,6 @@ const backdropSchema = z.string().transform((value, context): Backdrop => {
   return z.NEVER
 })
 
-/** One of the cursors, the rounded arrow in any colour, or an SVG of the project's own. */
 export type CursorStyle = (typeof CURSORS)[number] | Hex | ProjectFile
 
 const styleSchema = z.string().transform((value, context): CursorStyle => {
@@ -87,10 +79,6 @@ const styleSchema = z.string().transform((value, context): CursorStyle => {
   return z.NEVER
 })
 
-/**
- * The cursor: which one, how big (1 is its own size), a label beside it, and for an SVG of
- * the project's own, where its tip is in it.
- */
 export interface Cursor {
   style: CursorStyle
   size: number
@@ -98,7 +86,6 @@ export interface Cursor {
   tip?: [number, number] | undefined
 }
 
-/** `"macos"` or `"#8fd3ff"` for one at its own size, or `{ "style": "macos", "size": 1.5 }`. */
 const cursorSchema: z.ZodType<Cursor, unknown> = z.preprocess(
   (cursor) => (typeof cursor === 'string' ? { style: cursor } : cursor),
   z.strictObject({
@@ -109,7 +96,6 @@ const cursorSchema: z.ZodType<Cursor, unknown> = z.preprocess(
   }),
 )
 
-/** Which sounds the video has: all or none, or each on its own. */
 export type Sound = boolean | { click?: boolean | undefined; typing?: boolean | undefined }
 
 export const soundSchema: z.ZodType<Sound> = z.union([
@@ -117,15 +103,12 @@ export const soundSchema: z.ZodType<Sound> = z.union([
   z.strictObject({ click: z.boolean().optional(), typing: z.boolean().optional() }),
 ])
 
-/** Whether a sound is on, by the config: all of them, or each on its own (on by default). */
 export function soundOn(kind: 'click' | 'typing', setting: Sound): boolean {
   return typeof setting === 'object' ? (setting[kind] ?? true) : setting
 }
 
-/** The music in library/music, by name: two minutes each, looped when a video runs longer. */
 export const MUSIC = ['lofi'] as const
 
-/** Background music: one of ours by name, or an audio file of the project's own, and how loud. */
 export interface Music {
   track: (typeof MUSIC)[number] | ProjectFile
   volume: number
@@ -141,7 +124,6 @@ const trackSchema = z.string().transform((value, context): Music['track'] => {
   return z.NEVER
 })
 
-/** `false` for none, `"lofi"` or `"music/theme.mp3"`, or `{ "track": "lofi", "volume": 0.4 }`. */
 const musicSchema: z.ZodType<Music | false, unknown> = z
   .preprocess(
     (music) => (typeof music === 'string' ? { track: music } : music === false ? null : music),
@@ -151,7 +133,6 @@ const musicSchema: z.ZodType<Music | false, unknown> = z
   )
   .transform((music) => music ?? false)
 
-/** Jessica, one of ElevenLabs' own voices: every account has her. */
 const JESSICA = 'cgSgspJ2msm6clMCkdW9'
 
 export const voiceSchema: z.ZodObject<{
@@ -160,7 +141,6 @@ export const voiceSchema: z.ZodObject<{
   model: z.ZodOptional<z.ZodString>
 }> = z.strictObject({ provider: z.string(), voice: z.string(), model: z.string().optional() })
 
-/** The app's window: its size in the browser, and how much of the video it fills. */
 export interface AppWindow {
   width: number
   height: number
@@ -240,7 +220,6 @@ const config: z.ZodType<Config> = z.strictObject({
 
 const CONFIG_FILE: string = join('.product-demo', 'config.json')
 
-/** The project's config, with defaults for anything it doesn't set. */
 export async function readConfig(): Promise<Config> {
   let raw: unknown = {}
   try {

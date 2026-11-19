@@ -2,13 +2,9 @@ import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { findFfmpeg, run } from './tools.ts'
 
-// Reviewing a video: an agent can't watch one, so this lays frames from across it out in
-// one image the agent can look at. Basic for now: 24 frames, evenly spaced, 6 rows of 4.
-
 const ACROSS = 4
 const DOWN = 6
 
-/** Writes `review.jpg` beside the video and returns its path. Measures the video if not told how long it is. */
 export async function review(video: string, seconds?: number): Promise<string> {
   const out = join(video, '..', 'review.jpg')
   seconds ??= await length(video)
@@ -28,7 +24,6 @@ export async function review(video: string, seconds?: number): Promise<string> {
   return out
 }
 
-/** How long a video runs, in seconds, from what ffmpeg says about it. */
 async function length(video: string): Promise<number> {
   const said = spawnSync(await findFfmpeg(), ['-i', video], { encoding: 'utf8' }).stderr
   const [, h, m, s] = said.match(/Duration: (\d+):(\d+):([\d.]+)/) ?? []

@@ -4,27 +4,18 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { readJson, stepSchema, type Step } from './film.ts'
 
-// What exploring leaves: a log of everything the agent did, each step already pinned,
-// numbered, plus the agent's notes. Nothing in it is ever deleted (going back
-// marks steps undone), and it isn't a film: the agent reads it and writes the film itself,
-// copying in the steps that make the demo. Each step is already in the film's format.
-
 export const LOG: string = join('.product-demo', 'explore', 'log.json')
 
 export interface LogEntry {
   n: number
   step: Step
-  /** Where the page was after the step: path, query and hash. */
   at: string
-  /** Taken back with `back`: the browser was returned to before it. */
   undone?: boolean | undefined
-  /** Something the toolkit noticed, such as a page that never settled. */
   warning?: string | undefined
 }
 
 export interface Log {
   app: string
-  /** The agent's notes: what it learnt about the app, what the film should do. */
   notes?: string | undefined
   entries: LogEntry[]
 }
@@ -58,7 +49,6 @@ export async function writeLog(log: Log, path: string = LOG): Promise<void> {
   await writeFile(path, JSON.stringify(log, null, 2))
 }
 
-/** Starts a new log, keeping the last one beside it under the time it was put aside. */
 export async function startLog(app: string): Promise<void> {
   if (existsSync(LOG)) {
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')

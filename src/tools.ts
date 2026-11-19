@@ -8,7 +8,6 @@ import { dirname, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { chromium, type Browser } from 'playwright-core'
 
-/** Launches Playwright's Chromium, downloading it first if this machine has never had it. */
 export async function launchBrowser(): Promise<Browser> {
   try {
     return await chromium.launch()
@@ -34,7 +33,6 @@ const FFMPEG_BUILDS: Record<string, string> = {
   'win32-x64': '8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77',
 }
 
-/** An ffmpeg that can write H.264: the one on PATH, or our own, downloaded once. */
 export async function findFfmpeg(): Promise<string> {
   if (await writesH264('ffmpeg')) return 'ffmpeg'
 

@@ -5,22 +5,17 @@ import type { Locator, Page } from 'playwright-core'
 // Test Automation", ACM TOSEM 32(3), 2023. What we changed from the paper, and why, is
 // noted where it happens; similo.test.ts holds the cases that made us change it.
 
-/** What Similo writes down about an element. */
 export interface Fingerprint {
   tag: string
-  /** Its ARIA role: the `role` attribute, or what its tag implies. */
   role: string
   id: string
-  /** `data-testid`, `data-test` or `data-cy`: a name the app's own tests gave it. */
   testId: string
   name: string
-  /** An input's type. */
   type: string
   className: string
   href: string
   alt: string
   text: string
-  /** What it's called when it has no text of its own: aria-label, its <label>, title, placeholder. */
   label: string
   /**
    * The words of the closest container that says more than it does: its row, card or
@@ -28,10 +23,8 @@ export interface Fingerprint {
    */
   neighbours: string
   xpath: string
-  /** The XPath from the nearest ancestor with an id. */
   idXpath: string
   isButton: boolean
-  /** Its box in page coordinates, so scrolling doesn't move it. */
   x: number
   y: number
   width: number
@@ -65,7 +58,6 @@ const WEIGHTS = {
   shape: 0.5,
 }
 
-/** How alike two elements are, from 0 to 1. Only what the recorded element had counts. */
 export function similarity(target: Fingerprint, candidate: Fingerprint): number {
   const parts: [weight: number, score: number][] = [
     [WEIGHTS.tag, same(target.tag, candidate.tag)],
@@ -90,8 +82,6 @@ export function similarity(target: Fingerprint, candidate: Fingerprint): number 
   ifPresent(WEIGHTS.alt, target.alt, () => same(target.alt, candidate.alt))
   ifPresent(WEIGHTS.text, target.text, () => words(target.text, candidate.text))
   ifPresent(WEIGHTS.label, target.label, () => words(target.label, candidate.label))
-  // Around an element, a number is often who it belongs to (invoice 1234, not 1235), so
-  // numbers count here, and a near miss counts for less: same context or not much.
   ifPresent(
     WEIGHTS.neighbours,
     target.neighbours,
@@ -128,11 +118,9 @@ const same = <T>(a: T, b: T) => (a === b ? 1 : 0)
 const ratio = (a: number, b: number) =>
   a <= 0 || b <= 0 ? same(a, b) : Math.min(a, b) / Math.max(a, b)
 
-/** 1 in the same place, falling to 0 at 200px away. */
 const closeness = (a: Fingerprint, b: Fingerprint) =>
   Math.max(0, 1 - Math.hypot(a.x - b.x, a.y - b.y) / 200)
 
-/** Class names without the hash a build adds to them: `Button_root__x8Kd2` is `Button_root`. */
 const unhashed = (classes: string) =>
   classes
     .split(/\s+/)
@@ -141,7 +129,6 @@ const unhashed = (classes: string) =>
     )
     .join(' ')
 
-/** Word overlap. Unless `numbers`, every number reads as the same: "Inbox 6" is "Inbox 7". */
 function words(a: string, b: string, { numbers = false } = {}): number {
   const bag = (s: string) =>
     new Set((numbers ? s : s.replace(/\d+/g, '#')).toLowerCase().split(/\s+/).filter(Boolean))
@@ -153,7 +140,6 @@ function words(a: string, b: string, { numbers = false } = {}): number {
   return shared / (x.size + y.size - shared)
 }
 
-/** How alike two XPaths are, step by step (edit distance over their steps). */
 function steps(a: string, b: string): number {
   const x = a.split('/').filter(Boolean)
   const y = b.split('/').filter(Boolean)
@@ -186,7 +172,6 @@ export interface Candidate {
   score: number
 }
 
-/** Every visible element worth comparing, best match first. */
 export async function rank(page: Page, target: Fingerprint): Promise<Candidate[]> {
   const mark = `pd-${Math.random().toString(36).slice(2)}`
   const found = await page.locator('body').evaluate(describe, { mark, tag: target.tag })
@@ -199,15 +184,12 @@ export async function rank(page: Page, target: Fingerprint): Promise<Candidate[]
     .sort((a, b) => b.score - a.score)
 }
 
-/** Below this, nothing on the page is the element. Calibrated in similo.test.ts. */
 export const MIN_SCORE = 0.7
-/** The best must lead the runner-up by this much, or the two can't be told apart. */
 export const MIN_LEAD = 0.1
 
 export type Decision =
   { found: Candidate } | { ambiguous: Candidate[] } | { missing: Candidate | undefined }
 
-/** Whether a ranking names one element, can't choose between several, or found none. */
 export function decide(ranked: Candidate[]): Decision {
   const [best, second] = ranked
   if (!best || best.score < MIN_SCORE) return { missing: best }
@@ -217,26 +199,16 @@ export function decide(ranked: Candidate[]): Decision {
   return { found: best }
 }
 
-/**
- * Runs in the page. Given one element and no mark, describes that element. Given the
- * body and a mark, describes every visible element of the target's tag or that can be
- * pressed, inside open shadow roots too, and marks each with its index so it can be
- * found again.
- */
 function describe(root: Element, options: { mark: string; tag?: string }): Fingerprint[] {
   const parentOf = (el: Element): Element | null => {
     if (el.parentElement) return el.parentElement
     const home = el.getRootNode()
     return home instanceof ShadowRoot ? home.host : null
   }
-  // checkVisibility looks up the tree too: a button in a faded-out dialog isn't visible.
-  // But a form control at opacity 0 of its own is the usual styled checkbox or radio: the
-  // real input, hidden under the label that draws it, and still what a person clicks.
   const visible = (el: Element) => {
     const box = el.getBoundingClientRect()
     if (box.width <= 0 || box.height <= 0) return false
     if (!el.checkVisibility({ visibilityProperty: true })) return false
-    // A display: contents wrapper has no box, so it always reads as hidden: ask past it.
     let parent = parentOf(el)
     while (parent && getComputedStyle(parent).display === 'contents') parent = parentOf(parent)
     if (parent && !parent.checkVisibility({ opacityProperty: true })) return false
@@ -298,8 +270,6 @@ function describe(root: Element, options: { mark: string; tag?: string }): Finge
     )
   }
 
-  // Where an element sits among its siblings of the same tag, worked out once per parent:
-  // asking each of 3,000 rows to count its siblings is 9 million steps.
   const indexes = new WeakMap<Node, Map<Element, number>>()
   const indexOf = (el: Element) => {
     const parent = el.parentNode
@@ -331,7 +301,6 @@ function describe(root: Element, options: { mark: string; tag?: string }): Finge
     return stopAtId ? '' : `/html/${path.join('/')}`
   }
 
-  // A container's words, inside a shadow root too: a host's innerText leaves its shadow out.
   const wordsIn = (node: Element) =>
     node.shadowRoot
       ? clean(
@@ -341,8 +310,6 @@ function describe(root: Element, options: { mark: string; tag?: string }): Finge
             .join(' '),
         )
       : textOf(node)
-  // The container's words without the element's own: in a grid of "Add to cart" buttons,
-  // "Desk" is what tells one card from the next, not the "Add to cart" they all share.
   const neighboursOf = (el: Element) => {
     const own = textOf(el)
     for (let node = parentOf(el); node && node !== document.body; node = parentOf(node)) {
