@@ -69,7 +69,7 @@ const USAGE = `product-demo-agent-toolkit ${version}
 Set up, once: product-demo-agent-toolkit setup   Install the command for good, and the skills for every agent on this machine
              product-demo-agent-toolkit skills [dir]   Just the skills: for every agent found (Claude Code, Codex, Cursor, Gemini CLI, Copilot, OpenCode), or into dir
 
-Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (sky, any of the 22 in library/backdrops, a hex, or a path to your own .jpg/.png/.webp), display (none | browser),
+Settings live in .product-demo/config.json: mode (just_do_it | ask), backdrop (sky, any of the 22 in library/backdrops, a hex, or a path to your own .jpg/.png/.webp), display (none | browser), window ({ width, height, fill }, default 1600x900 filling 0.92 of the video),
 cursor (black | pink | lime | macos | a hex | a path to your own .svg, or { style, size, label, tip }), sound (true | false | { click }, default true),
 music (false | lofi | a path to an audio file, or { track, volume }, default false),
 keep (rehearsals and shoots kept per film, default 10), review (cut also makes the review image, default false).`

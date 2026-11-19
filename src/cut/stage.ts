@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { extname, resolve } from 'node:path'
 import type { Browser, Page } from 'playwright-core'
 import { isHex, type Config, type CURSORS } from '../config.ts'
-import { VIEWPORT, type Footage } from '../perform.ts'
+import type { Footage } from '../perform.ts'
 
 // The stage: a web page that is the finished video. The footage's screenshots are the
 // picture, and everything the cut adds (the backdrop, the window, the cursor, its dip on a
@@ -165,6 +165,7 @@ export async function openStage(
     backdrop: Config['backdrop']
     cursor: Config['cursor']
     display: Config['display']
+    window: Config['window']
   },
   length: number,
   title: string,
@@ -205,7 +206,7 @@ export async function openStage(
     if (path === '/') {
       return route.fulfill({
         contentType: 'text/html',
-        body: html(data, cursor, background, look, extra),
+        body: html(data, cursor, background, look, extra, footage.viewport),
       })
     }
     const read =
@@ -252,8 +253,9 @@ function html(
   data: StageData,
   cursor: { look: CursorLook; svg: string },
   background: string,
-  look: { cursor: Config['cursor']; display: Config['display'] },
+  look: { cursor: Config['cursor']; display: Config['display']; window: Config['window'] },
   extra: string,
+  view: { width: number; height: number },
 ): string {
   const browser = look.display === 'browser'
   const arrow = cursor.svg
@@ -269,16 +271,26 @@ function html(
   const label = look.cursor.label
     ? `<div id="label">${look.cursor.label.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</div>`
     : ''
+  // The window is drawn as big as fits in the config's share of the video, its toolbar and
+  // rim included, and never past 1.25x its frames, where the text would go soft.
+  const { width: W, height: H } = view
+  const chrome = browser ? { x: RIM * 2, y: BAR + RIM } : { x: 0, y: 0 }
+  const fill = look.window.fill
+  const s = Math.min(
+    (CANVAS.width * fill - chrome.x) / W,
+    (CANVAS.height * fill - chrome.y) / H,
+    1.25,
+  )
   // In a browser it's the whole window, toolbar and all, that's centred.
   const app = {
-    x: (CANVAS.width - VIEWPORT.width) / 2,
-    y: (CANVAS.height - VIEWPORT.height + (browser ? BAR - RIM : 0)) / 2,
+    x: (CANVAS.width - W * s) / 2,
+    y: (CANVAS.height - H * s + (browser ? BAR - RIM : 0)) / 2,
   }
   const glass = {
     x: app.x - RIM,
     y: app.y - BAR,
-    width: VIEWPORT.width + RIM * 2,
-    height: VIEWPORT.height + BAR + RIM,
+    width: W * s + RIM * 2,
+    height: H * s + BAR + RIM,
   }
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 html, body { margin: 0; width: ${CANVAS.width}px; height: ${CANVAS.height}px; overflow: hidden; }
@@ -286,8 +298,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 #backdrop { position: absolute; inset: 0; background: ${background}; }
 #window {
   position: absolute; left: ${app.x}px; top: ${app.y}px;
-  width: ${VIEWPORT.width}px; height: ${VIEWPORT.height}px;
-  border-radius: ${browser ? 10 : 14}px; overflow: hidden; background: #fff;
+  width: ${W}px; height: ${H}px; transform: scale(${s}); transform-origin: 0 0;
+  border-radius: ${(browser ? 10 : 14) / s}px; overflow: hidden; background: #fff;
   box-shadow: ${browser ? '0 1px 6px rgb(20 20 50 / 0.10)' : '0 30px 80px rgb(20 20 60 / 0.28), 0 6px 18px rgb(20 20 60 / 0.16)'};
 }
 /* A browser window of frosted glass: the backdrop blurred and milky behind its toolbar. */
@@ -321,7 +333,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans
 #dim { position: absolute; inset: 0; background: rgb(15 15 30); opacity: 0; }
 #lift { position: absolute; overflow: hidden; border-radius: 12px; opacity: 0; transform-origin: center;
   box-shadow: 0 28px 70px rgb(0 0 0 / .32), 0 8px 20px rgb(0 0 0 / .18); }
-#lift img { position: absolute; width: ${VIEWPORT.width}px; height: ${VIEWPORT.height}px; max-width: none; }
+#lift img { position: absolute; width: ${W}px; height: ${H}px; max-width: none; }
 /* The cursor with its tip on the pointer, and a soft shadow so it reads on any app. */
 #cursor { position: absolute; left: -${pointer.tip[0]}px; top: -${pointer.tip[1]}px; width: ${pointer.width}px; height: ${pointer.height}px; color: ${pointer.colour}; }
 #cursor > :first-child { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: ${pointer.tip[0]}px ${pointer.tip[1]}px; animation: dip 250ms linear paused;
@@ -353,7 +365,7 @@ const lift = document.getElementById('lift');
 const lens = lift.querySelector('img');
 // Out past 1 and back: the lift's spring.
 const pop = (k) => 1 + 2.70158 * (k - 1) ** 3 + 1.70158 * (k - 1) ** 2;
-const W = ${VIEWPORT.width}, H = ${VIEWPORT.height};
+const W = ${W}, H = ${H};
 const ease = (k) => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2);
 
 // A highlight at t. The camera zooms toward its box by its zoom (1 is the box filling the

@@ -17,8 +17,6 @@ import { decide, fingerprint, rank } from './similo.ts'
 import { launchBrowser } from './tools.ts'
 import { speakLines, wordAt, type Spoken } from './voice.ts'
 
-export const VIEWPORT = { width: 1440, height: 900 }
-
 // Rehearse and shoot are the same run: a fresh browser, every step performed at a
 // person's pace with a hand-moved pointer, letting the page settle after each.
 // Shooting films it; rehearsing leaves a still after every step to judge it by instead.
@@ -49,6 +47,8 @@ export interface Footage {
   lines: { at: number; file: string; text: string }[]
   /** When each highlighted step held, and its element's box in screen pixels. */
   highlights: { step: number; at: number; until: number; box: number[] }[]
+  /** The window's size in page pixels, which is also its frames' size. */
+  viewport: { width: number; height: number }
   end: number
   /** Choices made without asking (`just_do_it`), recoveries, and steps that never settled. */
   warnings: string[]
@@ -97,8 +97,8 @@ export async function shoot(
       await session.send('Page.startScreencast', {
         format: 'jpeg',
         quality: 90,
-        maxWidth: VIEWPORT.width,
-        maxHeight: VIEWPORT.height,
+        maxWidth: config.window.width,
+        maxHeight: config.window.height,
       })
       return async () => {
         end = (performance.now() - started) / 1000
@@ -117,6 +117,7 @@ export async function shoot(
   const footage: Footage = {
     film,
     source,
+    viewport: { width: config.window.width, height: config.window.height },
     frames,
     pointer,
     clicks,
@@ -171,7 +172,8 @@ async function perform(
   )
   const browser = await launchBrowser()
   try {
-    const page = await browser.newPage({ viewport: VIEWPORT })
+    const { width, height } = config.window
+    const page = await browser.newPage({ viewport: { width, height } })
     const settler = watch(page)
     // Every address the page shows, a link followed or a route changed in place.
     const addresses: { t: number; url: string }[] = []
@@ -180,7 +182,7 @@ async function perform(
     })
     await page.goto(film.app)
     const hand = new Hand(page)
-    await hand.rest(VIEWPORT.width / 2, VIEWPORT.height / 2)
+    await hand.rest(width / 2, height / 2)
     await settler.settled({ beat: 400 })
     const stopCamera = await watchers.camera?.(page)
     await watchers.still?.(page, 'the opening screen', 0)

@@ -10,7 +10,7 @@ import { readConfig } from './config.ts'
 import { findDrawn, type Drawn } from './drawn.ts'
 import { describeStep, KEYS, type Key, type Point, type Step, type Target } from './film.ts'
 import { LOG, readLog, startLog, writeLog } from './log.ts'
-import { act, find, Hand, VIEWPORT, type Finder } from './perform.ts'
+import { act, find, Hand, type Finder } from './perform.ts'
 import { watch } from './settle.ts'
 import { fingerprint } from './similo.ts'
 import { launchBrowser } from './tools.ts'
@@ -82,7 +82,8 @@ export async function send(command: string, args: string[]): Promise<string> {
 export async function serve(url: string): Promise<void> {
   const config = await readConfig()
   const browser = await launchBrowser()
-  let page = await browser.newPage({ viewport: VIEWPORT })
+  const viewport = { width: config.window.width, height: config.window.height }
+  let page = await browser.newPage({ viewport })
   let settler = watch(page)
   let hand = new Hand(page, true)
   await page.goto(url)
@@ -164,7 +165,9 @@ export async function serve(url: string): Promise<void> {
       drawnChanged = false
       await screenshotWithRefs(page, snapshot, shot, drawn)
       const { text, above, below } =
-        flag === '--all' ? { text: snapshot, above: 0, below: 0 } : onScreen(snapshot)
+        flag === '--all'
+          ? { text: snapshot, above: 0, below: 0 }
+          : onScreen(snapshot, viewport.height)
       const bare = text.replace(/ \[box=[\d.,-]+\]/g, '')
       const trimmed =
         bare.length > 40_000 ? `${bare.slice(0, 40_000)}\n… (cut at 40,000 characters)` : bare
@@ -313,7 +316,7 @@ export async function serve(url: string): Promise<void> {
       last.undone = true
       await writeLog(log)
       await page.close()
-      page = await browser.newPage({ viewport: VIEWPORT })
+      page = await browser.newPage({ viewport })
       settler = watch(page)
       hand = new Hand(page, true)
       await page.goto(url)
@@ -518,7 +521,10 @@ async function pin(element: Locator): Promise<Target & { locator: string }> {
  * the viewport; a line without one (its text, its link) goes with the line it belongs to.
  * Off-screen elements with refs are counted above and below instead.
  */
-function onScreen(snapshot: string): { text: string; above: number; below: number } {
+function onScreen(
+  snapshot: string,
+  height: number,
+): { text: string; above: number; below: number } {
   const kept: string[] = []
   const parents: { indent: number; kept: boolean }[] = []
   let above = 0
@@ -531,7 +537,7 @@ function onScreen(snapshot: string): { text: string; above: number; below: numbe
     if (box) {
       const top = Number(box[2])
       const bottom = top + Number(box[4])
-      keep = bottom > 0 && top < VIEWPORT.height
+      keep = bottom > 0 && top < height
       if (!keep && line.includes('[ref=')) {
         if (bottom <= 0) above++
         else below++
@@ -559,6 +565,7 @@ async function screenshotWithRefs(
   const labels: { ref: string; x: number; y: number; width: number; height: number }[] = drawn.map(
     (d, i) => ({ ref: `d${i + 1}`, x: d.x, y: d.y, width: d.width, height: d.height }),
   )
+  const screen = page.viewportSize() ?? { width: 0, height: 0 }
   for (const line of snapshot.split('\n')) {
     const match =
       /- '?(\w+)\b.*\[ref=(\w*e\d+)\].*\[box=([\d.-]+),([\d.-]+),([\d.-]+),([\d.-]+)\]/.exec(line)
@@ -566,7 +573,7 @@ async function screenshotWithRefs(
     if (!PRESSABLE.test(match[1] ?? '') && !line.includes('[cursor=pointer]')) continue
     const [x, y, width, height] = match.slice(3, 7).map(Number)
     if (x === undefined || y === undefined || !width || !height) continue
-    if (y > VIEWPORT.height || y + height < 0) continue
+    if (y > screen.height || y + height < 0) continue
     labels.push({ ref: match[2] ?? '', x, y, width, height })
   }
   await page.evaluate((all) => {
