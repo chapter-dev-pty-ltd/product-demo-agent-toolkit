@@ -49,6 +49,8 @@ export interface Footage {
   highlights: { step: number; at: number; until: number; box: number[] }[]
   /** The window's size in page pixels, which is also its frames' size. */
   viewport: { width: number; height: number }
+  /** When each step started, by its index in the film (footage shot before this has none). */
+  steps?: number[]
   end: number
   /** Choices made without asking (`just_do_it`), recoveries, and steps that never settled. */
   warnings: string[]
@@ -84,28 +86,35 @@ export async function shoot(
   const writes: Promise<void>[] = []
   let started = 0
   let end = 0
-  const { warnings, trail, keys, lines, addresses, highlights } = await perform(film, dir, config, {
-    camera: async (page) => {
-      started = performance.now()
-      const session = await page.context().newCDPSession(page)
-      session.on('Page.screencastFrame', (event) => {
-        void session.send('Page.screencastFrameAck', { sessionId: event.sessionId }).catch(() => {})
-        const file = join('frames', `${String(frames.length).padStart(6, '0')}.jpg`)
-        frames.push({ file, at: (performance.now() - started) / 1000 })
-        writes.push(writeFile(join(dir, file), Buffer.from(event.data, 'base64')))
-      })
-      await session.send('Page.startScreencast', {
-        format: 'jpeg',
-        quality: 90,
-        maxWidth: config.window.width,
-        maxHeight: config.window.height,
-      })
-      return async () => {
-        end = (performance.now() - started) / 1000
-        await session.send('Page.stopScreencast')
-      }
+  const { warnings, trail, keys, lines, addresses, highlights, steps } = await perform(
+    film,
+    dir,
+    config,
+    {
+      camera: async (page) => {
+        started = performance.now()
+        const session = await page.context().newCDPSession(page)
+        session.on('Page.screencastFrame', (event) => {
+          void session
+            .send('Page.screencastFrameAck', { sessionId: event.sessionId })
+            .catch(() => {})
+          const file = join('frames', `${String(frames.length).padStart(6, '0')}.jpg`)
+          frames.push({ file, at: (performance.now() - started) / 1000 })
+          writes.push(writeFile(join(dir, file), Buffer.from(event.data, 'base64')))
+        })
+        await session.send('Page.startScreencast', {
+          format: 'jpeg',
+          quality: 90,
+          maxWidth: config.window.width,
+          maxHeight: config.window.height,
+        })
+        return async () => {
+          end = (performance.now() - started) / 1000
+          await session.send('Page.stopScreencast')
+        }
+      },
     },
-  })
+  )
   await Promise.all(writes)
   // The pointer from where it rested when the camera started: earlier moves count as at 0.
   const since = (t: number) => Math.max(0, (t - started) / 1000)
@@ -133,6 +142,7 @@ export async function shoot(
       )
       .map((a) => ({ at: since(a.t), url: a.url })),
     highlights: highlights.map((h) => ({ ...h, at: since(h.at), until: since(h.until) })),
+    steps: steps.map(since),
     end,
     warnings,
   }
@@ -163,6 +173,7 @@ async function perform(
   lines: Footage['lines']
   addresses: { t: number; url: string }[]
   highlights: Footage['highlights']
+  steps: number[]
 }> {
   await mkdir(dir, { recursive: true })
   // The lines are spoken first: the shoot is paced by them.
@@ -190,12 +201,14 @@ async function perform(
     const warnings: string[] = []
     const highlights: Footage['highlights'] = []
     const lines: Footage['lines'] = []
+    const steps: number[] = []
     // The line being spoken, and when it started.
     let line: { spoken: Spoken; at: number } | undefined
     for (const [index, step] of film.steps.entries()) {
       const label = `Step ${index + 1} (${describeStep(step)})`
       const finder: Finder = (target) =>
         find(page, target, config, (warning) => warnings.push(`${label}: ${warning}`))
+      steps.push(performance.now())
       try {
         if (step.say) {
           const said = spoken.get(step.say)
@@ -269,7 +282,7 @@ async function perform(
       }
     }
     await stopCamera?.()
-    return { warnings, trail: hand.trail, keys: hand.keys, lines, addresses, highlights }
+    return { warnings, trail: hand.trail, keys: hand.keys, lines, addresses, highlights, steps }
   } finally {
     await browser.close()
   }

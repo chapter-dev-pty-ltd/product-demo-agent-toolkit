@@ -8,7 +8,7 @@ import { soundOn, type Config, type Music } from '../config.ts'
 import { readFilm } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
-import { openStage } from './stage.ts'
+import { openStage, type Highlighted } from './stage.ts'
 
 // The cut renders the stage (stage.ts) one frame at a time: seek it to the frame's time,
 // photograph it, and stream the photographs into ffmpeg, which only encodes the video.
@@ -24,27 +24,17 @@ export function videoLength(footage: Footage): number {
   return footage.end + (footage.film.ending?.hold ?? 2) - (footage.frames[0]?.at ?? 0)
 }
 
-/**
- * Cuts footage into an mp4 and returns its length. The film's directions are read from its
- * file as it is now, so changing them only needs another cut. `extra` is HTML put on the
- * stage over everything else.
- */
-export async function cut(
-  footageDir: string,
-  out: string,
-  config: Config,
-  extra = '',
-): Promise<number> {
+/** What the stage needs from footage: the footage, its highlights as the film has them now, its length and title. */
+export async function prepare(footageDir: string): Promise<{
+  footage: Footage
+  highlights: Highlighted[]
+  length: number
+  title: string
+}> {
   const footage = await readFootage(footageDir)
   if (footage.frames.length === 0) throw new Error(`${footageDir} has no frames.`)
   const film = existsSync(footage.source) ? await readFilm(footage.source) : footage.film
   const length = videoLength(footage)
-  const look = {
-    backdrop: config.backdrop,
-    cursor: config.cursor,
-    display: config.display,
-    window: config.window,
-  }
   const title = film.notes?.split(/(?<=\.)\s/)[0] ?? ''
   // How each highlight looks comes from the film as it is now; when it held, from the shoot.
   const highlights = footage.highlights.flatMap((held) => {
@@ -62,6 +52,27 @@ export async function cut(
     ]
   })
 
+  return { footage, highlights, length, title }
+}
+
+/**
+ * Cuts footage into an mp4 and returns its length. The film's directions are read from its
+ * file as it is now, so changing them only needs another cut. `extra` is HTML put on the
+ * stage over everything else.
+ */
+export async function cut(
+  footageDir: string,
+  out: string,
+  config: Config,
+  extra = '',
+): Promise<number> {
+  const { footage, highlights, length, title } = await prepare(footageDir)
+  const look = {
+    backdrop: config.backdrop,
+    cursor: config.cursor,
+    display: config.display,
+    window: config.window,
+  }
   const browser = await launchBrowser()
   try {
     const page = await openStage(

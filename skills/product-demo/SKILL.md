@@ -97,6 +97,14 @@ product-demo-agent-toolkit cut               # cuts the latest footage into vide
 
 Give the user the video from there, or pass `--out` to `cut`. Lines starting `Check:` are things it chose or waited on that you should look at. To check the video itself before handing it over, use the `product-demo-review` skill.
 
+## 5. The studio: change it with the user
+
+```bash
+product-demo-agent-toolkit studio --session "<this session's name>" --agent "<your name>"   # in the background
+```
+
+When the user wants to see the take, change its look, or work on it with you, open the studio. Run it **in the background**: it opens the latest take at a local address (give it to the user), then waits for the user's next message in the studio, prints it and exits. When it exits, do what the message asks. Changes to `.product-demo/config.json` show in the studio as soon as you save them. Then reply and keep listening, again in the background: `studio --say "<what you did, in a line>"`. Always start it again after a message, or the user's next one waits until they talk to you here. A message can come with changes the user made to the film in the studio's script: make them in the film, rehearse and shoot again. After a reshoot, `studio` opens the new take. `studio --stop` closes it.
+
 ## When something is unclear
 
 If the request could mean two things, a still doesn't look like what was asked for, or a run says several elements match a step, make the best choice and carry on: runs print what they chose (`Check:` lines), so tell the user what you decided when you hand over the video. If `.product-demo/config.json` sets `"mode": "ask"`, stop and ask the user instead, showing them the still.

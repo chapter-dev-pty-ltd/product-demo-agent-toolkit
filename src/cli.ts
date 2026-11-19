@@ -26,6 +26,11 @@ import {
   serve,
   shoot,
   speakLines,
+  studio,
+  openStudio,
+  sayInStudio,
+  stopStudio,
+  waitForStudio,
   wordAt,
   type Spoken,
   version,
@@ -65,6 +70,9 @@ const USAGE = `product-demo-agent-toolkit ${version}
   product-demo-agent-toolkit shoot <film.json>
   product-demo-agent-toolkit cut [footage] [--out video.mp4]
   product-demo-agent-toolkit review [footage | video.mp4]  An image of frames from across the video, to check it by
+  product-demo-agent-toolkit studio [footage] [--session name] [--agent name] [--say "reply"]
+                                                    Open the take in the studio, then wait for the user's next message there and print it
+  product-demo-agent-toolkit studio --stop          Stop the studio
 
 Set up, once: product-demo-agent-toolkit setup   Install the command for good, and the skills for every agent on this machine
              product-demo-agent-toolkit skills [dir]   Just the skills: for every agent found (Claude Code, Codex, Cursor, Gemini CLI, Copilot, OpenCode), or into dir
@@ -107,6 +115,11 @@ const parsed = (() => {
         out: { type: 'string', short: 'o' },
         version: { type: 'boolean', short: 'v' },
         help: { type: 'boolean', short: 'h' },
+        session: { type: 'string' },
+        agent: { type: 'string' },
+        say: { type: 'string' },
+        stop: { type: 'boolean' },
+        serve: { type: 'boolean' },
       },
     })
   } catch (error) {
@@ -171,6 +184,35 @@ try {
     const seconds = await cut(from, out, config)
     console.log(`Cut ${out} (${seconds.toFixed(1)}s)`)
     if (config.review) console.log(`Review it: ${await review(out, seconds)}`)
+  } else if (command === 'studio' && values.stop) {
+    console.log((await stopStudio()) ? 'Stopped the studio.' : "The studio isn't running.")
+  } else if (command === 'studio') {
+    const from = input ?? (await latestRun('footage', 'footage.json'))
+    if (values.serve) {
+      // The studio's own server, started in the background by the command below.
+      console.log(`Studio for ${from}: ${await studio(from, await readConfig())}`)
+    } else {
+      const self = [process.execPath, ...process.execArgv, process.argv[1] ?? '']
+      console.log(
+        `Studio for ${from}: ${await openStudio(from, [...self, 'studio', from, '--serve'])}`,
+      )
+      if (values.say) await sayInStudio(values.say)
+      console.log('Waiting for a message from the user in the studio…')
+      const messages = await waitForStudio({ session: values.session, agent: values.agent })
+      if (!messages.length) console.log('The studio stopped.')
+      for (const m of messages) {
+        const at = m.at === undefined ? '' : ` (at ${m.at.toFixed(1)}s in the take)`
+        console.log(`The user says${at}: ${m.text || '(no words, only changes)'}`)
+        if (m.changes) {
+          console.log(`With changes to ${m.film}, which need a rehearsal and a reshoot:`)
+          for (const change of m.changes) console.log(`- ${change}`)
+        }
+      }
+      if (messages.length)
+        console.log(
+          'Next: do it, then reply and keep listening, in the background: product-demo-agent-toolkit studio --say "<what you did>"',
+        )
+    }
   } else if (command === 'voice' && input) {
     const config = await readConfig()
     const film = await readFilm(input)

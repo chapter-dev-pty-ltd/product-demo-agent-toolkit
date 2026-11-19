@@ -18,4 +18,12 @@ export {
   setup,
 } from './setup.ts'
 export { NeedsDecision, rehearse, shoot, type Footage } from './perform.ts'
+export {
+  openStudio,
+  sayInStudio,
+  stopStudio,
+  studio,
+  waitForStudio,
+  type StudioMessage,
+} from './studio.ts'
 export { speakLines, wordAt, type Spoken } from './voice.ts'
