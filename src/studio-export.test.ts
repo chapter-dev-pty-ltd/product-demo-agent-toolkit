@@ -128,7 +128,7 @@ test('the export button downloads the rendered file and recovers from a failed r
     })
     const downloaded = page.waitForEvent('download')
     await page.locator('#export').click()
-    await page.getByRole('radio', { name: 'GIF', exact: true }).check()
+    await page.getByRole('combobox', { name: 'File format' }).selectOption('gif')
     expect(await page.locator('#export-description').textContent()).toContain('No audio')
     await page.getByRole('button', { name: 'Export GIF', exact: true }).click()
     const download = await downloaded

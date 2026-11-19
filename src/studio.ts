@@ -716,31 +716,27 @@ aside { border-left: 1px solid var(--line); display: flex; flex-direction: colum
 #export[aria-busy=true] svg { display: none; }
 #export[aria-busy=true] .export-spinner { display: block; }
 @keyframes export-spin { to { transform: rotate(360deg); } }
-#export-picker { width: min(456px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 24px 80px #0002, 0 4px 16px #0001; color: var(--text); }
+#export-picker { width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 24px 80px #0002, 0 4px 16px #0001; color: var(--text); }
 #export-picker::backdrop { background: rgb(10 10 10 / .22); backdrop-filter: blur(3px); }
 .export-heading { position: relative; padding: 24px 24px 20px; }
 .export-heading h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; letter-spacing: -.025em; }
 .export-heading p { margin: 0; color: var(--dim); font-size: 12px; }
 #cancel-export { position: absolute; top: 17px; right: 17px; }
-.export-formats { display: grid; gap: 8px; margin: 0; padding: 0 24px; border: 0; }
-.export-format { position: relative; display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; transition: background .12s, border-color .12s; }
-.export-format:hover { background: var(--soft); border-color: var(--line-strong); }
-.export-format:has(input:checked) { border-color: var(--text); background: var(--soft); box-shadow: 0 0 0 .5px var(--text); }
-.export-format:has(input:focus-visible) { outline: 3px solid var(--blue); outline-offset: 3px; }
-.export-format input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.export-file { width: 42px; height: 44px; flex: none; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font: 500 10px var(--mono); color: var(--dim); }
-.export-copy { flex: 1; min-width: 0; }
-.export-copy strong { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
-.export-copy small { display: block; margin-top: 3px; color: var(--dim); font-size: 12px; }
-.export-recommended { padding: 2px 6px; border-radius: 4px; background: #e9e9eb; color: #52525b; font-size: 10px; font-weight: 400; }
-.export-check { width: 16px; height: 16px; flex: none; border: 1px solid var(--line-strong); border-radius: 50%; }
-.export-format:has(input:checked) .export-check { border: 5px solid var(--text); }
-#export-description { margin: 16px 24px 20px; color: var(--dim); font-size: 11px; }
+.export-field { padding: 0 24px; }
+.export-field label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 500; }
+.export-select { position: relative; display: flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg); box-shadow: 0 1px 2px #00000004; transition: border-color .15s, box-shadow .15s; }
+.export-select:hover { border-color: #b8b8bc; }
+.export-select:focus-within { border-color: var(--text); box-shadow: 0 0 0 3px #00000008; }
+.export-select svg { position: absolute; pointer-events: none; width: 16px; height: 16px; color: var(--dim); }
+.export-select .file-icon { left: 13px; }
+.export-select .chevron { right: 12px; width: 14px; height: 14px; }
+#export-format { appearance: none; width: 100%; height: 44px; border: 0; border-radius: inherit; background: transparent; padding: 0 36px 0 39px; outline: none; font: 500 13px Inter, sans-serif; color: var(--text); cursor: pointer; }
+#export-hint { margin: 9px 0 0; color: var(--dim); font-size: 12px; }
+#export-description { margin: 20px 24px; padding: 10px 12px; border-radius: 8px; background: var(--soft); color: var(--dim); font-size: 11px; }
 #export-picker footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-top: 1px solid var(--line); background: var(--soft); }
 #export-picker footer small { color: var(--dim); font-size: 11px; }
 #start-export { height: 36px; padding: 0 16px; white-space: nowrap; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-@media (prefers-reduced-motion: reduce) { .export-spinner { animation: none; } .export-format { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .export-spinner { animation: none; } .export-select { transition: none; } }
 .video b { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabs { display: flex; gap: 14px; padding: 0 18px; border-bottom: 1px solid var(--line); }
 .tabs button { border: 0; background: none; padding: 12px 2px 10px; color: var(--dim); font-weight: 500; cursor: pointer; border-bottom: 1.5px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.15s; }
@@ -848,11 +844,15 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
 
 <dialog id="export-picker" aria-labelledby="export-picker-title">
   <header class="export-heading"><h2 id="export-picker-title">Export video</h2><p>Download a copy with your current edits.</p><button class="icon" id="cancel-export" aria-label="Close export"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></header>
-  <fieldset class="export-formats"><legend class="sr-only">File format</legend>
-    <label class="export-format"><input type="radio" name="export-format" value="mp4" aria-label="MP4" checked><span class="export-file" aria-hidden="true">MP4</span><span class="export-copy"><strong>MP4 <span class="export-recommended">Recommended</span></strong><small>Ready to share, works almost anywhere</small></span><span class="export-check" aria-hidden="true"></span></label>
-    <label class="export-format"><input type="radio" name="export-format" value="webm" aria-label="WebM"><span class="export-file" aria-hidden="true">WEBM</span><span class="export-copy"><strong>WebM</strong><small>For websites and embeds</small></span><span class="export-check" aria-hidden="true"></span></label>
-    <label class="export-format"><input type="radio" name="export-format" value="gif" aria-label="GIF"><span class="export-file" aria-hidden="true">GIF</span><span class="export-copy"><strong>GIF</strong><small>A silent, looping preview</small></span><span class="export-check" aria-hidden="true"></span></label>
-  </fieldset>
+  <div class="export-field">
+    <label for="export-format">File format</label>
+    <div class="export-select">
+      <svg class="file-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5.5L9.5 2Z"/><path d="M9 2v4h4M5.5 9h5M5.5 11h3"/></svg>
+      <select id="export-format" aria-describedby="export-hint export-description"><option value="mp4">MP4 · Recommended</option><option value="webm">WebM</option><option value="gif">GIF</option></select>
+      <svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 6.5 3 3 3-3"/></svg>
+    </div>
+    <p id="export-hint">Ready to share. Works almost anywhere.</p>
+  </div>
   <p id="export-description" aria-live="polite">1080p · 60 fps · Audio included</p>
   <footer><small>Saved to your downloads</small><button class="primary" id="start-export">Export MP4</button></footer>
 </dialog>
@@ -929,8 +929,9 @@ const exportPicker = $('export-picker');
 let downloading = false, refreshAfterExport = false;
 $('export').onclick = () => exportPicker.showModal();
 $('cancel-export').onclick = () => exportPicker.close();
-const exportFormat = () => document.querySelector('input[name=export-format]:checked').value;
-for (const radio of document.querySelectorAll('input[name=export-format]')) radio.onchange = () => {
+const exportFormat = () => $('export-format').value;
+$('export-format').onchange = () => {
+  $('export-hint').textContent = { mp4: 'Ready to share. Works almost anywhere.', webm: 'For websites and embeds.', gif: 'A silent, looping preview.' }[exportFormat()];
   $('export-description').textContent = exportFormat() === 'gif' ? '960 px wide · 15 fps · No audio' : '1080p · 60 fps · Audio included';
   $('start-export').textContent = 'Export ' + (exportFormat() === 'webm' ? 'WebM' : exportFormat().toUpperCase());
 };
