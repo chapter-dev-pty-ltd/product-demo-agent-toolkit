@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { openSync, watch } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { createReadStream, openSync, watch } from 'node:fs'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createServer, request, type IncomingMessage, type ServerResponse } from 'node:http'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
+import { pipeline } from 'node:stream/promises'
 import {
   BACKDROPS,
   CURSORS,
@@ -17,7 +18,7 @@ import {
   type Music,
   type ProjectFile,
 } from './config.ts'
-import { LIMIT, prepare, STEM_GAIN, stems, stemsOf, type Stem } from './cut/cut.ts'
+import { cut, LIMIT, prepare, STEM_GAIN, stems, stemsOf, type Stem } from './cut/cut.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
 import { filesOf, latestTake, type Video } from './videos.ts'
 
@@ -124,6 +125,7 @@ export async function studio(
   )
   let { settings, mine, extras } = fromConfig(config, hold)
   let saving = Promise.resolve()
+  let exporting = false
   const staged = (lit: typeof highlights) =>
     stageFiles(footageDir, footage, lit, () => settings, length, title)
   let stage = staged(highlights)
@@ -285,6 +287,33 @@ export async function studio(
         saving = saving.then(() => saveLook(lookFile, settings)).catch((e) => void console.log(e))
         await saving
         return send(200, 'application/json', JSON.stringify(toPage(settings)))
+      }
+      if (path === '/studio/export' && req.method === 'POST') {
+        if (exporting)
+          return send(
+            409,
+            'text/plain',
+            'An export is already running. Try again when it finishes.',
+          )
+        exporting = true
+        const temporary = join(places.dir, `export-${randomBytes(8).toString('hex')}.mp4`)
+        try {
+          const snapshot = fromPage(JSON.parse(await body(req)), settings, mine)
+          await saving
+          await cut(footageDir, temporary, { ...(await readConfig(lookFile)), ...snapshot })
+          const output = filesOf(video).cut
+          await rename(temporary, output)
+          res.writeHead(200, {
+            'content-type': 'video/mp4',
+            'content-disposition': `attachment; filename="${video.id}.mp4"`,
+            'cache-control': 'no-store',
+          })
+          await pipeline(createReadStream(output), res)
+        } finally {
+          exporting = false
+          await rm(temporary, { force: true })
+        }
+        return
       }
       const thumb = path.match(/^\/studio\/backdrops\/([a-z-]+)\.jpg$/)
       if (thumb?.[1] && (BACKDROPS as readonly string[]).includes(thumb[1])) {
@@ -667,7 +696,9 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
   background: var(--text); color: #fff; font: 500 10px/18px var(--mono); white-space: nowrap; }
 
 aside { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-.video { padding: 12px 24px 0; display: flex; min-width: 0; }
+.video { padding: 12px 24px 0; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.video b { flex: 1; }
+#export-status { color: var(--dim); font-size: 12px; max-width: 240px; }
 .video b { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabs { display: flex; gap: 14px; padding: 0 18px; border-bottom: 1px solid var(--line); }
 .tabs button { border: 0; background: none; padding: 12px 2px 10px; color: var(--dim); font-weight: 500; cursor: pointer; border-bottom: 1.5px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.15s; }
@@ -756,7 +787,7 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
 </style></head><body>
 
 <section class="editor">
-  <div class="video"><b title="${title}">${title}</b></div>
+  <div class="video"><b title="${title}">${title}</b><span id="export-status" role="status"></span><button class="primary" id="export">Export MP4</button></div>
   <div id="viewer"><div id="screen"></div></div>
   <div class="transport">
     <div class="left">
@@ -842,6 +873,30 @@ const BOOT = ${JSON.stringify(boot)};
 const fileName = (path) => path.split('/').pop();
 const CURSORS = { black: '#111111', pink: '#ff7ccb', lime: '#b6f24f', macos: 'linear-gradient(135deg,#000 50%,#fff 50%)' };
 const $ = (id) => document.getElementById(id);
+$('export').onclick = async () => {
+  const button = $('export'), status = $('export-status');
+  button.disabled = true;
+  button.textContent = 'Exporting…';
+  status.textContent = 'Rendering your current settings…';
+  try {
+    const res = await fetch('/studio/export', { method: 'POST', body: JSON.stringify(look) });
+    if (!res.ok) throw new Error(await res.text());
+    const url = URL.createObjectURL(await res.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = ${JSON.stringify(video.id + '.mp4')};
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    status.textContent = 'Export ready. Download started.';
+  } catch (error) {
+    status.textContent = 'Export failed. ' + error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Export MP4';
+  }
+};
 const pretty = (name) => name[0].toUpperCase() + name.slice(1).replace(/-/g, ' ');
 const thumb = (name) => name === 'own' ? 'url(/studio/own/backdrop)' : name.startsWith('#') ? 'linear-gradient(' + name + ',' + name + ')' : 'url(/studio/backdrops/' + name + '.jpg)';
 const backdropName = (name) => name === 'own' ? fileName(OWNED.backdrop) : name.startsWith('#') ? name : pretty(name);
