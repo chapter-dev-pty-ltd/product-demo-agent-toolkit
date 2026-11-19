@@ -55,14 +55,11 @@ As well as:
 
 ![The studio open in a browser: the video with its timeline of pages, clicks, music and highlights, and a chat where Claude Code changed the cursor to purple without a reshoot](docs/studio.webp)
 
-Ask your agent to open the studio, and it gives you a local page for the video it's making.
-Watch it, change its look and see it straight away, and tell your agent what to change: your
-message reaches it in your terminal, and its reply comes back to the page. A change to the look
-is a recut in seconds; a change to what the video does is a reshoot, and your agent says so.
+The toolkit also comes loaded with a lightweight editing studio for you to make quick changes to
+the videos you create. Easily see how configuration changes look without reshooting.
 
-Each video has its own studio and chat, so two sessions on two videos each have their own, and
-any session can pick a video up later with the chat so far. To open one yourself, run
-`product-demo-agent-toolkit studio <video>`.
+You can also chat with your own local agent and see the changes it makes to the video in real
+time.
 
 ## Customizable Config
 
