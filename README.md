@@ -66,17 +66,18 @@ Add `.product-demo/config.json` to the project. Every setting is optional, for e
 }
 ```
 
-| Setting    | Default                  | Takes                                                                                                                                                                                   |
-| ---------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backdrop` | `"sky"`                  | One of our 22 backdrops by name (your agent knows them), a hex colour like `"#f4f1ea"`, or your own `.jpg`, `.png` or `.webp`.                                                          |
-| `display`  | `"none"`                 | `"none"`, the app on the backdrop as it is, or `"browser"`, in a browser window with an address bar.                                                                                    |
-| `cursor`   | `"black"`                | `"black"`, `"pink"`, `"lime"`, `"macos"`, a hex colour, or your own `.svg`. Or an object: `style`, `size` (0.5 to 3), `label`, and `tip` (`[x, y]`, for your own SVG).                  |
-| `sound`    | `true`                   | Click and typing sounds: `true`, `false`, or `{ "click": true, "typing": false }`.                                                                                                      |
-| `music`    | `false`                  | `"lofi"`, your own `.mp3`, `.m4a`, `.aac`, `.wav`, `.ogg` or `.flac`, or `{ "track": "lofi", "volume": 0.4 }` (0.25 by default). Looped if the video runs longer, faded out at the end. |
-| `voice`    | Jessica, from ElevenLabs | Who speaks the voiceover: `{ "provider": "elevenlabs", "voice": "<voice id>" }`, and optionally a `"model"`.                                                                            |
-| `mode`     | `"just_do_it"`           | When something is unclear, make the best choice and note it. `"ask"` stops and asks instead.                                                                                            |
-| `keep`     | `10`                     | How many rehearsals and shoots of each film to keep.                                                                                                                                    |
-| `review`   | `false`                  | Whether `cut` also makes the review image.                                                                                                                                              |
+| Setting    | Default                                          | Takes                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backdrop` | `"sky"`                                          | One of our 22 backdrops by name (your agent knows them), a hex colour like `"#f4f1ea"`, or your own `.jpg`, `.png` or `.webp`.                                                          |
+| `display`  | `"none"`                                         | `"none"`, the app on the backdrop as it is, or `"browser"`, in a browser window with an address bar.                                                                                    |
+| `window`   | `{ "width": 1600, "height": 900, "fill": 0.92 }` | The app's size in the browser, and how much of the video it fills.                                                                                                                      |
+| `cursor`   | `"black"`                                        | `"black"`, `"pink"`, `"lime"`, `"macos"`, a hex colour, or your own `.svg`. Or an object: `style`, `size` (0.5 to 3), `label`, and `tip` (`[x, y]`, for your own SVG).                  |
+| `sound`    | `true`                                           | Click and typing sounds: `true`, `false`, or `{ "click": true, "typing": false }`.                                                                                                      |
+| `music`    | `false`                                          | `"lofi"`, your own `.mp3`, `.m4a`, `.aac`, `.wav`, `.ogg` or `.flac`, or `{ "track": "lofi", "volume": 0.4 }` (0.25 by default). Looped if the video runs longer, faded out at the end. |
+| `voice`    | Jessica, from ElevenLabs                         | Who speaks the voiceover: `{ "provider": "elevenlabs", "voice": "<voice id>" }`, and optionally a `"model"`.                                                                            |
+| `mode`     | `"just_do_it"`                                   | When something is unclear, make the best choice and note it. `"ask"` stops and asks instead.                                                                                            |
+| `keep`     | `10`                                             | How many rehearsals and shoots of each film to keep.                                                                                                                                    |
+| `review`   | `false`                                          | Whether `cut` also makes the review image.                                                                                                                                              |
 
 ## Features
 

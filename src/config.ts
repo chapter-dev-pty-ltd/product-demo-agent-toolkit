@@ -160,10 +160,18 @@ export const voiceSchema: z.ZodObject<{
   model: z.ZodOptional<z.ZodString>
 }> = z.strictObject({ provider: z.string(), voice: z.string(), model: z.string().optional() })
 
+/** The app's window: its size in the browser, and how much of the video it fills. */
+export interface AppWindow {
+  width: number
+  height: number
+  fill: number
+}
+
 export interface Config {
   mode: 'ask' | 'just_do_it'
   backdrop: Backdrop
   display: Display
+  window: AppWindow
   cursor: Cursor
   sound: Sound
   music: Music | false
@@ -201,6 +209,16 @@ const config: z.ZodType<Config> = z.strictObject({
     .default({ provider: 'elevenlabs', voice: JESSICA })
     .describe(
       "Who speaks the film's lines: a provider, one of its voice ids, and optionally a model.",
+    ),
+  window: z
+    .strictObject({
+      width: z.number().int().min(800).max(2560).default(1600),
+      height: z.number().int().min(600).max(1600).default(900),
+      fill: z.number().min(0.5).max(1).default(0.92),
+    })
+    .default({ width: 1600, height: 900, fill: 0.92 })
+    .describe(
+      "The app's window: its width and height in the browser (changing them needs a new shoot), and how much of the video it fills, 0.5 to 1 (a re-cut is enough).",
     ),
   keep: z
     .number()

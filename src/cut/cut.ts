@@ -43,6 +43,7 @@ export async function cut(
     backdrop: config.backdrop,
     cursor: config.cursor,
     display: config.display,
+    window: config.window,
   }
   const title = film.notes?.split(/(?<=\.)\s/)[0] ?? ''
   // How each highlight looks comes from the film as it is now; when it held, from the shoot.

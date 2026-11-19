@@ -222,7 +222,7 @@ export async function readJson(path: string): Promise<unknown> {
 }
 
 /** How the video looks and sounds: the project's choice, in its config, never a film's. */
-const LOOK = ['backdrop', 'display', 'cursor', 'sound', 'music', 'voice']
+const LOOK = ['backdrop', 'display', 'window', 'cursor', 'sound', 'music', 'voice']
 
 export async function readFilm(path: string): Promise<Film> {
   const json = await readJson(path)
