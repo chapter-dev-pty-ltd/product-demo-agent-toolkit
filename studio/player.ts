@@ -156,7 +156,9 @@ export function createPlayer(state: StudioState, mixer: Mixer, from: number): Pl
     },
     seek,
     reload,
-    sound: () => playing && mixer.update(),
+    sound: () => {
+      if (playing) mixer.update()
+    },
     onLoad: (fn) => void loaded.push(fn),
     onShow: (fn) => void shown.push(fn),
   }

@@ -9,6 +9,7 @@ import { readFilm } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
 import { openStage, type Highlighted } from './stage.ts'
+import type { Stem } from '../../studio/api.ts'
 
 const FPS = 60
 
@@ -123,7 +124,7 @@ export interface Track {
   vary?: boolean
 }
 
-export type Stem = 'click' | 'typing' | 'voice'
+export type { Stem }
 
 function soundTracks(footage: Footage, sound: Sound): Record<Stem, Track[]> {
   const start = footage.frames[0]?.at ?? 0

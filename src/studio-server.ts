@@ -81,7 +81,7 @@ function fromConfig(config: Config, hold: number, was: Own = {}) {
       cursor: mine.cursor ? relative(process.cwd(), mine.cursor.file) : null,
       music: mine.music ? relative(process.cwd(), mine.music.file) : null,
     },
-    music: MUSIC,
+    tracks: MUSIC,
     hold,
     sound: config.sound,
   }
@@ -206,7 +206,7 @@ export async function studio(
           look: toPage(settings),
           backdrops: BACKDROPS,
           owned: extras.owned,
-          tracks: extras.music,
+          tracks: extras.tracks,
           hold: extras.hold,
           stems: stemsOf(footage).filter((stem) => stem === 'voice' || soundOn(stem, extras.sound)),
           stemGain: STEM_GAIN,
