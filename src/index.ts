@@ -35,5 +35,5 @@ export {
   studio,
   waitForStudio,
   type StudioMessage,
-} from './studio.ts'
+} from './studio-server.ts'
 export { speakLines, wordAt, type Spoken } from './voice.ts'

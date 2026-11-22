@@ -3,6 +3,7 @@ import { extname, resolve, sep } from 'node:path'
 import type { Browser, Page } from 'playwright-core'
 import { isHex, type Config, type CURSORS } from '../config.ts'
 import type { Footage } from '../perform.ts'
+import type { Highlighted, StageData } from '../../studio/api.ts'
 
 export const CANVAS = { width: 1920, height: 1080 }
 const ORIGIN = 'https://stage.product-demo'
@@ -106,24 +107,7 @@ function cursorLook(style: Exclude<Config['cursor']['style'], object>): CursorLo
   return { ...CURSOR_LOOKS.black, colour: style, label: { ...CURSOR_LOOKS.black.label, text } }
 }
 
-export interface Highlighted {
-  at: number
-  until: number
-  box: number[]
-  zoom: number
-  style: 'box' | 'magnify' | 'cursor'
-  colour: string
-}
-
-interface StageData {
-  length: number
-  frames: { file: string; at: number }[]
-  pointer: { at: number; x: number; y: number }[]
-  clicks: { at: number; x: number; y: number }[]
-  highlights: Highlighted[]
-  addresses: { at: number; label: string }[]
-  title: string
-}
+export type { Highlighted }
 
 export type Look = Pick<Config, 'backdrop' | 'cursor' | 'display' | 'window'>
 

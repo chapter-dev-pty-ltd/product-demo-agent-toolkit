@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { trusted } from './studio.ts'
+import { trusted } from './studio-server.ts'
 
 describe('who may reach the studio', () => {
   test('its own page, by either of its names', () => {

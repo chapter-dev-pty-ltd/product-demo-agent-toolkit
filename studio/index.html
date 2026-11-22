@@ -1,0 +1,215 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Studio</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/studio/studio.css" />
+    <script type="module" src="/studio/main.ts"></script>
+  </head>
+  <body>
+    <section class="editor">
+      <div class="video">
+        <b id="title"></b><span id="export-status" role="status"></span
+        ><button id="export" aria-haspopup="dialog">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M8 2v8m-3-3 3 3 3-3M3 10v3h10v-3" /></svg
+          ><span class="export-spinner" aria-hidden="true"></span
+          ><svg class="export-done" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="7.5" fill="#16a34a" />
+            <path
+              d="m5 8.2 2 2 4-4.2"
+              fill="none"
+              stroke="#fff"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            /></svg
+          ><span id="export-label">Export</span>
+        </button>
+      </div>
+      <div id="viewer"><div id="screen"></div></div>
+      <div class="transport">
+        <div class="left">
+          <button id="play" title="Play (space)"></button>
+          <button class="icon" id="restart" title="To start">
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M4 3v10M12 3.5 6.5 8l5.5 4.5z" />
+            </svg>
+          </button>
+          <div id="time"></div>
+        </div>
+        <button class="icon" id="sound" title="Sound on" aria-pressed="true">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M2.5 6v4h2.5l3.5 3V3L5 6z" />
+            <path id="waves" d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4" />
+          </svg>
+        </button>
+      </div>
+      <div class="timeline">
+        <div class="ruler">
+          <div></div>
+          <div class="lane" id="ruler"></div>
+        </div>
+        <div id="tracks"></div>
+        <div id="playhead"><span id="playhead-time"></span></div>
+      </div>
+    </section>
+
+    <dialog id="export-picker" aria-labelledby="export-picker-title">
+      <header class="export-heading">
+        <h2 id="export-picker-title">Export video</h2>
+        <p>Download a copy with your current edits.</p>
+        <button class="icon" id="cancel-export" aria-label="Close export">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="m4 4 8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      </header>
+      <div class="export-field">
+        <label for="export-format">File format</label>
+        <div class="export-select">
+          <svg
+            class="file-icon"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M9.5 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5.5L9.5 2Z" />
+            <path d="M9 2v4h4M5.5 9h5M5.5 11h3" />
+          </svg>
+          <select id="export-format">
+            <option value="mp4">MP4</option>
+            <option value="webm">WebM</option>
+            <option value="gif">GIF</option>
+          </select>
+          <svg
+            class="chevron"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m5 6.5 3 3 3-3" />
+          </svg>
+        </div>
+      </div>
+      <footer>
+        <small>Saved to your downloads</small
+        ><button class="primary" id="start-export">Export MP4</button>
+      </footer>
+    </dialog>
+    <aside>
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="chat">Agent</button>
+        <button role="tab" aria-selected="false" data-tab="settings">Configuration</button>
+      </div>
+      <div class="panel chat" id="chat">
+        <div class="status gone" id="agent">
+          <span class="avatar"></span><span class="label"></span
+          ><button class="close" type="button" aria-label="Dismiss">×</button>
+        </div>
+        <div id="messages"></div>
+        <form class="composer" id="composer">
+          <textarea id="draft" rows="2" placeholder="Ask your agent for a change…"></textarea>
+          <div class="row">
+            <small id="draft-at"></small><button class="primary" type="submit">Send</button>
+          </div>
+        </form>
+      </div>
+      <div class="panel" id="settings" hidden>
+        <div class="field">
+          <div class="label">Backdrop</div>
+          <button class="picker" id="backdrop-picker" aria-expanded="false">
+            <span class="thumb" id="backdrop-thumb"></span
+            ><span class="text" id="backdrop-name"></span>
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="m6 3.5 4.5 4.5L6 12.5" />
+            </svg>
+          </button>
+          <div class="grid" id="backdrops" hidden></div>
+        </div>
+        <div class="field">
+          <div class="label">Frame</div>
+          <div class="segmented" id="display"></div>
+        </div>
+        <div class="field">
+          <label for="fill">Window size <small id="fill-value"></small></label>
+          <input id="fill" type="range" min="0.5" max="1" step="0.01" />
+          <div class="range-ends"><span>Smaller</span><span>Larger</span></div>
+        </div>
+        <div class="field">
+          <div class="label">
+            Cursor <small id="cursor-name" style="font-family: inherit"></small>
+          </div>
+          <div class="swatches" id="cursor"></div>
+        </div>
+        <div class="field">
+          <label for="size">Cursor size <small id="size-value"></small></label>
+          <input id="size" type="range" min="0.5" max="3" step="0.05" />
+          <div class="range-ends"><span>Smaller</span><span>Larger</span></div>
+        </div>
+        <div class="field">
+          <label for="label">Cursor label</label>
+          <input id="label" type="text" maxlength="30" placeholder="e.g. Agent" />
+        </div>
+        <div class="field">
+          <div class="label">Background music</div>
+          <div class="segmented" id="music"></div>
+        </div>
+        <div class="field" id="volume-field">
+          <label for="volume">Music volume <small id="volume-value"></small></label>
+          <input id="volume" type="range" min="0" max="1" step="0.01" />
+          <div class="range-ends"><span>Quieter</span><span>Louder</span></div>
+        </div>
+      </div>
+    </aside>
+  </body>
+</html>

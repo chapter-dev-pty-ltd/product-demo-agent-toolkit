@@ -30,7 +30,8 @@
   "files": [
     "dist",
     "skills",
-    "library"
+    "library",
+    "studio"
   ],
   "engines": {
     "node": ">=22.18"
