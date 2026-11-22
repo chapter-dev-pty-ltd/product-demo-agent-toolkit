@@ -705,24 +705,26 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
   background: var(--text); color: #fff; font: 500 10px/18px var(--mono); white-space: nowrap; }
 
 aside { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-.video { padding: 12px 24px 0; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.video { height: 44px; padding: 0 24px; display: flex; align-items: center; gap: 12px; min-width: 0; }
 .video b { flex: 1; }
 #export-status { color: var(--dim); font-size: 12px; max-width: 240px; }
-#export { height: 32px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); color: var(--dim); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; font-weight: 500; }
-#export:hover { background: var(--muted); color: var(--text); }
+#export { height: 32px; margin-right: -4px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; font-weight: 500; }
+#export:hover { background: var(--muted); }
 #export:disabled { cursor: wait; }
 #export svg { width: 14px; height: 14px; }
 .export-spinner { display: none; width: 14px; height: 14px; border: 1.5px solid var(--line-strong); border-top-color: var(--dim); border-radius: 50%; animation: export-spin .8s linear infinite; }
-#export[aria-busy=true] svg { display: none; }
+.export-done { display: none; }
+#export[aria-busy=true] svg, #export[data-done] svg { display: none; }
+#export[data-done] .export-done { display: block; }
 #export[aria-busy=true] .export-spinner { display: block; }
 @keyframes export-spin { to { transform: rotate(360deg); } }
 #export-picker { width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 24px 80px #0002, 0 4px 16px #0001; color: var(--text); }
-#export-picker::backdrop { background: rgb(10 10 10 / .22); backdrop-filter: blur(3px); }
+#export-picker::backdrop { background: rgb(10 10 10 / .16); backdrop-filter: blur(1.5px); }
 .export-heading { position: relative; padding: 24px 24px 20px; }
 .export-heading h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; letter-spacing: -.025em; }
 .export-heading p { margin: 0; color: var(--dim); font-size: 12px; }
 #cancel-export { position: absolute; top: 17px; right: 17px; }
-.export-field { padding: 0 24px; }
+.export-field { padding: 0 24px 8px; }
 .export-field label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 500; }
 .export-select { position: relative; display: flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg); box-shadow: 0 1px 2px #00000004; transition: border-color .15s, box-shadow .15s; }
 .export-select:hover { border-color: #b8b8bc; }
@@ -731,9 +733,7 @@ aside { border-left: 1px solid var(--line); display: flex; flex-direction: colum
 .export-select .file-icon { left: 13px; }
 .export-select .chevron { right: 12px; width: 14px; height: 14px; }
 #export-format { appearance: none; width: 100%; height: 44px; border: 0; border-radius: inherit; background: transparent; padding: 0 36px 0 39px; outline: none; font: 500 13px Inter, sans-serif; color: var(--text); cursor: pointer; }
-#export-hint { margin: 9px 0 0; color: var(--dim); font-size: 12px; }
-#export-description { margin: 20px 24px; padding: 10px 12px; border-radius: 8px; background: var(--soft); color: var(--dim); font-size: 11px; }
-#export-picker footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-top: 1px solid var(--line); background: var(--soft); }
+#export-picker footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px 24px; }
 #export-picker footer small { color: var(--dim); font-size: 11px; }
 #start-export { height: 36px; padding: 0 16px; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .export-spinner { animation: none; } .export-select { transition: none; } }
@@ -825,7 +825,7 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
 </style></head><body>
 
 <section class="editor">
-  <div class="video"><b title="${title}">${title}</b><span id="export-status" role="status"></span><button id="export" aria-haspopup="dialog"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8m-3-3 3 3 3-3M3 10v3h10v-3"/></svg><span class="export-spinner" aria-hidden="true"></span><span id="export-label">Export</span></button></div>
+  <div class="video"><b title="${title}">${title}</b><span id="export-status" role="status"></span><button id="export" aria-haspopup="dialog"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8m-3-3 3 3 3-3M3 10v3h10v-3"/></svg><span class="export-spinner" aria-hidden="true"></span><svg class="export-done" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7.5" fill="#16a34a"/><path d="m5 8.2 2 2 4-4.2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="export-label">Export</span></button></div>
   <div id="viewer"><div id="screen"></div></div>
   <div class="transport">
     <div class="left">
@@ -848,12 +848,10 @@ input[type=text]:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgb(0 
     <label for="export-format">File format</label>
     <div class="export-select">
       <svg class="file-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5.5L9.5 2Z"/><path d="M9 2v4h4M5.5 9h5M5.5 11h3"/></svg>
-      <select id="export-format" aria-describedby="export-hint export-description"><option value="mp4">MP4 · Recommended</option><option value="webm">WebM</option><option value="gif">GIF</option></select>
+      <select id="export-format"><option value="mp4">MP4</option><option value="webm">WebM</option><option value="gif">GIF</option></select>
       <svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 6.5 3 3 3-3"/></svg>
     </div>
-    <p id="export-hint">Ready to share. Works almost anywhere.</p>
   </div>
-  <p id="export-description" aria-live="polite">1080p · 60 fps · Audio included</p>
   <footer><small>Saved to your downloads</small><button class="primary" id="start-export">Export MP4</button></footer>
 </dialog>
 <aside>
@@ -926,13 +924,12 @@ const fileName = (path) => path.split('/').pop();
 const CURSORS = { black: '#111111', pink: '#ff7ccb', lime: '#b6f24f', macos: 'linear-gradient(135deg,#000 50%,#fff 50%)' };
 const $ = (id) => document.getElementById(id);
 const exportPicker = $('export-picker');
-let downloading = false, refreshAfterExport = false;
+let downloading = false, refreshAfterExport = false, exportDone;
 $('export').onclick = () => exportPicker.showModal();
 $('cancel-export').onclick = () => exportPicker.close();
+exportPicker.onclick = (e) => { if (e.target === exportPicker) exportPicker.close(); };
 const exportFormat = () => $('export-format').value;
 $('export-format').onchange = () => {
-  $('export-hint').textContent = { mp4: 'Ready to share. Works almost anywhere.', webm: 'For websites and embeds.', gif: 'A silent, looping preview.' }[exportFormat()];
-  $('export-description').textContent = exportFormat() === 'gif' ? '960 px wide · 15 fps · No audio' : '1080p · 60 fps · Audio included';
   $('start-export').textContent = 'Export ' + (exportFormat() === 'webm' ? 'WebM' : exportFormat().toUpperCase());
 };
 $('start-export').onclick = async () => {
@@ -941,6 +938,8 @@ $('start-export').onclick = async () => {
   downloading = true;
   const button = $('export'), status = $('export-status');
   button.disabled = true;
+  clearTimeout(exportDone);
+  delete button.dataset.done;
   button.setAttribute('aria-busy', 'true');
   $('export-label').textContent = 'Exporting…';
   status.textContent = '';
@@ -955,14 +954,15 @@ $('start-export').onclick = async () => {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
-    status.textContent = 'Download ready';
+    button.dataset.done = '';
+    exportDone = setTimeout(() => { delete button.dataset.done; $('export-label').textContent = 'Export'; }, 3000);
   } catch (error) {
     status.textContent = 'Export failed. ' + error.message;
   } finally {
     downloading = false;
     button.disabled = false;
     button.setAttribute('aria-busy', 'false');
-    $('export-label').textContent = 'Export';
+    $('export-label').textContent = 'done' in button.dataset ? 'Exported' : 'Export';
     if (refreshAfterExport) setTimeout(refresh, 1000);
   }
 };
