@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
-import type { Film, Step } from '../film.ts'
+import type { Film, Part, Step } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import type { EditRequest, ShownEdit } from '../../studio/api.ts'
 
@@ -97,7 +97,15 @@ const editRequest: z.ZodType<EditRequest> = z.union([
   z.strictObject({ remove: z.number().int().min(0) }),
   z.strictObject({ from: z.number(), to: z.number(), cut: z.literal(true) }),
   z.strictObject({ from: z.number(), to: z.number(), speed: z.number().gt(1).max(16) }),
+  z.strictObject({ step: z.number().int().min(0), cut: z.literal(true) }),
+  z.strictObject({ step: z.number().int().min(0), speed: z.number().gt(1).max(16) }),
 ])
+
+const stepEdit = (change: { cut: true } | { speed: number }, part: Part): StepEdit => {
+  const whole = part.from === undefined && part.to === undefined
+  if ('cut' in change) return { cut: whole ? true : part }
+  return { speed: whole ? change.speed : { by: change.speed, ...part } }
+}
 
 // Each step's new cut or speed; undefined takes the step's edit away.
 export type Plan = Map<number, StepEdit | undefined>
@@ -105,6 +113,13 @@ export type Plan = Map<number, StepEdit | undefined>
 export function planEdit(film: Film, footage: Footage, raw: unknown): Plan {
   const request = editRequest.parse(raw)
   if ('remove' in request) return new Map([[request.remove, undefined]])
+  if ('step' in request) {
+    const now = film.steps[request.step]?.cut ?? film.steps[request.step]?.speed
+    if (now === undefined) throw new Error(`Step ${request.step + 1} isn't cut or sped up.`)
+    const { from, to } = typeof now === 'object' ? now : {}
+    const part = { ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}) }
+    return new Map([[request.step, stepEdit(request, part)]])
+  }
   const steps = spans(footage)
   if (!steps) {
     throw new Error(
@@ -123,13 +138,7 @@ export function planEdit(film: Film, footage: Footage, raw: unknown): Plan {
       ...(from > span.from + SAME ? { from: ms(from - span.from) } : {}),
       ...(to < span.to - SAME ? { to: ms(to - span.from) } : {}),
     }
-    const whole = Object.keys(part).length === 0
-    plan.set(
-      i,
-      'cut' in request
-        ? { cut: whole ? true : part }
-        : { speed: whole ? request.speed : { by: request.speed, ...part } },
-    )
+    plan.set(i, stepEdit(request, part))
   }
   return plan
 }

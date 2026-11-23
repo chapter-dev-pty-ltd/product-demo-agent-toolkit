@@ -39,6 +39,8 @@ export type EditRequest =
   | { remove: number }
   | { from: number; to: number; cut: true }
   | { from: number; to: number; speed: number }
+  | { step: number; cut: true }
+  | { step: number; speed: number }
 
 export interface StudioState {
   title: string

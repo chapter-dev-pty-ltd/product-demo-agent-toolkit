@@ -8,7 +8,7 @@ import type {
 } from './api.ts'
 import { musicSrc } from './audio.ts'
 import type { Player } from './player.ts'
-import { $, clock, fileName, pretty } from './ui.ts'
+import { $, clock, fileName, pressed, pretty } from './ui.ts'
 
 const GLOBE =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/></svg>'
@@ -126,7 +126,7 @@ export function createTimeline(player: Player, state: StudioState): Timeline {
     for (const e of list) {
       const el = document.createElement('div')
       el.dataset.edit = String(e.step)
-      el.title = `Step ${e.step + 1}, ${e.speed === 'cut' ? 'cut' : `${e.speed}×`}: ${e.taken.toFixed(1)}s of the take. Click to take it back.`
+      el.title = `Step ${e.step + 1}, ${e.speed === 'cut' ? 'cut' : `${e.speed}×`}: ${e.taken.toFixed(1)}s of the take`
       el.style.left = pct(e.from)
       if (e.speed === 'cut') {
         el.className = 'mark cut'
@@ -136,7 +136,7 @@ export function createTimeline(player: Player, state: StudioState): Timeline {
         el.style.width = pct(e.to - e.from)
         el.innerHTML = `<span>${e.speed}×</span>`
       }
-      el.onclick = () => void edit({ remove: e.step })
+      el.onclick = () => pick(e)
       lane.appendChild(el)
     }
   }
@@ -221,9 +221,24 @@ export function createTimeline(player: Player, state: StudioState): Timeline {
     selection && Math.abs(selection.b - selection.a) > 0.05
       ? { from: Math.min(selection.a, selection.b), to: Math.max(selection.a, selection.b) }
       : null
+  let picked: ShownEdit | null = null
   const showSelection = () => {
     const range = selected()
-    $('selection').hidden = $('edit-bar').hidden = !range
+    for (const mark of document.querySelectorAll<HTMLElement>('[data-edit]'))
+      mark.classList.toggle('picked', mark.dataset.edit === String(picked?.step))
+    for (const button of $('edit-bar').querySelectorAll<HTMLElement>('[data-speed], [data-cut]'))
+      pressed(
+        button,
+        String(picked?.speed) === (button.dataset.speed ?? ('cut' in button.dataset ? 'cut' : '')),
+      )
+    $('edit-bar').querySelector<HTMLElement>('[data-remove]')!.hidden = !picked
+    $('selection').hidden = !range
+    $('edit-bar').hidden = !range && !picked
+    if (picked) {
+      const { step, from, to, speed } = picked
+      $('edit-range').textContent =
+        `Step ${step + 1} · ${speed === 'cut' ? `cut at ${clock(from)}` : `${clock(from)} – ${clock(to)}`}`
+    }
     if (!range) return
     const lane = $('ruler').getBoundingClientRect()
     const box = el.getBoundingClientRect()
@@ -233,6 +248,13 @@ export function createTimeline(player: Player, state: StudioState): Timeline {
   }
   const select = (next: typeof selection) => {
     selection = next
+    picked = null
+    showSelection()
+  }
+  const pick = (next: ShownEdit) => {
+    selection = null
+    picked = next
+    void player.seek(next.from)
     showSelection()
   }
   window.addEventListener('resize', showSelection)
@@ -252,13 +274,20 @@ export function createTimeline(player: Player, state: StudioState): Timeline {
     const button = (e.target as HTMLElement).closest<HTMLElement>('button')
     if (!button) return
     if ('clear' in button.dataset) return select(null)
-    editSelected('cut' in button.dataset ? { cut: true } : { speed: Number(button.dataset.speed) })
+    if (picked && 'remove' in button.dataset) return void edit({ remove: picked.step })
+    const change =
+      'cut' in button.dataset ? ({ cut: true } as const) : { speed: Number(button.dataset.speed) }
+    if (picked) return void edit({ step: picked.step, ...change })
+    editSelected(change)
   }
   document.addEventListener('keydown', (e) => {
     const target = e.target as HTMLElement
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || !selected()) return
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
+    if (!selected() && !picked) return
     if (e.code === 'Escape') select(null)
-    if (e.code === 'Backspace' || e.code === 'Delete') editSelected({ cut: true })
+    if (e.code !== 'Backspace' && e.code !== 'Delete') return
+    if (picked) void edit({ remove: picked.step })
+    else editSelected({ cut: true })
   })
 
   el.addEventListener('pointerdown', (e) => {

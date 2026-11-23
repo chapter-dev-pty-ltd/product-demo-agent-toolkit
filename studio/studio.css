@@ -74,11 +74,13 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
 .mark.cut { cursor: pointer; width: 18px; height: 18px; margin: -9px 0 0 -9px; display: grid; place-items: center; background: var(--amber); box-shadow: 0 1px 3px rgb(245 158 11 / .4); color: #fff; }
 .mark.cut svg { width: 10px; height: 10px; }
 .clip.speed:hover, .mark.cut:hover { filter: brightness(.94); }
+.clip.speed.picked, .mark.cut.picked { outline: 2px solid var(--text); outline-offset: 1px; }
+#edit-bar button[aria-pressed='true'] { background: var(--text); border-color: var(--text); color: #fff; }
 #selection { position: absolute; top: 28px; bottom: 10px; z-index: 1; pointer-events: none; background: rgb(245 158 11 / .14);
   border-left: 1px solid var(--amber); border-right: 1px solid var(--amber); }
 #selection[hidden], #edit-bar[hidden] { display: none; }
 #edit-bar { display: flex; align-items: center; gap: 4px; font: 500 12px var(--mono); color: var(--dim); }
-#edit-bar span { padding-right: 6px; }
+#edit-bar span { padding-right: 6px; white-space: nowrap; }
 #edit-bar button { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); font: 500 12px Inter, sans-serif; color: var(--text); cursor: pointer; }
 #edit-bar button:hover { background: var(--muted); }
 #playhead { position: absolute; top: 0; bottom: 10px; width: 0; pointer-events: none; z-index: 2; }
