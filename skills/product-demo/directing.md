@@ -80,18 +80,24 @@ The voice is Jessica, from ElevenLabs, unless the config chooses another:
 
 Point the viewer at one thing, with the camera zooming toward it. Three styles:
 
-- `"style": "box"`, the default: an outline around it, in `colour` (any hex, red if left out).
 - `"style": "magnify"`: it lifts out of the screen, a little bigger, over the dimmed rest.
-  Best for a row, a card or a value the viewer should read; an outline suits a control.
+  Use this one.
+- `"style": "box"`: an outline in `colour`. Only when the thing fills most of the screen, or
+  what's around it matters (a drag arriving).
 - `"style": "cursor"`: the cursor circles it once and comes back. For pointing at something
   without covering or changing the screen.
+
+Always write `style`: left out, it's a box. A box always sets `colour`, in a hue the app
+doesn't use and never red: on a light app `#6366f1`, or `#e0409a` if the app is blue; on a
+dark app `#fbbf24`, or `#34d399` if the app is warm.
 
 Put it on the step whose action it should show. It comes on as that step starts, so the
 action happens inside it, then holds after:
 
 ```json
-{ "click": { "role": "button", "name": "Save" }, "highlight": { "colour": "#2563eb", "zoom": 0.5 } }
+{ "click": { "role": "button", "name": "Save" }, "highlight": { "style": "magnify", "zoom": 0.5 } }
 { "press": "Enter", "highlight": { "style": "magnify", "box": [640, 120, 400, 300] } }
+{ "drag": …, "highlight": { "style": "box", "colour": "#6366f1", "box": [200, 160, 1040, 600] } }
 ```
 
 - Without a `box`, it highlights the step's own element (for a drag, where it was dropped).
