@@ -10,6 +10,7 @@ const ICON_PAUSE =
 export interface Player {
   readonly t: number
   readonly length: number
+  readonly frame: HTMLIFrameElement | undefined
   seek(to: number): Promise<void>
   reload(fresh?: boolean): void
   sound(): void
@@ -161,6 +162,9 @@ export function createPlayer(state: StudioState, mixer: Mixer, from: number): Pl
     },
     get length() {
       return length
+    },
+    get frame() {
+      return frame
     },
     seek,
     reload,

@@ -148,6 +148,8 @@ export interface AppWindow {
   width: number
   height: number
   fill: number
+  x?: number | undefined
+  y?: number | undefined
 }
 
 export interface Config {
@@ -198,10 +200,12 @@ const config: z.ZodType<Config> = z.strictObject({
       width: z.number().int().min(800).max(2560).default(1600),
       height: z.number().int().min(600).max(1600).default(900),
       fill: fillSchema.default(0.92),
+      x: z.number().int().min(-1920).max(1920).optional(),
+      y: z.number().int().min(-1080).max(1080).optional(),
     })
     .default({ width: 1600, height: 900, fill: 0.92 })
     .describe(
-      "The app's window: its width and height in the browser (changing them needs a new shoot), and how much of the video it fills, 0.5 to 1 (a re-cut is enough).",
+      "The app's window: its width and height in the browser (changing them needs a new shoot), and how much of the video it fills, 0.5 to 1, and optionally where its top left corner sits in the 1920x1080 video as x and y (centred when left out; it may hang off the edges, down to -1920 and -1080). A re-cut is enough for fill, x and y.",
     ),
   keep: z
     .number()

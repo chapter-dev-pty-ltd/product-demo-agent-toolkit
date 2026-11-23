@@ -253,9 +253,13 @@ function html(
     (CANVAS.height * fill - chrome.y) / H,
     1.25,
   )
+  const { x, y } = look.window
   const app = {
-    x: (CANVAS.width - W * s) / 2,
-    y: (CANVAS.height - H * s + (browser ? BAR - RIM : 0)) / 2,
+    x: x === undefined ? (CANVAS.width - W * s) / 2 : x + (browser ? RIM : 0),
+    y:
+      y === undefined
+        ? (CANVAS.height - H * s + (browser ? BAR - RIM : 0)) / 2
+        : y + (browser ? BAR : 0),
   }
   const glass = {
     x: app.x - RIM,

@@ -4,6 +4,8 @@ export interface PageSettings {
   backdrop: string
   display: string
   fill: number
+  x?: number | null | undefined
+  y?: number | null | undefined
   cursor: { style: string; size: number; label?: string | undefined; tip?: [number, number] }
   music: false | { track: string; volume: number }
 }

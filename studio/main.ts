@@ -1,6 +1,7 @@
 import type { StudioEvent, StudioState } from './api.ts'
 import { createMixer } from './audio.ts'
 import { createChat } from './chat.ts'
+import { createDrag } from './drag.ts'
 import { createExport } from './export.ts'
 import { createPlayer } from './player.ts'
 import { createSettings } from './settings.ts'
@@ -20,6 +21,7 @@ const timeline = createTimeline(player, state, (music) => settings.setMusic(musi
 const settings = createSettings(state, player, timeline)
 const exporter = createExport(state, () => settings.look)
 const chat = createChat(state, player)
+createDrag(state, player, (x, y) => settings.place(x, y))
 
 const tabs = document.querySelectorAll<HTMLElement>('[role=tab]')
 for (const tab of tabs) {
