@@ -129,6 +129,7 @@ export function stageFiles(
   length: number,
   title: string,
   extra = '',
+  covers: Cover[] = [],
 ): StageFiles {
   const start = footage.frames[0]?.at ?? 0
   const time = <T extends { at: number }>(item: T): T => ({ ...item, at: item.at - start })
@@ -158,7 +159,7 @@ export function stageFiles(
       const cursor = await cursorFor(now.cursor)
       return {
         contentType: 'text/html',
-        body: html(data, cursor, background, now, extra, view),
+        body: html(data, cursor, background, now, extra + coversHtml(covers, background), view),
       }
     }
     const { style } = now.cursor
@@ -188,8 +189,18 @@ export async function openStage(
   length: number,
   title: string,
   extra = '',
+  covers: Cover[] = [],
 ): Promise<Page> {
-  const files = stageFiles(footageDir, footage, highlights, () => look, length, title, extra)
+  const files = stageFiles(
+    footageDir,
+    footage,
+    highlights,
+    () => look,
+    length,
+    title,
+    extra,
+    covers,
+  )
   const page = await browser.newPage({ viewport: CANVAS, deviceScaleFactor: 1 })
   await page.route(`${ORIGIN}/**`, async (route) => {
     const file = await files(new URL(route.request().url()).pathname)
@@ -199,6 +210,39 @@ export async function openStage(
   await page.goto(`${ORIGIN}/`)
   await page.evaluate(() => document.fonts.ready)
   return page
+}
+
+// A scene's cover: when it shows in the video, for how long, and what it says.
+export interface Cover {
+  at: number
+  hold: number
+  title: string
+  subtitle?: string | undefined
+}
+
+// The covers, over everything: the backdrop with the scene's title rising in, then fading out
+// to the scene. One after the video has begun fades in too.
+function coversHtml(covers: Cover[], background: string): string {
+  if (covers.length === 0) return ''
+  const text = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  const cards = covers.map(
+    (
+      c,
+    ) => `<div class="cover" data-at="${c.at}" data-for="${c.hold}" style="animation-delay:${Math.max(0, c.hold - 0.45)}s">
+<div class="cover-in${c.at > 0 ? ' fade' : ''}"><div class="cover-text"><h1>${text(c.title)}</h1>${c.subtitle ? `<p>${text(c.subtitle)}</p>` : ''}</div></div></div>`,
+  )
+  return `<style>
+.cover { position: absolute; inset: 0; z-index: 10; visibility: hidden; animation: cover-out 0.45s ease-in both; }
+.cover-in { position: absolute; inset: 0; background: ${background}; display: flex; align-items: center; justify-content: center; }
+.cover-in.fade { animation: cover-fade 0.35s ease-out both; }
+.cover-text { text-align: center; color: #15151f; animation: cover-rise 0.7s cubic-bezier(.2,.7,.2,1) 0.1s both; }
+.cover h1 { margin: 0; font: 700 88px/1.05 Inter, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.035em; }
+.cover p { margin: 22px 0 0; font: 500 34px/1.3 Inter, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.01em; opacity: 0.6; }
+@keyframes cover-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes cover-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cover-rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+</style>
+${cards.join('\n')}`
 }
 
 export function label(url: string): string {

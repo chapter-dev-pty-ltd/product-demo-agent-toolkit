@@ -74,6 +74,16 @@ export interface Film {
   notes?: string | undefined
   steps: Step[]
   ending?: { hold: number } | undefined
+  // The film's parts, when it has them: each starts at step `from`. Written as `scenes`, each
+  // with its own steps; readFilm lays their steps end to end.
+  scenes?: Scene[] | undefined
+}
+
+// A part of a film, and its cover: a card with its title shown for `hold` seconds before it.
+export interface Scene {
+  title: string
+  cover?: { subtitle?: string | undefined; hold?: number | undefined } | undefined
+  from: number
 }
 
 const fingerprint: z.ZodType<Fingerprint> = z.strictObject({
@@ -170,12 +180,24 @@ export const stepSchema: z.ZodType<Step> = z
   ])
   .refine((step) => !(step.cut && step.speed), 'A step is either cut or sped up, not both.')
 
-const film: z.ZodType<Film> = z.strictObject({
+const top = {
   app: z.url(),
   notes: z.string().optional(),
-  steps: z.array(stepSchema),
   ending: z.strictObject({ hold: z.number().nonnegative() }).optional(),
+}
+
+const scene = z.strictObject({
+  title: z.string().min(1),
+  cover: z
+    .strictObject({ subtitle: z.string().optional(), hold: z.number().positive().optional() })
+    .optional(),
+  steps: z.array(stepSchema).min(1),
 })
+
+const film = z.union([
+  z.strictObject({ ...top, steps: z.array(stepSchema) }),
+  z.strictObject({ ...top, scenes: z.array(scene).min(1) }),
+])
 
 export async function readJson(path: string): Promise<unknown> {
   try {
@@ -196,7 +218,11 @@ export async function changeSteps(
   change: (step: Record<string, unknown>, index: number) => void,
 ): Promise<string> {
   const json = JSON.parse(await readFile(path, 'utf8'))
-  for (const [i, step] of (json.steps as Record<string, unknown>[]).entries()) change(step, i)
+  // A film in scenes is changed step by step across them, as readFilm numbers its steps.
+  const steps: Record<string, unknown>[] = json.scenes
+    ? (json.scenes as { steps: Record<string, unknown>[] }[]).flatMap((s) => s.steps)
+    : json.steps
+  for (const [i, step] of steps.entries()) change(step, i)
   const text = `${JSON.stringify(json, null, 2)}\n`
   await writeFile(path, text)
   return text
@@ -215,8 +241,18 @@ export async function readFilm(path: string): Promise<Film> {
   if (!parsed.success) {
     throw new Error(`${path} is not a valid film:\n${z.prettifyError(parsed.error)}`)
   }
-  if (parsed.data.steps.length === 0) throw new Error(`${path} has no steps.`)
-  return parsed.data
+  if ('steps' in parsed.data) {
+    if (parsed.data.steps.length === 0) throw new Error(`${path} has no steps.`)
+    return parsed.data
+  }
+  const { scenes, ...rest } = parsed.data
+  const steps: Step[] = []
+  const parts: Scene[] = []
+  for (const { steps: own, ...part } of scenes) {
+    parts.push({ ...part, from: steps.length })
+    steps.push(...own)
+  }
+  return { ...rest, steps, scenes: parts }
 }
 
 export function describeStep(step: Step): string {
