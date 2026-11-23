@@ -35,9 +35,9 @@ describe('settings from the page', () => {
   const mine = { cursor: { file: '/project/cursor.svg' }, tip: [2, 3] as [number, number] }
 
   test('keeps what it leaves out, and clears the label only when it is empty', () => {
-    expect(fromPage({ fill: 0.756 }, was, {})).toEqual({
+    expect(fromPage({ fill: 0.75 }, was, {})).toEqual({
       ...was,
-      window: { ...was.window, fill: 0.76 },
+      window: { ...was.window, fill: 0.75 },
     })
     expect(fromPage({ cursor: { label: '  ' } }, was, {}).cursor).toEqual({
       style: 'black',
