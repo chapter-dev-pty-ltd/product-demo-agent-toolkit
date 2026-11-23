@@ -80,18 +80,40 @@ The voice is Jessica, from ElevenLabs, unless the config chooses another:
 
 Point the viewer at one thing, with the camera zooming toward it. Three styles:
 
-- `"style": "box"`, the default: an outline around it, in `colour` (any hex, red if left out).
 - `"style": "magnify"`: it lifts out of the screen, a little bigger, over the dimmed rest.
-  Best for a row, a card or a value the viewer should read; an outline suits a control.
+  The lifted copy is live, so a click or typing inside it still plays.
+- `"style": "box"`, the default when no style is given: an outline around it, in `colour`.
 - `"style": "cursor"`: the cursor circles it once and comes back. For pointing at something
   without covering or changing the screen.
+
+Choose `magnify`: it reads as polished where an outline reads as an annotation, and it works
+for controls, rows, cards and values alike. Always write the style, since leaving it out gives a
+box. Use a box only when magnify can't work: the thing is most of the screen (it has nowhere to
+lift to), or the viewer needs to see what's around it while it's highlighted, like a drag
+arriving from elsewhere or a change somewhere else on the page.
+
+When it is a box, always set `colour` (left out, it's a plain red) and choose it against the
+app, from its stills: a hue the app doesn't use, so it can't pass for the app's own focus ring or
+selection, and bright against what's behind it. One of these:
+
+| Colour                | Hex       | On                                                          |
+| --------------------- | --------- | ----------------------------------------------------------- |
+| Iris                  | `#6366f1` | Light, neutral apps: the safe first choice.                 |
+| Magenta               | `#e0409a` | Light apps whose own accent is blue or indigo.              |
+| Teal                  | `#0d9488` | Light apps whose accent is pink, purple, red or orange.     |
+| Amber                 | `#fbbf24` | Dark apps, and cool (blue, grey) ones.                      |
+| Mint                  | `#34d399` | Dark apps whose accent is amber, orange or red.             |
+| The cursor's colour   | its hex   | When the config sets a pink, lime or hex cursor: they match. |
+
+Never red, unless the user asks for it: it reads as an error.
 
 Put it on the step whose action it should show. It comes on as that step starts, so the
 action happens inside it, then holds after:
 
 ```json
-{ "click": { "role": "button", "name": "Save" }, "highlight": { "colour": "#2563eb", "zoom": 0.5 } }
+{ "click": { "role": "button", "name": "Save" }, "highlight": { "style": "magnify", "zoom": 0.5 } }
 { "press": "Enter", "highlight": { "style": "magnify", "box": [640, 120, 400, 300] } }
+{ "drag": …, "highlight": { "style": "box", "colour": "#6366f1", "box": [200, 160, 1040, 600] } }
 ```
 
 - Without a `box`, it highlights the step's own element (for a drag, where it was dropped).
