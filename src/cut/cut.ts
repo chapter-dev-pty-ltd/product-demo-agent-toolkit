@@ -217,13 +217,13 @@ export const STEM_GAIN = 0.5
 export const LIMIT = 0.89
 
 // A sound file is named after the edits and mutes it was made with, so a change makes a new one.
-function soundKey(footage: Footage, edits: Edit[]): string {
-  const muted = [...footage.clicks, ...(footage.keys ?? [])].flatMap((c, i) => (c.muted ? [i] : []))
-  if (!edits.length && !muted.length) return ''
+// Keyed on when every sound plays, so anything that moves one (an edit, a cover, a mute) makes
+// new files rather than reusing ones out of time.
+function soundKey(tracks: Record<Stem, Track[]>, length: number): string {
   return (
     '-' +
     createHash('sha1')
-      .update(JSON.stringify([edits, muted]))
+      .update(JSON.stringify([tracks, length]))
       .digest('hex')
       .slice(0, 8)
   )
@@ -233,13 +233,12 @@ export async function stems(
   footageDir: string,
   footage: Footage,
   length: number,
-  edits: Edit[] = [],
 ): Promise<Partial<Record<Stem, string>>> {
   const ffmpeg = await findFfmpeg()
   const tracks = soundTracks(footage, true)
   const made = await Promise.all(
     stemsOf(footage).map(async (stem) => {
-      const out = join(footageDir, `sound-${stem}${soundKey(footage, edits)}.m4a`)
+      const out = join(footageDir, `sound-${stem}${soundKey(tracks, length)}.m4a`)
       if (existsSync(out)) return [stem, out] as const
       const part = `${out}.part`
       const args = soundArgs(tracks[stem], length, undefined, true)

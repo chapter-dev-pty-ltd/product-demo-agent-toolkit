@@ -125,7 +125,7 @@ export async function studio(
   let { footage, recorded, film, edits, holds, covers, highlights, length, ending, title } =
     await prepare(footageDir)
   const soundsNow = () => {
-    const made = stems(footageDir, footage, length, edits).catch(
+    const made = stems(footageDir, footage, length).catch(
       (error: Error): Partial<Record<Stem, string>> => (console.log(error.message), {}),
     )
     // Each set of edits makes its own sound files; once the newest is made, the rest go.
