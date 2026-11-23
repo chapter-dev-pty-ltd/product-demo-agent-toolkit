@@ -85,12 +85,15 @@ export function createSelection(
     $('selection').style.width = (view.frac(at.to) - view.frac(at.from)) * lane.width + 'px'
   }
   window.addEventListener('resize', placeRange)
-  const clear = () => {
+  // Unselecting a cover goes back from its page too, except to redraw the lanes.
+  const clear = (closing = true) => {
+    const was = picked
     range = null
     picked = null
     placeRange()
     showPicked()
     popover.hide()
+    if (closing && was?.startsWith('cover:')) view.closeCover()
   }
   const setRange = (next: { a: number; b: number }, open: boolean) => {
     clear()
@@ -119,7 +122,7 @@ export function createSelection(
   const pick = (item: HTMLElement, at?: number) => {
     const key = item.dataset.key
     if (key?.startsWith('cover:')) {
-      clear()
+      clear(false)
       picked = key
       showPicked()
       return view.openCover(Number(key.slice(6)))
@@ -205,7 +208,7 @@ export function createSelection(
   document.addEventListener('keydown', (e) => {
     // Only keys meant for the timeline: not ones typed in the chat, the export dialog or elsewhere.
     if (e.target !== document.body && !el.contains(e.target as Node)) return
-    if (!popover.target && !ranged()) return
+    if (!popover.target && !ranged() && !picked) return
     if (e.code === 'Escape') clear()
     if (e.code === 'Backspace' || e.code === 'Delete') {
       e.preventDefault()
@@ -267,7 +270,7 @@ export function createSelection(
     },
     keep: () => {
       const [key, at] = [picked, pickedAt]
-      clear()
+      clear(false)
       return () => {
         const again = key ? el.querySelector<HTMLElement>(`[data-key="${key}"]`) : null
         if (again) pick(again, at)

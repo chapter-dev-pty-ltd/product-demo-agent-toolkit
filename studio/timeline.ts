@@ -43,6 +43,7 @@ export interface View {
   // A length on the timeline, in its own seconds, as a share of it.
   along(seconds: number): string
   openCover(scene: number): void
+  closeCover(): void
 }
 
 export function createTimeline(
@@ -50,6 +51,7 @@ export function createTimeline(
   state: StudioState,
   setMusic: (music: PageSettings['music']) => void,
   openCover: (scene: number) => void,
+  closeCover: () => void,
 ): Timeline {
   const ownedMusic = state.owned.music
   const el = document.querySelector<HTMLElement>('.timeline')!
@@ -86,6 +88,7 @@ export function createTimeline(
     videoAt,
     along,
     openCover,
+    closeCover,
   }
   const selection = createSelection(view, player, state, { get: () => music, set: setMusic })
 

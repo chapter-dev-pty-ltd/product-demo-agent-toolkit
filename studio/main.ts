@@ -24,6 +24,7 @@ const timeline = createTimeline(
   state,
   (music) => settings.setMusic(music),
   (scene) => cover.open(scene),
+  () => cover.close(),
 )
 const settings = createSettings(state, player, timeline)
 const exporter = createExport(state, () => settings.look)

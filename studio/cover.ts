@@ -103,8 +103,9 @@ export function createCoverPanel(state: StudioState, closed: (scene: number) => 
   }
 
   const close = () => {
-    if (scene !== undefined) closed(scene)
+    const was = scene
     scene = undefined
+    if (was !== undefined) closed(was)
     $('cover').hidden = true
     $('settings').hidden = false
   }
