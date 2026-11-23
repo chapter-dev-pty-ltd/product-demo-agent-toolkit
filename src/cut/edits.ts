@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { soundOn, type Sound } from '../config.ts'
 import { changeSteps, type Film, type Part, type Step } from '../film.ts'
 import type { Footage } from '../perform.ts'
-import type { EditRequest, ShownEdit } from '../../studio/api.ts'
+import type { EditRequest, HighlightRequest, ShownEdit, SoundRequest } from '../../studio/api.ts'
 import { toVideo, type Span } from '../../studio/time.ts'
 
 export { toTake, toVideo } from '../../studio/time.ts'
@@ -54,9 +54,6 @@ export function filmEdits(film: Film, footage: Footage): Edit[] {
   })
 }
 
-export const editsKey = (edits: Edit[]): string =>
-  edits.length ? createHash('sha1').update(JSON.stringify(edits)).digest('hex').slice(0, 8) : ''
-
 export function retime(footage: Footage, edits: Edit[]): Footage {
   if (!edits.length) return footage
   const start = footage.frames[0]?.at ?? 0
@@ -83,6 +80,19 @@ export function retime(footage: Footage, edits: Edit[]): Footage {
 export function stepAt(footage: Footage, at: number): number | undefined {
   const i = (footage.steps ?? []).findLastIndex((s) => s.at <= at + SAME)
   return i < 0 ? undefined : i
+}
+
+export function muteQuietSteps(film: Film, footage: Footage): Footage {
+  const muted = (kind: 'click' | 'typing', at: number) => {
+    const step = stepAt(footage, at)
+    const sound = step === undefined ? undefined : film.steps[step]?.sound
+    return sound !== undefined && !soundOn(kind, sound)
+  }
+  return {
+    ...footage,
+    clicks: footage.clicks.map((c) => ({ ...c, muted: muted('click', c.at) })),
+    keys: (footage.keys ?? []).map((k) => ({ ...k, muted: muted('typing', k.at) })),
+  }
 }
 
 const speedBy = z.number().gt(1).max(16)
@@ -186,6 +196,39 @@ export function writePlan(filmFile: string, plan: Plan): Promise<string> {
     delete step.cut
     delete step.speed
     Object.assign(step, plan.get(i))
+  })
+}
+
+const stepIndex = z.number().int().min(0)
+const soundRequest: z.ZodType<SoundRequest> = z.strictObject({
+  step: stepIndex,
+  click: z.boolean(),
+})
+const highlightRequest: z.ZodType<HighlightRequest> = z.union([
+  z.strictObject({ step: stepIndex, style: z.enum(['box', 'magnify', 'cursor']) }),
+  z.strictObject({ step: stepIndex, remove: z.literal(true) }),
+])
+
+export function writeClickSound(filmFile: string, film: Film, raw: unknown): Promise<string> {
+  const request = soundRequest.parse(raw)
+  if (!film.steps[request.step]) throw new Refused(`There's no step ${request.step + 1}.`)
+  return changeSteps(filmFile, (step, i) => {
+    if (i !== request.step) return
+    const typing = soundOn('typing', (step.sound as Sound | undefined) ?? true)
+    const click = request.click
+    if (click && typing) delete step.sound
+    else step.sound = click === typing ? click : { click, typing }
+  })
+}
+
+export function writeHighlight(filmFile: string, film: Film, raw: unknown): Promise<string> {
+  const request = highlightRequest.parse(raw)
+  if (!film.steps[request.step]?.highlight)
+    throw new Refused(`Step ${request.step + 1} has no highlight.`)
+  return changeSteps(filmFile, (step, i) => {
+    if (i !== request.step) return
+    if ('remove' in request) delete step.highlight
+    else step.highlight = { ...(step.highlight as object), style: request.style }
   })
 }
 

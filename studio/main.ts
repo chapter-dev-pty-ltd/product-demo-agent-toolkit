@@ -14,12 +14,9 @@ document.title = `${state.title} · Studio`
 $('title').textContent = state.title
 $('title').title = state.title
 
-const mixer = createMixer(state, () => settings.look)
+const mixer = createMixer(state, () => settings.look.music)
 const player = createPlayer(state, mixer, Math.max(0, Number(query.get('t')) || 0))
-const timeline = createTimeline(player, state, {
-  look: () => settings.look,
-  change: (patch) => settings.change(patch),
-})
+const timeline = createTimeline(player, state, (music) => settings.setMusic(music))
 const settings = createSettings(state, player, timeline)
 const exporter = createExport(state, () => settings.look)
 const chat = createChat(state, player)

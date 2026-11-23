@@ -6,7 +6,6 @@ export interface PageSettings {
   fill: number
   cursor: { style: string; size: number; label?: string | undefined; tip?: [number, number] }
   music: false | { track: string; volume: number }
-  sound: { click: boolean; typing: boolean }
 }
 
 export interface StudioMessage {

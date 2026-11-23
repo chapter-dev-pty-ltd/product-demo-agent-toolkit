@@ -10,14 +10,11 @@ const CURSORS = {
   macos: 'linear-gradient(135deg,#000 50%,#fff 50%)',
 }
 
-export type Patch = Partial<Omit<PageSettings, 'cursor' | 'sound'>> & {
-  cursor?: Partial<PageSettings['cursor']>
-  sound?: Partial<PageSettings['sound']>
-}
+type Patch = Partial<Omit<PageSettings, 'cursor'>> & { cursor?: Partial<PageSettings['cursor']> }
 
 export interface Settings {
   readonly look: PageSettings
-  change(patch: Patch): void
+  setMusic(music: PageSettings['music']): void
 }
 
 export function createSettings(state: StudioState, player: Player, timeline: Timeline): Settings {
@@ -73,12 +70,7 @@ export function createSettings(state: StudioState, player: Player, timeline: Tim
     }
   }
   const change = (patch: Patch) => {
-    look = {
-      ...look,
-      ...patch,
-      cursor: { ...look.cursor, ...patch.cursor },
-      sound: { ...look.sound, ...patch.sound },
-    }
+    look = { ...look, ...patch, cursor: { ...look.cursor, ...patch.cursor } }
     render()
     player.sound()
     void save()
@@ -195,7 +187,7 @@ export function createSettings(state: StudioState, player: Player, timeline: Tim
       volume.style.setProperty('--fill', m.volume * 100 + '%')
       $('volume-value').textContent = Math.round(m.volume * 100) + '%'
     }
-    timeline.look(look)
+    timeline.music(m)
 
     fill.value = String(look.fill)
     fill.style.setProperty('--fill', ((look.fill - 0.5) / 0.5) * 100 + '%')
@@ -211,6 +203,6 @@ export function createSettings(state: StudioState, player: Player, timeline: Tim
     get look() {
       return look
     },
-    change,
+    setMusic: (music) => change({ music }),
   }
 }

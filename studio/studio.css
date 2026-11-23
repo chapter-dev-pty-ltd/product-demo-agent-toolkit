@@ -70,6 +70,7 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
   background: var(--pink); border: 2px solid #fff; box-shadow: 0 1px 3px rgb(236 72 153 / .4); }
 .lane .empty { position: absolute; left: 8px; top: 0; line-height: 36px; color: var(--faint); font-size: 11px; }
 #lanes { position: relative; cursor: text; }
+.clip[data-key], .mark[data-key] { cursor: pointer; }
 .clip.speed { cursor: grab; overflow: visible; background: repeating-linear-gradient(-45deg, #fef3c7 0 6px, #fde68a 6px 12px); color: #78350f; }
 .clip.cut { cursor: grab; overflow: visible; gap: 5px; color: #991b1b;
   background: repeating-linear-gradient(-45deg, #fee2e2 0 6px, #fecaca 6px 12px); }
@@ -85,14 +86,11 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
   background: #b45309; opacity: 0; transition: opacity .12s; }
 .clip:hover .handle::after, .clip.picked .handle::after { opacity: .55; }
 .clip .handle:hover::after { opacity: .9; }
-.dragging, .dragging .handle { cursor: grabbing; }
 .dragging { opacity: .85; }
-.clip[data-key], .mark[data-key] { cursor: pointer; }
-.clip.speed[data-key], .clip.cut[data-key] { cursor: grab; }
+.dragging, .dragging .handle { cursor: grabbing; }
 .picked { box-shadow: 0 0 0 2px #fff, 0 0 0 3px rgb(10 10 10 / .22); }
 .mark.picked { box-shadow: 0 0 0 1.5px rgb(10 10 10 / .55); }
-.track.muted .mark, .mark.muted { background: var(--line-strong); box-shadow: none; }
-.track.muted .name small { color: var(--dim); }
+.mark.muted { background: var(--line-strong); box-shadow: none; }
 #selection { position: absolute; top: 28px; bottom: 10px; z-index: 1; pointer-events: none; background: rgb(245 158 11 / .14);
   border-left: 1px solid var(--amber); border-right: 1px solid var(--amber); }
 #selection[hidden] { display: none; }

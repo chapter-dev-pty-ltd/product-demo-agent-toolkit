@@ -146,7 +146,7 @@ export function createPlayer(state: StudioState, mixer: Mixer, from: number): Pl
   document.addEventListener('keydown', (e) => {
     const target = e.target as HTMLElement
     if (document.querySelector('dialog[open]') || target.closest('button')) return
-    if (target.matches('input, textarea, select')) return
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
     if (e.code === 'Space') {
       e.preventDefault()
       toggle()

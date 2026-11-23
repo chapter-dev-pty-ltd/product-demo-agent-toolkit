@@ -119,6 +119,8 @@ product-demo-agent-toolkit edit <id>                     # list them by step; --
 
 It writes them into the film, and the studio shows them straight away. A take shot before this version doesn't know when its steps started: shoot it again before cutting it.
 
+To silence a step's click or typing sounds, give it `"sound": false`, or `{ "click": false }` for its clicks alone.
+
 ## 6. The studio: change it with the user
 
 ```bash

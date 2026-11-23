@@ -14,8 +14,7 @@ export interface Mixer {
 export const musicSrc = (m: Exclude<Music, false>): string =>
   m.track === 'own' ? '/studio/own/music' : '/studio/music/' + m.track
 
-export function createMixer(state: StudioState, look: () => PageSettings): Mixer {
-  const music = (): Music => look().music
+export function createMixer(state: StudioState, music: () => Music): Mixer {
   const mixer = new AudioContext()
   const master = mixer.createGain()
   master.connect(mixer.destination)
@@ -31,16 +30,6 @@ export function createMixer(state: StudioState, look: () => PageSettings): Mixer
   restore.connect(limiter)
   const musicLevel = mixer.createGain()
   musicLevel.connect(limiter)
-  const stemLevels = state.stems.map((stem) => {
-    const gain = mixer.createGain()
-    gain.connect(restore)
-    return { stem, gain }
-  })
-  const heard = () => {
-    const { sound } = look()
-    for (const { stem, gain } of stemLevels)
-      gain.gain.value = stem === 'voice' || sound[stem] ? 1 : 0
-  }
 
   const decode = (url: string): Promise<AudioBuffer | null> =>
     fetch(url)
@@ -100,11 +89,7 @@ export function createMixer(state: StudioState, look: () => PageSettings): Mixer
     if (go !== generation) return
     const when = mixer.currentTime
     const at = now()
-    heard()
-    for (const [i, b] of stems.entries()) {
-      const level = stemLevels[i]
-      if (b && level && at < b.duration) begin(b, level.gain, when, at)
-    }
+    for (const b of stems) if (b && at < b.duration) begin(b, restore, when, at)
     if (tune) begin(tune, musicLevel, when, at % tune.duration).loop = true
     playingMusic = key
     level()
@@ -113,13 +98,9 @@ export function createMixer(state: StudioState, look: () => PageSettings): Mixer
   return {
     start,
     stop,
-    reloadSounds: () => void (stemBuffers = sounds()),
     now,
-    update: () => {
-      heard()
-      if (playingMusic !== musicKey()) void start(now(), length)
-      else level()
-    },
+    update: () => (playingMusic !== musicKey() ? void start(now(), length) : level()),
     setHeard: (on) => void (master.gain.value = on ? 1 : 0),
+    reloadSounds: () => void (stemBuffers = sounds()),
   }
 }
