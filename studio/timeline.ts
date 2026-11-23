@@ -3,7 +3,7 @@ import { musicSrc } from './audio.ts'
 import type { Player } from './player.ts'
 import { stepsName } from './steps.ts'
 import { createSelection } from './selection.ts'
-import { toTake } from './time.ts'
+import { fromTrack, toTrack, trackToVideo, videoToTrack } from './time.ts'
 import { $, clock, fileName, pretty } from './ui.ts'
 
 const GLOBE =
@@ -25,13 +25,20 @@ export interface Timeline {
   update(next: TimelineData): void
 }
 
-// The timeline is drawn in the take's own time, so a cut keeps its length; the player runs on the video's.
+// The timeline is drawn in the take's own time, so a cut keeps its length, with each cover given
+// its own length (time.ts, toTrack); the player runs on the video's. Times given and taken here
+// are the take's.
 export interface View {
   readonly el: HTMLElement
   readonly length: number
+  // The timeline's own length: the take's, and every cover's.
+  readonly span: number
   readonly data: TimelineData
-  pct(s: number): string
+  frac(at: number): number
+  pct(at: number): string
+  width(from: number, to: number): string
   timeAt(e: PointerEvent): number
+  videoAt(e: PointerEvent): number
 }
 
 export function createTimeline(
@@ -45,21 +52,33 @@ export function createTimeline(
   let data = state.timeline
   let musicClip: HTMLElement | undefined
   let music: PageSettings['music'] = false
-  const pct = (s: number) => (s / length) * 100 + '%'
-  const timeAt = (e: PointerEvent) => {
+  let span = 0
+  const along = (x: number) => (x / span) * 100 + '%'
+  const frac = (at: number) => toTrack(data.holds, at) / span
+  const pct = (at: number) => frac(at) * 100 + '%'
+  const width = (from: number, to: number) => (frac(to) - frac(from)) * 100 + '%'
+  const trackAt = (e: PointerEvent) => {
     const lane = $('ruler').getBoundingClientRect()
-    return Math.min(length, Math.max(0, ((e.clientX - lane.left) / lane.width) * length))
+    return Math.min(span, Math.max(0, ((e.clientX - lane.left) / lane.width) * span))
   }
+  const timeAt = (e: PointerEvent) => fromTrack(data.holds, trackAt(e))
+  const videoAt = (e: PointerEvent) => trackToVideo(data.edits, data.holds, trackAt(e))
   const view: View = {
     el,
     get length() {
       return length
     },
+    get span() {
+      return span
+    },
     get data() {
       return data
     },
+    frac,
     pct,
+    width,
     timeAt,
+    videoAt,
   }
   const selection = createSelection(view, player, state, { get: () => music, set: setMusic })
 
@@ -72,14 +91,14 @@ export function createTimeline(
   }
 
   const ruler = () => {
-    const step = [1, 2, 5, 10, 15, 30, 60].find((s) => length / s <= 12) ?? 60
+    const step = [1, 2, 5, 10, 15, 30, 60].find((s) => span / s <= 12) ?? 60
     const per = step % 5 === 0 ? 5 : 2
-    for (let i = 0; (i * step) / per <= length; i++) {
+    for (let i = 0; (i * step) / per <= span; i++) {
       const s = (i * step) / per
       const tick = document.createElement('div')
       const major = i % per === 0
       tick.className = 'tick' + (major ? '' : ' minor')
-      tick.style.left = pct(s)
+      tick.style.left = along(s)
       if (major) tick.innerHTML = '<span>' + clock(s).slice(0, 5) + '</span>'
       $('ruler').appendChild(tick)
     }
@@ -94,8 +113,10 @@ export function createTimeline(
       const end = addresses[i + 1]?.at ?? length
       const clip = document.createElement('div')
       clip.className = 'clip page'
-      clip.style.left = `calc(${pct(a.at)} + 1px)`
-      clip.style.width = `calc(${pct(end - a.at)} - 2px)`
+      // From the take's start, not the address before it: an opening cover comes first.
+      const from = Math.max(0, a.at)
+      clip.style.left = `calc(${pct(from)} + 1px)`
+      clip.style.width = `calc(${width(from, end)} - 2px)`
       clip.title = a.label
       const slash = a.label.indexOf('/')
       const host = slash < 0 ? a.label : a.label.slice(0, slash)
@@ -137,11 +158,17 @@ export function createTimeline(
     if (!data.holds.length) return
     const lane = track('Covers', String(data.holds.length), SPARK)
     for (const h of data.holds) {
-      const mark = document.createElement('div')
-      mark.className = 'mark'
-      mark.title = `A scene's cover, held ${h.hold}s here`
-      mark.style.left = pct(h.at)
-      lane.appendChild(mark)
+      const clip = document.createElement('div')
+      const from = toTrack(data.holds, h.at) - h.hold
+      clip.className = 'clip cover'
+      clip.title = `${h.title ?? 'Cover'}: ${h.hold}s`
+      clip.style.left = `calc(${along(from)} + 1px)`
+      clip.style.width = `calc(${along(h.hold)} - 2px)`
+      clip.innerHTML = SPARK
+      const name = document.createElement('span')
+      name.textContent = h.title ?? 'Cover'
+      clip.appendChild(name)
+      lane.appendChild(clip)
     }
   }
 
@@ -154,7 +181,7 @@ export function createTimeline(
       clip.dataset.key = `highlight:${h.step}`
       clip.title = `Step ${h.step + 1}: ${pretty(h.style)}`
       clip.style.left = pct(h.at)
-      clip.style.width = pct(h.until - h.at)
+      clip.style.width = width(h.at, h.until)
       clip.innerHTML = STYLES[h.style]
       const name = document.createElement('span')
       name.textContent = pretty(h.style)
@@ -175,7 +202,7 @@ export function createTimeline(
       clip.dataset.key = `edit:${e.steps.join(',')}`
       clip.title = `${stepsName(e.steps)}, ${cut ? 'cut' : `${e.speed}×`}: ${(e.to - e.from).toFixed(1)}s of the take. Drag to move, or drag an end to change it.`
       clip.style.left = pct(e.from)
-      clip.style.width = pct(e.to - e.from)
+      clip.style.width = width(e.from, e.to)
       clip.innerHTML = `<i class="handle" data-end="from"></i>${cut ? SCISSORS : ''}<span>${cut ? 'Cut' : `${e.speed}×`}</span><i class="handle" data-end="to"></i>`
       clip.onpointerdown = (down) => selection.drag(down, clip, e)
       lane.appendChild(clip)
@@ -189,7 +216,7 @@ export function createTimeline(
         const shade = document.createElement('div')
         shade.className = 'shade'
         shade.style.left = pct(e.from)
-        shade.style.width = pct(e.to - e.from)
+        shade.style.width = width(e.from, e.to)
         lane.appendChild(shade)
       }
     }
@@ -243,6 +270,7 @@ export function createTimeline(
   player.onLoad(() => {
     const reselect = selection.keep()
     length = data.length
+    span = toTrack(data.holds, length)
     $('ruler').replaceChildren()
     $('tracks').replaceChildren()
     ruler()
@@ -272,7 +300,7 @@ export function createTimeline(
       $('playhead').style.left =
         lane.left -
         box.left +
-        (toTake(data.edits, player.t, false, data.holds) / length) * lane.width +
+        (videoToTrack(data.edits, data.holds, player.t) / span) * lane.width +
         'px'
   })
 

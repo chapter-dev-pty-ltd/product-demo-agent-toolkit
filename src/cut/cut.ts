@@ -44,7 +44,7 @@ export async function prepare(footageDir: string): Promise<{
   const recorded = muteQuietSteps(film, read)
   const edits = filmEdits(film, recorded)
   const scenes = coversOf(film, recorded)
-  const holds = scenes.map(({ at, hold }) => ({ at, hold }))
+  const holds = scenes.map(({ at, hold, title }) => ({ at, hold, title }))
   const footage = retime(recorded, edits, holds)
   const stale = staleTake(film, recorded)
   const length = toVideo(edits, videoLength(recorded), holds)

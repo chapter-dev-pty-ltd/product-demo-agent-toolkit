@@ -73,8 +73,8 @@ export function createSelection(
     if (!at) return
     const lane = $('ruler').getBoundingClientRect()
     const box = el.getBoundingClientRect()
-    $('selection').style.left = lane.left - box.left + (at.from / view.length) * lane.width + 'px'
-    $('selection').style.width = ((at.to - at.from) / view.length) * lane.width + 'px'
+    $('selection').style.left = lane.left - box.left + view.frac(at.from) * lane.width + 'px'
+    $('selection').style.width = (view.frac(at.to) - view.frac(at.from)) * lane.width + 'px'
   }
   window.addEventListener('resize', placeRange)
   const clear = () => {
@@ -121,7 +121,7 @@ export function createSelection(
       const box = item.getBoundingClientRect()
       if (at === undefined || !view.length) return box
       const lane = $('ruler').getBoundingClientRect()
-      const x = lane.left + (at / view.length) * lane.width
+      const x = lane.left + view.frac(at) * lane.width
       return new DOMRect(Math.min(Math.max(x, box.left), box.right), box.top, 0, box.height)
     })
   }
@@ -129,7 +129,7 @@ export function createSelection(
   const drag = (down: PointerEvent, clip: HTMLElement, e: ShownEdit) => {
     down.stopPropagation()
     const end = (down.target as HTMLElement).dataset.end
-    const perSecond = $('ruler').getBoundingClientRect().width / view.length
+    const perSecond = $('ruler').getBoundingClientRect().width / view.span
     const was = { left: clip.style.left, width: clip.style.width }
     const back = () => Object.assign(clip.style, was)
     const fit = (by: number, low: number, high: number) => Math.min(Math.max(by, low), high)
@@ -144,7 +144,7 @@ export function createSelection(
       else by = fit(by, -e.from, view.length - e.to)
       const from = end === 'to' ? e.from : e.from + by
       clip.style.left = view.pct(from)
-      clip.style.width = view.pct((end === 'from' ? e.to : e.to + by) - from)
+      clip.style.width = view.width(from, end === 'from' ? e.to : e.to + by)
     }
     clip.onpointerup = () => {
       clip.onpointermove = clip.onpointerup = null
@@ -178,7 +178,7 @@ export function createSelection(
 
   // What the press that's down started on; a release only acts on a press the timeline took.
   let pressedOn: 'range' | { x: number; item: HTMLElement | null } | null = null
-  const scrubTo = (e: PointerEvent) => void player.seek(video(view.timeAt(e)))
+  const scrubTo = (e: PointerEvent) => void player.seek(view.videoAt(e))
   // A press on the timeline is where keys go next, even when it lands on an item that can't take
   // focus; caught before an edit's own handler, which stops the press going further.
   el.addEventListener(

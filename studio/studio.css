@@ -71,6 +71,7 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
 .clip.music > svg { position: absolute; left: 0; top: 4px; width: 100%; height: 20px; color: #16a34a; opacity: .35; }
 .clip.music.off { opacity: .35; }
 .clip.highlight { background: var(--violet); color: #fff; }
+.clip.cover { background: #fce7f3; color: #9d174d; }
 .clip.highlight > svg { width: 13px; height: 13px; }
 .mark { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%;
   background: var(--pink); border: 2px solid #fff; box-shadow: 0 1px 3px rgb(236 72 153 / .4); }

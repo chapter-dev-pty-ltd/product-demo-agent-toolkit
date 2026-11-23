@@ -14,6 +14,7 @@ const rate = (span: Span) => (span.speed === 'cut' ? Infinity : span.speed)
 export interface Hold {
   at: number
   hold: number
+  title?: string
 }
 
 export function toVideo(spans: Span[], at: number, holds: Hold[] = []): number {
@@ -45,4 +46,43 @@ export function toTake(spans: Span[], at: number, end = false, holds: Hold[] = [
     shift += s.to - s.from - length
   }
   return at + shift
+}
+
+// The studio's timeline: the take, with each cover given its own length where it's held, so the
+// playhead moves through a cover as it plays. A moment inside a cover is the take's at that cover.
+export function toTrack(holds: Hold[], at: number): number {
+  return holds.reduce((x, h) => (h.at <= at ? x + h.hold : x), at)
+}
+
+export function fromTrack(holds: Hold[], x: number): number {
+  let held = 0
+  for (const h of holds) {
+    const from = h.at + held
+    if (x < from) break
+    if (x < from + h.hold) return h.at
+    held += h.hold
+  }
+  return x - held
+}
+
+export function videoToTrack(spans: Span[], holds: Hold[], at: number): number {
+  let held = 0
+  for (const h of holds) {
+    const from = toVideo(spans, h.at, holds) - h.hold
+    if (at < from) break
+    if (at < from + h.hold) return h.at + held + (at - from)
+    held += h.hold
+  }
+  return toTrack(holds, toTake(spans, at, false, holds))
+}
+
+export function trackToVideo(spans: Span[], holds: Hold[], x: number): number {
+  let held = 0
+  for (const h of holds) {
+    const from = h.at + held
+    if (x < from) break
+    if (x < from + h.hold) return toVideo(spans, h.at, holds) - h.hold + (x - from)
+    held += h.hold
+  }
+  return toVideo(spans, x - held, holds)
 }
