@@ -28,11 +28,13 @@ export interface Footage {
   source: string
   frames: { file: string; at: number }[]
   pointer: { at: number; x: number; y: number }[]
-  clicks: { at: number; x: number; y: number }[]
-  keys: { at: number; key: string }[]
+  // muted: the step it's in has its sound turned off in the film.
+  clicks: { at: number; x: number; y: number; muted?: boolean }[]
+  keys: { at: number; key: string; muted?: boolean }[]
   addresses: { at: number; url: string }[]
   lines: { at: number; file: string; text: string }[]
   highlights: { step: number; at: number; until: number; box: number[] }[]
+  steps?: { at: number }[]
   viewport: { width: number; height: number }
   end: number
   warnings: string[]
@@ -65,6 +67,7 @@ export async function shoot(
   const writes: Promise<void>[] = []
   let started = 0
   let end = 0
+  const starts: number[] = []
   const { warnings, trail, keys, lines, addresses, highlights } = await perform(film, dir, config, {
     camera: async (page) => {
       started = performance.now()
@@ -86,6 +89,7 @@ export async function shoot(
         await session.send('Page.stopScreencast')
       }
     },
+    step: () => void starts.push(performance.now()),
   })
   await Promise.all(writes)
   const since = (t: number) => Math.max(0, (t - started) / 1000)
@@ -112,6 +116,7 @@ export async function shoot(
       )
       .map((a) => ({ at: since(a.t), url: a.url })),
     highlights: highlights.map((h) => ({ ...h, at: since(h.at), until: since(h.until) })),
+    steps: starts.map((t) => ({ at: since(t) })),
     end,
     warnings,
   }
@@ -122,6 +127,7 @@ export async function shoot(
 interface Watchers {
   camera?: (page: Page) => Promise<() => Promise<void>>
   still?: (page: Page, step: string, index: number) => Promise<void>
+  step?: () => void
 }
 
 async function perform(
@@ -163,6 +169,7 @@ async function perform(
     const lines: Footage['lines'] = []
     let line: { spoken: Spoken; at: number } | undefined
     for (const [index, step] of film.steps.entries()) {
+      watchers.step?.()
       const label = `Step ${index + 1} (${describeStep(step)})`
       const finder: Finder = (target) =>
         find(page, target, config, (warning) => warnings.push(`${label}: ${warning}`))

@@ -11,7 +11,7 @@ export interface Player {
   readonly t: number
   readonly length: number
   seek(to: number): Promise<void>
-  reload(): void
+  reload(fresh?: boolean): void
   sound(): void
   onLoad(fn: (data: StageData) => void): void
   onShow(fn: () => void): void
@@ -66,8 +66,12 @@ export function createPlayer(state: StudioState, mixer: Mixer, from: number): Pl
 
   let loading = false
   let again = false
-  const reload = () => {
-    if (loading) return void (again = true)
+  let freshAgain = false
+  const reload = (fresh = false) => {
+    if (loading) {
+      freshAgain ||= fresh
+      return void (again = true)
+    }
     loading = true
     const next = document.createElement('iframe')
     next.className = 'loading'
@@ -76,10 +80,12 @@ export function createPlayer(state: StudioState, mixer: Mixer, from: number): Pl
     next.src = '/?v=' + Date.now()
     next.onload = async () => {
       await stageOf(next).seek(t)
-      if (!data) {
+      if (!data || fresh) {
         data = stageOf(next).data
         length = data.length
+        t = Math.min(t, length)
         for (const fn of loaded) fn(data)
+        if (playing) void mixer.start(t, length)
       }
       frame?.remove()
       frame = next
@@ -88,7 +94,9 @@ export function createPlayer(state: StudioState, mixer: Mixer, from: number): Pl
       show()
       if (again) {
         again = false
-        reload()
+        const nextFresh = freshAgain
+        freshAgain = false
+        reload(nextFresh)
       }
     }
     screen.appendChild(next)

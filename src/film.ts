@@ -1,5 +1,6 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
+import { soundSchema, type Sound } from './config.ts'
 import type { Fingerprint } from './similo.ts'
 
 export type Target =
@@ -39,6 +40,14 @@ export type Step = (
   highlight?: Highlight | undefined
   say?: string | undefined
   on?: string | undefined
+  cut?: true | Part | undefined
+  speed?: number | (Part & { by: number }) | undefined
+  sound?: Sound | undefined
+}
+
+export interface Part {
+  from?: number | undefined
+  to?: number | undefined
 }
 
 export interface Highlight {
@@ -114,70 +123,52 @@ const highlight = z
 
 const point = z.strictObject({ x: z.number(), y: z.number() }).optional()
 
-export const stepSchema: z.ZodType<Step> = z.union([
-  z.strictObject({ visit: z.string(), note, highlight, say: line, on: word }),
-  z.strictObject({
-    click: target,
-    at: point,
-    double: z.boolean().optional(),
-    right: z.boolean().optional(),
-    modifiers: z.array(z.enum(KEYS)).optional(),
-    note,
-    highlight,
-    say: line,
-    on: word,
-  }),
-  z.strictObject({ fill: target, text: z.string(), note, highlight, say: line, on: word }),
-  z.strictObject({ select: target, option: z.string(), note, highlight, say: line, on: word }),
-  z.strictObject({ type: z.string(), note, highlight, say: line, on: word }),
-  z.strictObject({ press: z.string(), note, highlight, say: line, on: word }),
-  z.strictObject({
-    hover: target,
-    at: point,
-    seconds: z.number().positive().optional(),
-    note,
-    highlight,
-    say: line,
-    on: word,
-  }),
-  z.strictObject({
-    drag: target,
-    at: point,
-    to: target,
-    toAt: point,
-    note,
-    highlight,
-    say: line,
-    on: word,
-  }),
-  z.strictObject({
-    scroll: z.enum(['up', 'down']),
-    in: target.optional(),
-    pixels: z.number().positive().optional(),
-    note,
-    highlight,
-    say: line,
-    on: word,
-  }),
-  z.strictObject({
-    upload: z.string(),
-    into: target.optional(),
-    note,
-    highlight,
-    say: line,
-    on: word,
-  }),
-  z.strictObject({
-    wait: z.union([
-      z.strictObject({ text: z.string(), gone: z.boolean().optional() }),
-      z.number().positive(),
-    ]),
-    note,
-    highlight,
-    say: line,
-    on: word,
-  }),
-])
+const part = { from: z.number().min(0).optional(), to: z.number().positive().optional() }
+const by = z.number().gt(1).max(16)
+const cut = z.union([z.literal(true), z.strictObject(part)]).optional()
+const speed = z.union([by, z.strictObject({ by, ...part })]).optional()
+const sound = soundSchema.optional()
+
+const common = { note, highlight, say: line, on: word, cut, speed, sound }
+
+export const stepSchema: z.ZodType<Step> = z
+  .union([
+    z.strictObject({ visit: z.string(), ...common }),
+    z.strictObject({
+      click: target,
+      at: point,
+      double: z.boolean().optional(),
+      right: z.boolean().optional(),
+      modifiers: z.array(z.enum(KEYS)).optional(),
+      ...common,
+    }),
+    z.strictObject({ fill: target, text: z.string(), ...common }),
+    z.strictObject({ select: target, option: z.string(), ...common }),
+    z.strictObject({ type: z.string(), ...common }),
+    z.strictObject({ press: z.string(), ...common }),
+    z.strictObject({
+      hover: target,
+      at: point,
+      seconds: z.number().positive().optional(),
+      ...common,
+    }),
+    z.strictObject({ drag: target, at: point, to: target, toAt: point, ...common }),
+    z.strictObject({
+      scroll: z.enum(['up', 'down']),
+      in: target.optional(),
+      pixels: z.number().positive().optional(),
+      ...common,
+    }),
+    z.strictObject({ upload: z.string(), into: target.optional(), ...common }),
+    z.strictObject({
+      wait: z.union([
+        z.strictObject({ text: z.string(), gone: z.boolean().optional() }),
+        z.number().positive(),
+      ]),
+      ...common,
+    }),
+  ])
+  .refine((step) => !(step.cut && step.speed), 'A step is either cut or sped up, not both.')
 
 const film: z.ZodType<Film> = z.strictObject({
   app: z.url(),
@@ -198,6 +189,18 @@ export async function readJson(path: string): Promise<unknown> {
 }
 
 const LOOK = ['backdrop', 'display', 'window', 'cursor', 'sound', 'music', 'voice']
+
+// Changed in the film's own JSON, not a parsed copy, so the rest of the file stays as written.
+export async function changeSteps(
+  path: string,
+  change: (step: Record<string, unknown>, index: number) => void,
+): Promise<string> {
+  const json = JSON.parse(await readFile(path, 'utf8'))
+  for (const [i, step] of (json.steps as Record<string, unknown>[]).entries()) change(step, i)
+  const text = `${JSON.stringify(json, null, 2)}\n`
+  await writeFile(path, text)
+  return text
+}
 
 export async function readFilm(path: string): Promise<Film> {
   const json = await readJson(path)

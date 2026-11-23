@@ -2,7 +2,8 @@ import pkg from '../package.json' with { type: 'json' }
 
 export const version: string = pkg.version
 export { CONFIG_FILE, lookToRaw, readConfig } from './config.ts'
-export { cut, readFootage, videoLength } from './cut/cut.ts'
+export { cut, prepare, readFootage, videoLength } from './cut/cut.ts'
+export { clearPlan, planEdit, shownEdits, toTake, toVideo, writePlan } from './cut/edits.ts'
 export { review } from './review.ts'
 export {
   filesOf,

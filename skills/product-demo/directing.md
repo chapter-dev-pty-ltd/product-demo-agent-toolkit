@@ -38,7 +38,9 @@ where pink gets lost, on a pink, red or warm-coloured app.
 
 The video sounds like the shot: a click on every click, and a key on every key typed, with
 space and Enter their own sounds. Both are on by default. `"sound": false` in the config turns
-them off, or `{ "click": true, "typing": false }` chooses each.
+them off, or `{ "click": true, "typing": false }` chooses each. That's for the whole video: to
+silence one step, give that step `"sound"` in the film instead (see Cuts and speed-ups in
+SKILL.md).
 
 ## Voiceover
 
