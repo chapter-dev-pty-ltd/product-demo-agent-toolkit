@@ -255,12 +255,12 @@ export async function readJson(path: string): Promise<unknown> {
 const LOOK = ['backdrop', 'display', 'window', 'cursor', 'sound', 'music', 'voice']
 
 // Changed in the film's own JSON, not a parsed copy, so the rest of the file stays as written.
-export async function changeFilm(
+export async function changeSteps(
   path: string,
-  change: (steps: Record<string, unknown>[]) => void,
+  change: (step: Record<string, unknown>, index: number) => void,
 ): Promise<string> {
   const json = JSON.parse(await readFile(path, 'utf8'))
-  change(json.steps)
+  for (const [i, step] of (json.steps as Record<string, unknown>[]).entries()) change(step, i)
   const text = `${JSON.stringify(json, null, 2)}\n`
   await writeFile(path, text)
   return text

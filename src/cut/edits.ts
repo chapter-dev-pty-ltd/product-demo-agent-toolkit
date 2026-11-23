@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import { changeFilm, type Film, type Part, type Step } from '../film.ts'
+import { changeSteps, type Film, type Part, type Step } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import type { EditRequest, ShownEdit } from '../../studio/api.ts'
 import { toVideo, type Span } from '../../studio/time.ts'
@@ -181,14 +181,11 @@ export function clearPlan(film: Film): Plan {
 }
 
 export function writePlan(filmFile: string, plan: Plan): Promise<string> {
-  return changeFilm(filmFile, (steps) => {
-    for (const [i, edit] of plan) {
-      const step = steps[i]
-      if (!step) continue
-      delete step.cut
-      delete step.speed
-      Object.assign(step, edit)
-    }
+  return changeSteps(filmFile, (step, i) => {
+    if (!plan.has(i)) return
+    delete step.cut
+    delete step.speed
+    Object.assign(step, plan.get(i))
   })
 }
 

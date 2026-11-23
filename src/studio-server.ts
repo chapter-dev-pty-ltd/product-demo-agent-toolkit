@@ -35,7 +35,7 @@ import {
   type Stem,
 } from './cut/cut.ts'
 import { planEdit, Refused, shownEdits, stepAt, writePlan } from './cut/edits.ts'
-import { changeFilm } from './film.ts'
+import { changeSteps } from './film.ts'
 import { convertExport } from './cut/export.ts'
 import { CANVAS, label, stageFiles, type Look } from './cut/stage.ts'
 import type {
@@ -369,9 +369,8 @@ export async function studio(
       if (path === '/studio/sound' && req.method === 'POST') {
         const request = soundRequest.parse(JSON.parse(await body(req)))
         if (!film.steps[request.step]) return send(400, 'text/plain', 'There is no such step.')
-        filmText = await changeFilm(footage.source, (steps) => {
-          const step = steps[request.step]
-          if (!step) return
+        filmText = await changeSteps(footage.source, (step, i) => {
+          if (i !== request.step) return
           const typing = soundOn('typing', (step.sound as Sound | undefined) ?? true)
           const click = request.click
           if (click && typing) delete step.sound
@@ -386,9 +385,8 @@ export async function studio(
         if (!film.steps[request.step]?.highlight) {
           return send(400, 'text/plain', `Step ${request.step + 1} has no highlight.`)
         }
-        filmText = await changeFilm(footage.source, (steps) => {
-          const step = steps[request.step]
-          if (!step) return
+        filmText = await changeSteps(footage.source, (step, i) => {
+          if (i !== request.step) return
           if ('remove' in request) delete step.highlight
           else step.highlight = { ...(step.highlight as object), style: request.style }
         })
