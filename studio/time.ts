@@ -14,7 +14,6 @@ const rate = (span: Span) => (span.speed === 'cut' ? Infinity : span.speed)
 export interface Hold {
   at: number
   hold: number
-  title?: string
 }
 
 export function toVideo(spans: Span[], at: number, holds: Hold[] = []): number {

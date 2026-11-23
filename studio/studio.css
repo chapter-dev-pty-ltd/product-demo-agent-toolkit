@@ -134,6 +134,11 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
 #popover .volume input { width: 88px; }
 #popover .volume input::-webkit-slider-runnable-track { background: linear-gradient(#fafafa, #fafafa) 0 / var(--fill, 50%) 100% no-repeat, rgb(255 255 255 / .2); }
 #popover .volume input::-webkit-slider-thumb { background: #fafafa; border-color: #0a0a0a; box-shadow: none; }
+#popover input.text { width: 150px; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; outline: none;
+  background: rgb(255 255 255 / .1); color: #fafafa; font: 13px Inter, sans-serif; }
+#popover input.text + input.text { margin-left: 4px; }
+#popover input.text::placeholder { color: #737373; }
+#popover input.text:focus { background: rgb(255 255 255 / .16); }
 #popover .volume output { min-width: 30px; font: 400 11px/14px var(--mono); color: #a3a3a3; }
 #popover .note { flex-basis: 100%; max-width: 320px; padding: 4px 8px 6px; font: 12px/1.4 Inter, sans-serif; color: #fca5a5; }
 #playhead { position: absolute; top: 0; bottom: 10px; width: 0; pointer-events: none; z-index: 2; }

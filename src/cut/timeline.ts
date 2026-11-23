@@ -1,9 +1,8 @@
 import type { Film } from '../film.ts'
 import type { Footage } from '../perform.ts'
-import type { TimelineData } from '../../studio/api.ts'
+import type { ShownCover, TimelineData } from '../../studio/api.ts'
 import { highlightsOf, videoLength } from './cut.ts'
 import { shownEdits, stepAt, type Edit } from './edits.ts'
-import type { Hold } from '../../studio/time.ts'
 import { label } from './stage.ts'
 
 // What the studio's timeline draws: the recording as it was taken, with the edits laid over it.
@@ -11,7 +10,7 @@ export function timelineOf(
   recorded: Footage,
   film: Film,
   edits: Edit[],
-  holds: Hold[] = [],
+  holds: ShownCover[] = [],
 ): TimelineData {
   const start = recorded.frames[0]?.at ?? 0
   return {

@@ -223,6 +223,7 @@ export async function openStage(
 export interface Cover {
   at: number
   hold: number
+  scene: number
   title: string
   subtitle?: string | undefined
 }

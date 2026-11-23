@@ -161,12 +161,13 @@ export function createTimeline(
       const clip = document.createElement('div')
       const from = toTrack(data.holds, h.at) - h.hold
       clip.className = 'clip cover'
-      clip.title = `${h.title ?? 'Cover'}: ${h.hold}s`
+      clip.dataset.key = `cover:${h.scene}`
+      clip.title = `${h.title}: ${h.hold}s`
       clip.style.left = `calc(${along(from)} + 1px)`
       clip.style.width = `calc(${along(h.hold)} - 2px)`
       clip.innerHTML = SPARK
       const name = document.createElement('span')
-      name.textContent = h.title ?? 'Cover'
+      name.textContent = h.title
       clip.appendChild(name)
       lane.appendChild(clip)
     }

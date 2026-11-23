@@ -44,8 +44,24 @@ export interface TimelineData {
   clicks: { at: number; step?: number; muted: boolean }[]
   highlights: Highlighted[]
   edits: ShownEdit[]
-  holds: Hold[]
+  holds: ShownCover[]
 }
+
+// A scene's cover, held at its moment of the take.
+export interface ShownCover extends Hold {
+  scene: number
+  title: string
+  subtitle?: string | undefined
+}
+
+export type CoverRequest =
+  | {
+      scene: number
+      title?: string | undefined
+      subtitle?: string | undefined
+      hold?: number | undefined
+    }
+  | { scene: number; remove: true }
 
 export type EditRequest =
   | { from: number; to: number; cut: true }

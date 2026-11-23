@@ -33,7 +33,14 @@ import {
   stemsOf,
   type Stem,
 } from './cut/cut.ts'
-import { planEdit, Refused, writeClickSound, writeHighlight, writePlan } from './cut/edits.ts'
+import {
+  planEdit,
+  Refused,
+  writeClickSound,
+  writeCover,
+  writeHighlight,
+  writePlan,
+} from './cut/edits.ts'
 import { convertExport } from './cut/export.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
 import { timelineOf } from './cut/timeline.ts'
@@ -358,8 +365,13 @@ export async function studio(
         writing = setTimeout(flush, 150)
         return send(200, 'application/json', JSON.stringify(toPage(settings)))
       }
-      const writers = { edits: writeEdit, sound: writeClickSound, highlight: writeHighlight }
-      const change = path.match(/^\/studio\/(edits|sound|highlight)$/)?.[1] as
+      const writers = {
+        edits: writeEdit,
+        sound: writeClickSound,
+        highlight: writeHighlight,
+        cover: writeCover,
+      }
+      const change = path.match(/^\/studio\/(edits|sound|highlight|cover)$/)?.[1] as
         keyof typeof writers | undefined
       if (change && req.method === 'POST') {
         const raw = JSON.parse(await body(req))

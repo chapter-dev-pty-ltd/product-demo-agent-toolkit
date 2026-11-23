@@ -10,7 +10,7 @@ import { readFilm, type Film } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
 import { filmEdits, muteQuietSteps, retime, staleTake, toVideo, type Edit } from './edits.ts'
-import type { Hold } from '../../studio/time.ts'
+import type { ShownCover } from '../../studio/api.ts'
 import { openStage, type Cover, type Highlighted } from './stage.ts'
 import type { Stem } from '../../studio/api.ts'
 
@@ -29,7 +29,7 @@ export async function prepare(footageDir: string): Promise<{
   recorded: Footage
   film: Film
   edits: Edit[]
-  holds: Hold[]
+  holds: ShownCover[]
   covers: Cover[]
   warnings: string[]
   highlights: Highlighted[]
@@ -44,7 +44,13 @@ export async function prepare(footageDir: string): Promise<{
   const recorded = muteQuietSteps(film, read)
   const edits = filmEdits(film, recorded)
   const scenes = coversOf(film, recorded)
-  const holds = scenes.map(({ at, hold, title }) => ({ at, hold, title }))
+  const holds = scenes.map(({ at, hold, scene, title, subtitle }) => ({
+    at,
+    hold,
+    scene,
+    title,
+    ...(subtitle ? { subtitle } : {}),
+  }))
   const footage = retime(recorded, edits, holds)
   const stale = staleTake(film, recorded)
   const length = toVideo(edits, videoLength(recorded), holds)
@@ -66,7 +72,7 @@ export async function prepare(footageDir: string): Promise<{
 // In the take's time: the first scene's cover at its very start, so before its opening frame.
 export function coversOf(film: Film, footage: Footage): Cover[] {
   const start = footage.frames[0]?.at ?? 0
-  return (film.scenes ?? []).flatMap((scene) => {
+  return (film.scenes ?? []).flatMap((scene, i) => {
     if (!scene.cover) return []
     const step = footage.steps?.[scene.from]
     if (scene.from > 0 && !step) {
@@ -76,7 +82,7 @@ export function coversOf(film: Film, footage: Footage): Cover[] {
     }
     const at = scene.from === 0 ? 0 : (step?.at ?? start) - start
     const { subtitle, hold = 2.5 } = scene.cover
-    return [{ at, hold, title: scene.title, subtitle }]
+    return [{ at, hold, scene: i, title: scene.title, subtitle }]
   })
 }
 

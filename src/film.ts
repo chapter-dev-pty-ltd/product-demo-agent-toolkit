@@ -228,6 +228,20 @@ export async function changeSteps(
   return text
 }
 
+export async function changeScene(
+  path: string,
+  index: number,
+  change: (scene: Record<string, unknown>) => void,
+): Promise<string> {
+  const json = JSON.parse(await readFile(path, 'utf8'))
+  const scene = (json.scenes as Record<string, unknown>[] | undefined)?.[index]
+  if (!scene) throw new Error(`${path} has no scene ${index + 1}.`)
+  change(scene)
+  const text = `${JSON.stringify(json, null, 2)}\n`
+  await writeFile(path, text)
+  return text
+}
+
 export async function readFilm(path: string): Promise<Film> {
   const json = await readJson(path)
   const look =

@@ -1,8 +1,14 @@
 import { z } from 'zod'
 import { soundOn, type Sound } from '../config.ts'
-import { changeSteps, type Film, type Part, type Step } from '../film.ts'
+import { changeScene, changeSteps, type Film, type Part, type Step } from '../film.ts'
 import type { Footage } from '../perform.ts'
-import type { EditRequest, HighlightRequest, ShownEdit, SoundRequest } from '../../studio/api.ts'
+import type {
+  CoverRequest,
+  EditRequest,
+  HighlightRequest,
+  ShownEdit,
+  SoundRequest,
+} from '../../studio/api.ts'
 import { toVideo, type Hold, type Span } from '../../studio/time.ts'
 
 export { toTake, toVideo } from '../../studio/time.ts'
@@ -221,6 +227,31 @@ export function writeClickSound(filmFile: string, film: Film, raw: unknown): Pro
     const click = request.click
     if (click && typing) delete step.sound
     else step.sound = click === typing ? click : { click, typing }
+  })
+}
+
+const coverRequest: z.ZodType<CoverRequest> = z.union([
+  z.strictObject({ scene: stepIndex, remove: z.literal(true) }),
+  z.strictObject({
+    scene: stepIndex,
+    title: z.string().trim().min(1).optional(),
+    subtitle: z.string().trim().optional(),
+    hold: z.number().min(0.5).max(10).optional(),
+  }),
+])
+
+export function writeCover(filmFile: string, film: Film, raw: unknown): Promise<string> {
+  const request = coverRequest.parse(raw)
+  if (!film.scenes?.[request.scene]?.cover)
+    throw new Refused(`Scene ${request.scene + 1} has no cover.`)
+  return changeScene(filmFile, request.scene, (scene) => {
+    if ('remove' in request) return void delete scene.cover
+    const cover = { ...(scene.cover as Record<string, unknown>) }
+    if (request.title) scene.title = request.title
+    if (request.subtitle) cover.subtitle = request.subtitle
+    else if (request.subtitle === '') delete cover.subtitle
+    if (request.hold !== undefined) cover.hold = request.hold
+    scene.cover = cover
   })
 }
 
