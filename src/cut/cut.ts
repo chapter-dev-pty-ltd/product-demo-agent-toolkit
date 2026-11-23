@@ -145,13 +145,28 @@ export interface Track {
   files: string[]
   times: number[]
   volume: number
+  gains?: number[]
   vary?: boolean
 }
 
 export type { Stem }
 
+// Sped up, every keystroke would pile into a rattle, so only enough play to keep a loose human
+// pace of one every 90-170ms. Enter always plays: it's the moment something happens.
+function paced(keys: Footage['keys']): Footage['keys'] {
+  const played: Footage['keys'] = []
+  let next = -Infinity
+  for (const k of keys) {
+    if (k.speed && k.at < next && keyKind(k.key) !== 'enter') continue
+    played.push(k)
+    next = k.at + 0.09 + chance(k.at) * 0.08
+  }
+  return played
+}
+
 function soundTracks(footage: Footage, sound: Sound): Record<Stem, Track[]> {
   const start = footage.frames[0]?.at ?? 0
+  const typed = soundOn('typing', sound) ? paced((footage.keys ?? []).filter((k) => !k.muted)) : []
   return {
     click: [
       {
@@ -162,15 +177,15 @@ function soundTracks(footage: Footage, sound: Sound): Record<Stem, Track[]> {
         volume: 1,
       },
     ],
-    typing: Object.entries(KEYS).map(([kind, files]) => ({
-      files,
-      times: soundOn('typing', sound)
-        ? (footage.keys ?? [])
-            .filter((k) => !k.muted && keyKind(k.key) === kind)
-            .map((k) => k.at - start)
-        : [],
-      volume: 0.7,
-    })),
+    typing: Object.entries(KEYS).map(([kind, files]) => {
+      const keys = typed.filter((k) => keyKind(k.key) === kind)
+      return {
+        files,
+        times: keys.map((k) => k.at - start),
+        gains: keys.map((k) => 1 / Math.sqrt(k.speed ?? 1)),
+        volume: 0.7,
+      }
+    }),
     voice: (footage.lines ?? []).map((l) => ({
       files: [l.file],
       times: [l.at - start],
@@ -341,11 +356,13 @@ export function soundArgs(
       )
     }
     for (const [i, t] of track.times.entries()) {
+      const vary = track.vary ?? true
       const pitch = 1 + (chance(t + 0.1) - 0.5) * 0.06
-      const gain = (chance(t + 0.2) - 0.5) * 4
-      const varied = `asetrate=${Math.round(48000 * pitch)},aresample=48000,volume=${gain.toFixed(2)}dB,`
+      const gain = (vary ? (chance(t + 0.2) - 0.5) * 4 : 0) + 20 * Math.log10(track.gains?.[i] ?? 1)
+      const varied = vary ? `asetrate=${Math.round(48000 * pitch)},aresample=48000,` : ''
+      const level = gain ? `volume=${gain.toFixed(2)}dB,` : ''
       graph.push(
-        `[s${n}_${i}]${(track.vary ?? true) ? varied : ''}adelay=${Math.max(0, Math.round(t * 1000))}:all=1[p${n}_${i}]`,
+        `[s${n}_${i}]${varied}${level}adelay=${Math.max(0, Math.round(t * 1000))}:all=1[p${n}_${i}]`,
       )
       played.push(`[p${n}_${i}]`)
     }
