@@ -119,7 +119,40 @@ product-demo-agent-toolkit edit <id>                     # list them by step; --
 
 It writes them into the film, and the studio shows them straight away. A take shot before this version doesn't know when its steps started: shoot it again before cutting it.
 
-To silence a step's click or typing sounds, give it `"sound": false`, or `{ "click": false }` for its clicks alone.
+For example, the studio brings you:
+
+```text
+The user says (at 0:12.0 in the video): speed this bit up, it's just loading
+```
+
+If the message doesn't say where the part ends, ask, or end it where the next step begins. Then:
+
+```bash
+product-demo-agent-toolkit edit <id> speed 4 0:12-0:20
+```
+
+```text
+  Steps 4–5: 4× from 0:12.0 to 0:14.0 (8.0s of the take)
+Take 2 of "Search Wikipedia" runs 21.4s. The studio shows changes as they're made; cut it again for the video.
+```
+
+The part spanned two steps, so the film now holds a speed-up on each, which you can also write or change by hand:
+
+```json
+{ "wait": { "text": "Results" }, "speed": { "by": 4, "from": 0.6 } },
+{ "click": { "role": "link", "name": "Doc Watson" }, "speed": { "by": 4, "to": 1.2 } }
+```
+
+- A step holds one cut or speed-up. A part that runs into a step that already has one is refused: change or remove that one first (`edit <id>` lists them).
+- The ending's hold is part of the last step, so an edit over all of that step also shortens the ending.
+
+To silence one step's sounds, give it `"sound": false`, or `"sound": { "click": false }` for its clicks alone, as when the user asks to lose one noisy click:
+
+```json
+{ "click": { "role": "button", "name": "Search" }, "sound": { "click": false } }
+```
+
+`"sound"` in the look turns them off for the whole video instead.
 
 ## 6. The studio: change it with the user
 
