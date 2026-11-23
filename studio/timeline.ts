@@ -180,7 +180,7 @@ export function createTimeline(
 
   const highlights = (data: TimelineData) => {
     const lane = track('Highlights', '', SPARK)
-    if (!data.highlights.length) lane.innerHTML = '<span class="empty">None in this take</span>'
+    if (!data.highlights.length) lane.innerHTML = '<span class="empty">No highlights</span>'
     for (const h of data.highlights) {
       const clip = document.createElement('div')
       clip.className = 'clip highlight'
