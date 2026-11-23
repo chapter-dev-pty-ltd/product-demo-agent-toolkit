@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
 import type { CoverStyle } from '../studio/api.ts'
+import { HOLD } from '../studio/time.ts'
 import { isHex, soundSchema, type Sound } from './config.ts'
 import type { Fingerprint } from './similo.ts'
 
@@ -192,7 +193,7 @@ const scene = z.strictObject({
   cover: z
     .strictObject({
       subtitle: z.string().optional(),
-      hold: z.number().positive().optional(),
+      hold: z.number().min(HOLD.min).max(HOLD.max).optional(),
       colour: hex.optional(),
       background: hex.optional(),
       size: coverSize.optional(),
@@ -201,10 +202,8 @@ const scene = z.strictObject({
   steps: z.array(stepSchema).min(1),
 })
 
-const film = z.union([
-  z.strictObject({ ...top, steps: z.array(stepSchema) }),
-  z.strictObject({ ...top, scenes: z.array(scene).min(1) }),
-])
+const stepsFilm = z.strictObject({ ...top, steps: z.array(stepSchema) })
+const scenesFilm = z.strictObject({ ...top, scenes: z.array(scene).min(1) })
 
 export async function readJson(path: string): Promise<unknown> {
   try {
@@ -264,15 +263,28 @@ export async function readFilm(path: string): Promise<Film> {
       `${path} sets ${look.join(', ')}. How a video looks and sounds is set in its look.json, beside its film: remove it from the film.`,
     )
   }
-  const parsed = film.safeParse(json)
-  if (!parsed.success) {
-    throw new Error(`${path} is not a valid film:\n${z.prettifyError(parsed.error)}`)
-  }
-  if ('steps' in parsed.data) {
+  const invalid = (error: z.ZodError) =>
+    new Error(`${path} is not a valid film:\n${z.prettifyError(error)}`)
+  // Checked against the one shape it's written in: checked against both, zod reports a bad step
+  // without saying where it is.
+  if (!(json && typeof json === 'object' && Object.hasOwn(json, 'scenes'))) {
+    const parsed = stepsFilm.safeParse(json)
+    if (!parsed.success) throw invalid(parsed.error)
     if (parsed.data.steps.length === 0) throw new Error(`${path} has no steps.`)
     return parsed.data
   }
+  const parsed = scenesFilm.safeParse(json)
+  if (!parsed.success) throw invalid(parsed.error)
   const { scenes, ...rest } = parsed.data
+  // A line carried into a scene would go on over its cover, its word landing a hold late.
+  for (const [i, part] of scenes.entries()) {
+    const first = part.steps[0]
+    if (i > 0 && part.cover && first?.on && !first.say) {
+      throw new Error(
+        `${path}: "${part.title}" opens on a cover, so its first step can't land on a word of the line before it. Give that step a "say" of its own, or start the scene a step later.`,
+      )
+    }
+  }
   const steps: Step[] = []
   const parts: Scene[] = []
   for (const { steps: own, ...part } of scenes) {

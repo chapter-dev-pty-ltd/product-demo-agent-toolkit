@@ -69,6 +69,7 @@ export interface CoverRequest {
   background?: string | null | undefined
   size?: number | undefined
   hold?: number | undefined
+  remove?: true | undefined
 }
 
 export type EditRequest =

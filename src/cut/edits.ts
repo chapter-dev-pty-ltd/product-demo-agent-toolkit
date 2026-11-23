@@ -17,7 +17,7 @@ import type {
   ShownEdit,
   SoundRequest,
 } from '../../studio/api.ts'
-import { toVideo, type Hold, type Span } from '../../studio/time.ts'
+import { HOLD, toVideo, type Hold, type Span } from '../../studio/time.ts'
 
 export { toTake, toVideo } from '../../studio/time.ts'
 
@@ -245,7 +245,8 @@ const coverRequest: z.ZodType<CoverRequest> = z.strictObject({
   colour: hex.optional(),
   background: hex.nullable().optional(),
   size: coverSize.optional(),
-  hold: z.number().min(0.5).max(10).optional(),
+  hold: z.number().min(HOLD.min).max(HOLD.max).optional(),
+  remove: z.literal(true).optional(),
 })
 
 export function writeCover(filmFile: string, film: Film, raw: unknown): Promise<string> {
@@ -253,6 +254,7 @@ export function writeCover(filmFile: string, film: Film, raw: unknown): Promise<
   if (!film.scenes?.[request.scene]?.cover)
     throw new Refused(`Scene ${request.scene + 1} has no cover.`)
   return changeScene(filmFile, request.scene, (scene) => {
+    if (request.remove) return void delete scene.cover
     const cover = scene.cover as Record<string, unknown>
     const { title, subtitle, colour, background, size, hold } = request
     if (title) scene.title = title

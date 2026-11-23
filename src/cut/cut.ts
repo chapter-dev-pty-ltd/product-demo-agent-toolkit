@@ -53,12 +53,18 @@ export async function prepare(footageDir: string): Promise<{
     edits,
     holds,
     covers: holds.map((c) => ({ ...c, at: toVideo(edits, c.at, holds) - c.hold })),
-    warnings: stale ? [stale] : [],
+    warnings: [stale, unplaced(film, recorded)].filter((w): w is string => !!w),
     highlights: highlightsOf(film, footage),
     length,
     ending: length - toVideo(edits, recorded.end - (recorded.frames[0]?.at ?? 0), holds),
     title: film.notes?.split(/(?<=\.)\s/)[0] ?? '',
   }
+}
+
+function unplaced(film: Film, footage: Footage): string | undefined {
+  const lost = (film.scenes ?? []).filter((s) => s.cover && s.from > 0 && !footage.steps?.[s.from])
+  if (!lost.length) return undefined
+  return `this take was shot before steps' times were recorded, so it can't place the covers of ${lost.map((s) => `"${s.title}"`).join(', ')}: they're left out. Shoot it again to see them.`
 }
 
 // In the take's time: the first scene's cover at its very start, so before its opening frame.
@@ -69,11 +75,7 @@ function coversOf(film: Film, footage: Footage): ShownCover[] {
     let at = 0
     if (scene.from > 0) {
       const step = footage.steps?.[scene.from]
-      if (!step) {
-        throw new Error(
-          `This take doesn't say where "${scene.title}" starts: it was shot before steps' times were recorded. Shoot it again.`,
-        )
-      }
+      if (!step) return []
       at = step.at - start
     }
     const { hold = 2.5, ...rest } = scene.cover

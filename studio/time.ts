@@ -16,6 +16,8 @@ export interface Hold {
   hold: number
 }
 
+export const HOLD: { min: number; max: number } = { min: 0.5, max: 10 }
+
 export function toVideo(spans: Span[], at: number, holds: Hold[] = []): number {
   let removed = 0
   for (const s of spans) {
@@ -25,8 +27,6 @@ export function toVideo(spans: Span[], at: number, holds: Hold[] = []): number {
   return toTrack(holds, at) - removed
 }
 
-// Where x falls among the holds, given where each starts on x's clock (`held` is the hold time
-// before it): inside one, `into` it, or after `held` seconds of them.
 function among(
   holds: Hold[],
   x: number,

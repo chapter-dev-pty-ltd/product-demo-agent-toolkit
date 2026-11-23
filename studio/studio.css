@@ -77,7 +77,6 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
   background: none; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
 .back:hover { background: var(--muted); }
 .back svg { width: 16px; height: 16px; }
-.back small { color: var(--dim); font-weight: 400; }
 .field .segmented + .swatches { margin-top: 10px; }
 .swatches[hidden] { display: none; }
 #cover-colour button[data-colour='#ffffff'] { outline: 1px solid var(--line-strong); outline-offset: -1px; }

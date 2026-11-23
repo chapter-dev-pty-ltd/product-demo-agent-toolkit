@@ -162,7 +162,7 @@ export function createTimeline(
       const from = toTrack(data.holds, h.at) - h.hold
       clip.className = 'clip cover'
       clip.dataset.key = `cover:${h.scene}`
-      clip.title = `${h.title}: ${h.hold}s. Click to change it, or drag its end to change how long it shows.`
+      clip.title = `${h.title}: ${h.hold}s. Click to change it, drag its end to change how long it shows, or press Backspace to remove it.`
       clip.style.left = `calc(${along(from)} + 1px)`
       clip.style.width = `calc(${along(h.hold)} - 2px)`
       clip.innerHTML = SPARK

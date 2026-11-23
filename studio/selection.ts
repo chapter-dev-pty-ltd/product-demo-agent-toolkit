@@ -10,7 +10,7 @@ import type {
 } from './api.ts'
 import type { Player } from './player.ts'
 import { createPopover, type Target } from './popover.ts'
-import { toVideo } from './time.ts'
+import { HOLD, toVideo } from './time.ts'
 import type { View } from './timeline.ts'
 import { $ } from './ui.ts'
 
@@ -28,7 +28,6 @@ interface MusicControl {
   set(music: PageSettings['music']): void
 }
 
-// A selected cover opens its page, and unselecting it closes the page.
 export interface CoverPages {
   open(scene: number): void
   close(): void
@@ -198,7 +197,7 @@ export function createSelection(
     clip.classList.add('dragging')
     clip.onpointermove = (move) => {
       const by = (move.clientX - down.clientX) / perSecond
-      hold = Math.min(10, Math.max(0.5, Math.round((cover.hold + by) * 10) / 10))
+      hold = Math.min(HOLD.max, Math.max(HOLD.min, Math.round((cover.hold + by) * 10) / 10))
       clip.style.width = `calc(${view.along(hold)} - 2px)`
     }
     clip.onpointerup = () => {
@@ -218,7 +217,9 @@ export function createSelection(
     if (e.code === 'Escape') clear()
     if (e.code === 'Backspace' || e.code === 'Delete') {
       e.preventDefault()
-      popover.remove()
+      if (picked?.startsWith('cover:'))
+        void post('/studio/cover', { scene: Number(picked.slice(6)), remove: true })
+      else popover.remove()
     }
   })
 

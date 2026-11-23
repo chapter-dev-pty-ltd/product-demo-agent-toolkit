@@ -10,7 +10,6 @@ export interface CoverPanel {
   close(): void
 }
 
-// Its back button unselects the cover, and the selection closes the page.
 export function createCoverPanel(holds: ShownCover[], back: () => void): CoverPanel {
   let covers = holds
   let scene: number | undefined
@@ -81,13 +80,12 @@ export function createCoverPanel(holds: ShownCover[], back: () => void): CoverPa
   const render = () => {
     const c = now()
     if (!c) return close()
-    $('cover-name').textContent = c.title
     if (document.activeElement !== title) title.value = c.title
     if (document.activeElement !== subtitle) subtitle.value = c.subtitle ?? ''
     const px = c.size ?? 88
     size.value = String(px)
     showSize(px)
-    const text = c.colour ?? DARK
+    const text = (c.colour ?? DARK).toLowerCase()
     const preset = COLOURS.includes(text)
     for (const b of $('cover-colour').querySelectorAll<HTMLElement>('button'))
       pressed(b, b.dataset.colour === text)
@@ -97,9 +95,10 @@ export function createCoverPanel(holds: ShownCover[], back: () => void): CoverPa
     pressed(backdrop, !c.background)
     pressed(flat, !!c.background)
     $('cover-fill').hidden = !c.background
-    ownFill.label.style.background = c.background ?? ''
+    const background = c.background?.toLowerCase()
+    ownFill.label.style.background = background ?? ''
     // A new background starts where the text still reads on it.
-    ownFill.input.value = c.background ?? (text === DARK ? '#f4f1ea' : DARK)
+    ownFill.input.value = background ?? (text === DARK ? '#f4f1ea' : DARK)
   }
 
   const close = () => {

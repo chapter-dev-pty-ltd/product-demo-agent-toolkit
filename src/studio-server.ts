@@ -90,6 +90,7 @@ function fromConfig(config: Config, was: Own = {}) {
     display: config.display,
     window: config.window,
     music: config.music,
+    ...(config.cover ? { cover: config.cover } : {}),
   }
   const mine: Own = {
     backdrop: own(config.backdrop) ? config.backdrop : was.backdrop,
@@ -718,6 +719,7 @@ export function fromPage(raw: unknown, was: Settings, mine: Own): Settings {
       ...(own(style) && mine.tip ? { tip: mine.tip } : {}),
     },
     music: page.music ?? was.music,
+    ...(was.cover ? { cover: was.cover } : {}),
   }
 }
 
