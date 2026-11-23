@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { readFile, rename } from 'node:fs/promises'
+import { readdir, readFile, rename, rm } from 'node:fs/promises'
 import { once } from 'node:events'
 import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -31,6 +31,8 @@ export async function prepare(footageDir: string): Promise<{
   warnings: string[]
   highlights: Highlighted[]
   length: number
+  // How long the ending holds in the video, once edits that reach into it are applied.
+  ending: number
   title: string
 }> {
   const read = await readFootage(footageDir)
@@ -40,6 +42,7 @@ export async function prepare(footageDir: string): Promise<{
   const edits = filmEdits(film, recorded)
   const footage = retime(recorded, edits)
   const stale = staleTake(film, recorded)
+  const length = toVideo(edits, videoLength(recorded))
   return {
     footage,
     recorded,
@@ -47,7 +50,8 @@ export async function prepare(footageDir: string): Promise<{
     edits,
     warnings: stale ? [stale] : [],
     highlights: highlightsOf(film, footage),
-    length: toVideo(edits, videoLength(recorded)),
+    length,
+    ending: length - toVideo(edits, recorded.end - (recorded.frames[0]?.at ?? 0)),
     title: film.notes?.split(/(?<=\.)\s/)[0] ?? '',
   }
 }
@@ -75,8 +79,8 @@ export async function cut(
   out: string,
   config: Config,
   extra = '',
-): Promise<{ length: number; warnings: string[] }> {
-  const { footage, highlights, length, title, warnings } = await prepare(footageDir)
+): Promise<number> {
+  const { footage, highlights, length, ending, title } = await prepare(footageDir)
   const browser = await launchBrowser()
   try {
     const page = await openStage(
@@ -95,7 +99,7 @@ export async function cut(
     const sound = soundArgs(
       Object.values(soundTracks(footage, config.sound)).flat(),
       length,
-      music && { ...music, fade: Math.max(1, footage.film.ending?.hold ?? 2) },
+      music && { ...music, fade: Math.max(1, ending) },
     )
     const encoder = spawn(
       ffmpeg,
@@ -124,7 +128,7 @@ export async function cut(
   } finally {
     await browser.close()
   }
-  return { length, warnings }
+  return length
 }
 
 const CLICKS = ['click-1.wav', 'click-2.wav']
@@ -227,6 +231,18 @@ export async function stems(
     }),
   )
   return Object.fromEntries(made.filter(([, out]) => out)) as Partial<Record<Stem, string>>
+}
+
+export async function clearOldSounds(
+  footageDir: string,
+  keep: Partial<Record<Stem, string>>,
+): Promise<void> {
+  const kept = new Set(Object.values(keep))
+  for (const name of await readdir(footageDir)) {
+    const file = join(footageDir, name)
+    if (/^sound-(click|typing|voice)(-[\w.]+)?\.m4a$/.test(name) && !kept.has(file))
+      await rm(file, { force: true })
+  }
 }
 
 function pick(t: number, of: number): number {

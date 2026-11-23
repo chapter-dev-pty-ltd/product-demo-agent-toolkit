@@ -23,7 +23,16 @@ import {
   type Music,
   type ProjectFile,
 } from './config.ts'
-import { cut, LIMIT, prepare, STEM_GAIN, stems, stemsOf, type Stem } from './cut/cut.ts'
+import {
+  clearOldSounds,
+  cut,
+  LIMIT,
+  prepare,
+  STEM_GAIN,
+  stems,
+  stemsOf,
+  type Stem,
+} from './cut/cut.ts'
 import { planEdit, Refused, writeClickSound, writeHighlight, writePlan } from './cut/edits.ts'
 import { convertExport } from './cut/export.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
@@ -67,7 +76,7 @@ interface Own {
   music?: ProjectFile | undefined
 }
 
-function fromConfig(config: Config, hold: number, was: Own = {}) {
+function fromConfig(config: Config, was: Own = {}) {
   const settings: Settings = {
     backdrop: config.backdrop,
     cursor: config.cursor,
@@ -88,7 +97,6 @@ function fromConfig(config: Config, hold: number, was: Own = {}) {
       music: mine.music ? relative(process.cwd(), mine.music.file) : null,
     },
     tracks: MUSIC,
-    hold,
     sound: config.sound,
   }
   return { settings, mine, extras }
@@ -114,14 +122,20 @@ export async function studio(
   const places = placesOf(video)
   const lookFile = filesOf(video).look
   const config = await readConfig(lookFile)
-  let { footage, recorded, film, edits, highlights, length, title } = await prepare(footageDir)
-  const hold = Math.max(1, footage.film.ending?.hold ?? 2)
-  const soundsNow = () =>
-    stems(footageDir, footage, length, edits).catch(
+  let { footage, recorded, film, edits, highlights, length, ending, title } =
+    await prepare(footageDir)
+  const soundsNow = () => {
+    const made = stems(footageDir, footage, length, edits).catch(
       (error: Error): Partial<Record<Stem, string>> => (console.log(error.message), {}),
     )
+    // Each set of edits makes its own sound files; once the newest is made, the rest go.
+    void made
+      .then((files) => (made === sounds ? clearOldSounds(footageDir, files) : undefined))
+      .catch((error: Error) => void console.log(error.message))
+    return made
+  }
   let sounds = soundsNow()
-  let { settings, mine, extras } = fromConfig(config, hold)
+  let { settings, mine, extras } = fromConfig(config)
   let saving = Promise.resolve()
   let writing: NodeJS.Timeout | undefined
   const flush = () => {
@@ -139,9 +153,29 @@ export async function studio(
   let stage = staged()
   let filmText = await readFile(footage.source, 'utf8').catch(() => '')
   const restage = async () => {
-    ;({ footage, recorded, film, edits, highlights, length, title } = await prepare(footageDir))
+    ;({ footage, recorded, film, edits, highlights, length, ending, title } =
+      await prepare(footageDir))
     stage = staged()
     sounds = soundsNow()
+  }
+  const audible = () =>
+    stemsOf(footage).filter((stem) => stem === 'voice' || soundOn(stem, extras.sound))
+  const stageEvent = (): StudioEvent => ({
+    type: 'stage',
+    timeline: timelineOf(recorded, film, edits),
+    stems: audible(),
+    hold: Math.max(1, ending),
+  })
+  // One change to the film at a time: each is planned against the film the last one left.
+  let changing = Promise.resolve()
+  const changeFilm = (write: () => Promise<string>) => {
+    const done = changing.then(async () => {
+      filmText = await write()
+      await restage()
+      emit(stageEvent())
+    })
+    changing = done.catch(() => {})
+    return done
   }
   const library = (path: string) => new URL(`../library/${path}`, import.meta.url)
 
@@ -179,7 +213,7 @@ export async function studio(
       )
       // Our own write is about to replace whatever this read.
       if (!next || writing) return
-      const fresh = fromConfig(next, hold, mine)
+      const fresh = fromConfig(next, mine)
       const same = (a: typeof fresh) => JSON.stringify([toPage(a.settings), a.extras])
       if (same(fresh) === same({ settings, mine, extras })) return
       ;({ settings, mine, extras } = fresh)
@@ -192,14 +226,7 @@ export async function studio(
     setTimeout(async () => {
       const text = await readFile(footage.source, 'utf8').catch(() => filmText)
       if (text === filmText) return
-      filmText = text
-      const before = film
-      await restage().catch((error: Error) => void console.log(error.message))
-      // The title and the ending are drawn from the film outside the stage, so only a reload shows them.
-      const same = before.notes === film.notes && before.ending?.hold === film.ending?.hold
-      emit(
-        same ? { type: 'stage', timeline: timelineOf(recorded, film, edits) } : { type: 'config' },
-      )
+      await changeFilm(async () => text).catch((error: Error) => void console.log(error.message))
     }, 150)
   })
 
@@ -235,8 +262,8 @@ export async function studio(
           backdrops: BACKDROPS,
           owned: extras.owned,
           tracks: extras.tracks,
-          hold: extras.hold,
-          stems: stemsOf(footage).filter((stem) => stem === 'voice' || soundOn(stem, extras.sound)),
+          hold: Math.max(1, ending),
+          stems: audible(),
           stemGain: STEM_GAIN,
           limit: LIMIT,
           canvas: CANVAS,
@@ -330,13 +357,12 @@ export async function studio(
         writing = setTimeout(flush, 150)
         return send(200, 'application/json', JSON.stringify(toPage(settings)))
       }
-      const changing = { edits: writeEdit, sound: writeClickSound, highlight: writeHighlight }
+      const writers = { edits: writeEdit, sound: writeClickSound, highlight: writeHighlight }
       const change = path.match(/^\/studio\/(edits|sound|highlight)$/)?.[1] as
-        keyof typeof changing | undefined
+        keyof typeof writers | undefined
       if (change && req.method === 'POST') {
-        filmText = await changing[change](footage.source, film, JSON.parse(await body(req)))
-        await restage()
-        emit({ type: 'stage', timeline: timelineOf(recorded, film, edits) })
+        const raw = JSON.parse(await body(req))
+        await changeFilm(() => writers[change](footage.source, film, raw))
         return send(200, 'application/json', '{}')
       }
       if (path === '/studio/export' && req.method === 'POST') {

@@ -1,4 +1,4 @@
-import type { PageSettings, StudioState } from './api.ts'
+import type { PageSettings, Stem, StudioState } from './api.ts'
 
 type Music = PageSettings['music']
 
@@ -8,7 +8,7 @@ export interface Mixer {
   now(): number
   update(): void
   setHeard(on: boolean): void
-  reloadSounds(): void
+  reloadSounds(stems: Stem[], hold: number): void
 }
 
 export const musicSrc = (m: Exclude<Music, false>): string =>
@@ -36,7 +36,8 @@ export function createMixer(state: StudioState, music: () => Music): Mixer {
       .then((r) => r.arrayBuffer())
       .then((b) => mixer.decodeAudioData(b))
       .catch(() => null)
-  const sounds = () => Promise.all(state.stems.map((stem) => decode('/studio/sound/' + stem)))
+  let { stems, hold } = state
+  const sounds = () => Promise.all(stems.map((stem) => decode('/studio/sound/' + stem)))
   let stemBuffers = sounds()
   const musicBuffers: Record<string, Promise<AudioBuffer | null>> = {}
   const musicKey = () => {
@@ -69,7 +70,7 @@ export function createMixer(state: StudioState, music: () => Music): Mixer {
     const g = musicLevel.gain
     const m = music()
     const volume = m ? m.volume : 0
-    const fade = Math.min(state.hold, length)
+    const fade = Math.min(hold, length)
     const at = (time: number) => startedAt + time - origin
     g.cancelScheduledValues(0)
     g.setValueAtTime(volume * Math.max(0, Math.min(1, (length - now()) / fade)), mixer.currentTime)
@@ -101,6 +102,10 @@ export function createMixer(state: StudioState, music: () => Music): Mixer {
     now,
     update: () => (playingMusic !== musicKey() ? void start(now(), length) : level()),
     setHeard: (on) => void (master.gain.value = on ? 1 : 0),
-    reloadSounds: () => void (stemBuffers = sounds()),
+    reloadSounds: (next, ending) => {
+      stems = next
+      hold = ending
+      stemBuffers = sounds()
+    },
   }
 }

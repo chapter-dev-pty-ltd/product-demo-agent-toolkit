@@ -30,8 +30,9 @@ function spans(footage: Footage): { from: number; to: number }[] | undefined {
 }
 
 export function staleTake(film: Film, footage: Footage): string | undefined {
-  if (footage.steps || !film.steps.some((s) => s.cut || s.speed)) return undefined
-  return "this take was shot before steps' times were recorded, so the film's cuts and speed-ups are left out. Shoot it again to see them."
+  if (footage.steps || !film.steps.some((s) => s.cut || s.speed || s.sound !== undefined))
+    return undefined
+  return "this take was shot before steps' times were recorded, so the film's cuts, speed-ups and step sounds are left out. Shoot it again to see them."
 }
 
 export function filmEdits(film: Film, footage: Footage): Edit[] {

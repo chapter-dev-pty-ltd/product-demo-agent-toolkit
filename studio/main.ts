@@ -48,7 +48,7 @@ new EventSource('/studio/events').onmessage = (e) => {
   }
   if (event.type === 'stage') {
     timeline.update(event.timeline)
-    mixer.reloadSounds()
+    mixer.reloadSounds(event.stems, event.hold)
     return player.reload(true)
   }
   chat.update(event)

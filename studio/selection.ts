@@ -166,8 +166,8 @@ export function createSelection(
   }
 
   document.addEventListener('keydown', (e) => {
-    const target = e.target as HTMLElement
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
+    // Only keys meant for the timeline: not ones typed in the chat, the export dialog or elsewhere.
+    if (e.target !== document.body && !el.contains(e.target as Node)) return
     if (!popover.target && !ranged()) return
     if (e.code === 'Escape') clear()
     if (e.code === 'Backspace' || e.code === 'Delete') {
@@ -179,6 +179,16 @@ export function createSelection(
   // What the press that's down started on; a release only acts on a press the timeline took.
   let pressedOn: 'range' | { x: number; item: HTMLElement | null } | null = null
   const scrubTo = (e: PointerEvent) => void player.seek(video(view.timeAt(e)))
+  // A press on the timeline is where keys go next, even when it lands on an item that can't take
+  // focus; caught before an edit's own handler, which stops the press going further.
+  el.addEventListener(
+    'pointerdown',
+    () => {
+      if (!el.contains(document.activeElement))
+        (document.activeElement as HTMLElement | null)?.blur()
+    },
+    true,
+  )
   el.addEventListener('pointerdown', (e) => {
     pressedOn = null
     const target = e.target as HTMLElement

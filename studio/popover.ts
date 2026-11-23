@@ -8,6 +8,7 @@ import type {
   StudioState,
 } from './api.ts'
 import { createMenu, type Menu } from './menu.ts'
+import { stepsName } from './steps.ts'
 import { clock, fileName, pressed, pretty } from './ui.ts'
 
 export type Target =
@@ -33,11 +34,6 @@ export interface Popover {
   refresh(): void
   note(message: string): void
   remove(): void
-}
-
-export const stepsName = (steps: number[]): string => {
-  const [first = 0, last = first] = [steps[0], steps.at(-1)]
-  return first === last ? `Step ${first + 1}` : `Steps ${first + 1}–${last + 1}`
 }
 
 const SPEEDS = [2, 4, 8]

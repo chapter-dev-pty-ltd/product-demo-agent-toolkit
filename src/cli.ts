@@ -52,6 +52,7 @@ import {
   version,
   type Footage,
 } from './index.ts'
+import { stepsName } from '../studio/steps.ts'
 
 const USAGE = `product-demo-agent-toolkit ${version}
 
@@ -266,8 +267,8 @@ try {
     const config = await configOf(video)
     const take = await latestTake(video)
     const out = join(take.dir, 'video.mp4')
-    const { length: seconds, warnings } = await cut(take.dir, out, config)
-    warn(warnings)
+    warn((await prepare(take.dir)).warnings)
+    const seconds = await cut(take.dir, out, config)
     await writeFile(join(take.dir, 'look.json'), `${JSON.stringify(lookToRaw(config), null, 2)}\n`)
     await copyFile(out, filesOf(video).cut)
     if (values.out) await copyFile(out, values.out)
@@ -300,8 +301,7 @@ try {
     const { edits, length, warnings } = await prepare(take.dir)
     warn(warnings)
     for (const e of shownEdits(edits)) {
-      const [first = 0, last = first] = [e.steps[0], e.steps.at(-1)]
-      const step = first === last ? `Step ${first + 1}` : `Steps ${first + 1}–${last + 1}`
+      const step = stepsName(e.steps)
       const taken = `${(e.to - e.from).toFixed(1)}s of the take`
       const [from, to] = [toVideo(edits, e.from), toVideo(edits, e.to)]
       console.log(

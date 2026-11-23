@@ -1,7 +1,7 @@
 import type { Highlighted, PageSettings, ShownEdit, StudioState, TimelineData } from './api.ts'
 import { musicSrc } from './audio.ts'
 import type { Player } from './player.ts'
-import { stepsName } from './popover.ts'
+import { stepsName } from './steps.ts'
 import { createSelection } from './selection.ts'
 import { toTake } from './time.ts'
 import { $, clock, fileName, pretty } from './ui.ts'

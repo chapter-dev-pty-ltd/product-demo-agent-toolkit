@@ -83,7 +83,7 @@ export type StudioEvent =
   | { type: 'chat'; chat: StudioMessage[] }
   | { type: 'agent'; agent: AgentStatus | null }
   | { type: 'config' }
-  | { type: 'stage'; timeline: TimelineData }
+  | { type: 'stage'; timeline: TimelineData; stems: Stem[]; hold: number }
 
 export interface Highlighted {
   step: number
