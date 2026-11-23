@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import type { Film } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { filmEdits, planEdit, retime, toTake, toVideo, type Edit } from './edits.ts'
+import { fromTrack, trackToVideo, videoToTrack } from '../../studio/time.ts'
 
 const cut: Edit = { from: 10, to: 15, step: 0, speed: 'cut' }
 const fast: Edit = { from: 20, to: 30, step: 1, speed: 4 }
@@ -36,6 +37,24 @@ test('take time to video time and back, with a cut join ending before the cut an
   expect(videoTimes.map((at) => toTake([cut, fast], at))).toEqual(takeTimes)
   expect(toTake([cut], 10)).toBe(15)
   expect(toTake([cut], 10, true)).toBe(10)
+})
+
+test('a cover holds the video at its moment of the take, and maps back to that moment', () => {
+  const holds = [{ at: 12, hold: 2 }]
+  expect(toVideo([cut], 12, holds)).toBe(12)
+  expect(toVideo([cut], 20, holds)).toBe(17)
+  expect(toTake([cut], 11, false, holds)).toBe(12)
+  expect(toTake([cut], 17, false, holds)).toBe(20)
+})
+
+test("the studio's timeline gives a cover its own length, and maps through it both ways", () => {
+  const holds = [
+    { at: 0, hold: 2 },
+    { at: 18, hold: 3 },
+  ]
+  expect([0, 1, 2, 22, 25].map((x) => trackToVideo([cut], holds, x))).toEqual([0, 1, 2, 17, 20])
+  expect([0, 1, 2, 17, 20].map((t) => videoToTrack([cut], holds, t))).toEqual([0, 1, 2, 22, 25])
+  expect(fromTrack(holds, 21)).toBe(18)
 })
 
 test('retiming moves what is kept and drops sounds and highlights inside a cut', () => {

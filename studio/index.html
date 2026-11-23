@@ -211,6 +211,43 @@
           <div class="range-ends"><span>Quieter</span><span>Louder</span></div>
         </div>
       </div>
+      <div class="panel" id="cover" hidden>
+        <button class="back" id="cover-back" type="button">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M10 3.5 5.5 8l4.5 4.5" /></svg
+          >Cover
+        </button>
+        <div class="field">
+          <label for="cover-title">Title</label>
+          <input id="cover-title" type="text" />
+        </div>
+        <div class="field">
+          <label for="cover-subtitle">Subtitle</label>
+          <input id="cover-subtitle" type="text" placeholder="None" />
+        </div>
+        <div class="field">
+          <label for="cover-size">Title size <small id="cover-size-value"></small></label>
+          <input id="cover-size" type="range" min="32" max="200" step="2" />
+          <div class="range-ends"><span>Smaller</span><span>Larger</span></div>
+        </div>
+        <div class="field">
+          <div class="label">Text colour</div>
+          <div class="swatches" id="cover-colour"></div>
+        </div>
+        <div class="field">
+          <div class="label">Background</div>
+          <div class="segmented" id="cover-background"></div>
+          <div class="swatches" id="cover-fill"></div>
+        </div>
+        <p id="cover-note"></p>
+      </div>
     </aside>
   </body>
 </html>

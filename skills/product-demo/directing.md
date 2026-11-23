@@ -19,6 +19,27 @@ is paced by the spoken lines.
 an address bar that follows the page's address. `"none"`, the default, shows the app on its
 own.
 
+## Scene covers
+
+A film in scenes opens each scene that has a `cover` on a title card (see SKILL.md). The card's
+design is the look's: `library/covers/default.html` unless `look.json` sets `"cover"` to an HTML
+file of the project's own. Write one when the user wants covers of their own:
+
+- It's a fragment (styles and markup, no `<html>` or `<body>`) laid over the backdrop on the
+  1920x1080 frame. Fill the frame with your own background to hide the backdrop.
+- `{{title}}` and `{{subtitle}}` are filled in from each scene (subtitle empty if it has none),
+  so one design serves every scene.
+- A scene's `colour`, `background` and `size` reach it as the CSS variables `--cover-text`,
+  `--cover-background` (already behind it) and `--cover-size`: use them, with a fallback, so
+  the studio's cover settings still work on your design.
+- Animate with CSS `@keyframes` only, timed from the cover's start. The cut plays CSS animations
+  frame by frame; scripts and timers don't run in step with it. The cut fades the cover out into
+  the scene itself.
+- Its styles apply to the whole stage: start every selector with a class of the cover's own.
+- Pictures and fonts: a data URI or a full URL, not a path beside it.
+
+Start from a copy of `library/covers/default.html`. A cover change needs only another `cut`.
+
 ## The cursor
 
 The cut draws the cursor along the path the pointer took when the film was shot: a rounded

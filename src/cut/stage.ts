@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import { extname, resolve, sep } from 'node:path'
 import type { Browser, Page } from 'playwright-core'
-import { isHex, type Config, type CURSORS } from '../config.ts'
+import { isHex, type Config, type CURSORS, type ProjectFile } from '../config.ts'
 import type { Footage } from '../perform.ts'
-import type { Highlighted, StageData } from '../../studio/api.ts'
+import type { Highlighted, ShownCover, StageData } from '../../studio/api.ts'
 
 export const CANVAS = { width: 1920, height: 1080 }
 const ORIGIN = 'https://stage.product-demo'
@@ -109,7 +109,7 @@ function cursorLook(style: Exclude<Config['cursor']['style'], object>): CursorLo
 
 export type { Highlighted }
 
-export type Look = Pick<Config, 'backdrop' | 'cursor' | 'display' | 'window'>
+export type Look = Pick<Config, 'backdrop' | 'cursor' | 'display' | 'window' | 'cover'>
 
 export type StageFiles = (
   path: string,
@@ -128,6 +128,7 @@ export function stageFiles(
   look: () => Look,
   length: number,
   title: string,
+  covers: ShownCover[] = [],
   extra = '',
 ): StageFiles {
   const start = footage.frames[0]?.at ?? 0
@@ -158,7 +159,14 @@ export function stageFiles(
       const cursor = await cursorFor(now.cursor)
       return {
         contentType: 'text/html',
-        body: html(data, cursor, background, now, extra, view),
+        body: html(
+          data,
+          cursor,
+          background,
+          now,
+          extra + (await coversHtml(covers, background, now.cover)),
+          view,
+        ),
       }
     }
     const { style } = now.cursor
@@ -187,9 +195,19 @@ export async function openStage(
   look: Look,
   length: number,
   title: string,
+  covers: ShownCover[] = [],
   extra = '',
 ): Promise<Page> {
-  const files = stageFiles(footageDir, footage, highlights, () => look, length, title, extra)
+  const files = stageFiles(
+    footageDir,
+    footage,
+    highlights,
+    () => look,
+    length,
+    title,
+    covers,
+    extra,
+  )
   const page = await browser.newPage({ viewport: CANVAS, deviceScaleFactor: 1 })
   await page.route(`${ORIGIN}/**`, async (route) => {
     const file = await files(new URL(route.request().url()).pathname)
@@ -199,6 +217,43 @@ export async function openStage(
   await page.goto(`${ORIGIN}/`)
   await page.evaluate(() => document.fonts.ready)
   return page
+}
+
+const escape = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+async function coversHtml(
+  covers: ShownCover[],
+  background: string,
+  design: ProjectFile | undefined,
+): Promise<string> {
+  if (covers.length === 0) return ''
+  const template = await readFile(design?.file ?? library('covers/default.html'), 'utf8')
+  const fill = (c: ShownCover) =>
+    template
+      .replaceAll('{{title}}', escape(c.title))
+      .replaceAll('{{subtitle}}', escape(c.subtitle ?? ''))
+  const style = (c: ShownCover) =>
+    [
+      `animation-delay:${Math.max(0, c.hold - 0.45)}s`,
+      c.colour && `--cover-text:${c.colour}`,
+      c.background && `--cover-background:${c.background}`,
+      c.size && `--cover-size:${c.size}px`,
+    ]
+      .filter(Boolean)
+      .join(';')
+  const cards = covers.map(
+    (c) =>
+      `<div class="cover" data-at="${c.at}" data-for="${c.hold}" style="${style(c)}"><div class="cover-in${c.at > 0 ? ' fade' : ''}">${fill(c)}</div></div>`,
+  )
+  return `<style>
+.cover { position: absolute; inset: 0; z-index: 10; visibility: hidden; animation: cover-out 0.45s ease-in both; }
+.cover-in { position: absolute; inset: 0; overflow: hidden; background: var(--cover-background, ${background}); }
+.cover-in.fade { animation: cover-fade 0.35s ease-out both; }
+@keyframes cover-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes cover-fade { from { opacity: 0; } to { opacity: 1; } }
+</style>
+${cards.join('\n')}`
 }
 
 export function label(url: string): string {
@@ -242,9 +297,7 @@ function html(
     tip: own.tip.map((at) => at * look.cursor.size),
   }
   const k = look.cursor.size
-  const label = look.cursor.label
-    ? `<div id="label">${look.cursor.label.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</div>`
-    : ''
+  const label = look.cursor.label ? `<div id="label">${escape(look.cursor.label)}</div>` : ''
   const { width: W, height: H } = view
   const chrome = browser ? { x: RIM * 2, y: BAR + RIM } : { x: 0, y: 0 }
   const fill = look.window.fill

@@ -1,6 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
-import { soundSchema, type Sound } from './config.ts'
+import type { CoverStyle } from '../studio/api.ts'
+import { HOLD } from '../studio/time.ts'
+import { isHex, soundSchema, type Sound } from './config.ts'
 import type { Fingerprint } from './similo.ts'
 
 export type Target =
@@ -74,6 +76,13 @@ export interface Film {
   notes?: string | undefined
   steps: Step[]
   ending?: { hold: number } | undefined
+  scenes?: Scene[] | undefined
+}
+
+export interface Scene {
+  title: string
+  cover?: ({ subtitle?: string | undefined; hold?: number | undefined } & CoverStyle) | undefined
+  from: number
 }
 
 const fingerprint: z.ZodType<Fingerprint> = z.strictObject({
@@ -170,12 +179,31 @@ export const stepSchema: z.ZodType<Step> = z
   ])
   .refine((step) => !(step.cut && step.speed), 'A step is either cut or sped up, not both.')
 
-const film: z.ZodType<Film> = z.strictObject({
+const top = {
   app: z.url(),
   notes: z.string().optional(),
-  steps: z.array(stepSchema),
   ending: z.strictObject({ hold: z.number().nonnegative() }).optional(),
+}
+
+export const hex: z.ZodString = z.string().refine(isHex)
+export const coverSize: z.ZodNumber = z.number().int().min(32).max(200)
+
+const scene = z.strictObject({
+  title: z.string().min(1),
+  cover: z
+    .strictObject({
+      subtitle: z.string().optional(),
+      hold: z.number().min(HOLD.min).max(HOLD.max).optional(),
+      colour: hex.optional(),
+      background: hex.optional(),
+      size: coverSize.optional(),
+    })
+    .optional(),
+  steps: z.array(stepSchema).min(1),
 })
+
+const stepsFilm = z.strictObject({ ...top, steps: z.array(stepSchema) })
+const scenesFilm = z.strictObject({ ...top, scenes: z.array(scene).min(1) })
 
 export async function readJson(path: string): Promise<unknown> {
   try {
@@ -190,16 +218,40 @@ export async function readJson(path: string): Promise<unknown> {
 
 const LOOK = ['backdrop', 'display', 'window', 'cursor', 'sound', 'music', 'voice']
 
+type Json = Record<string, unknown>
+
 // Changed in the film's own JSON, not a parsed copy, so the rest of the file stays as written.
-export async function changeSteps(
-  path: string,
-  change: (step: Record<string, unknown>, index: number) => void,
-): Promise<string> {
+async function changeFilm(path: string, change: (film: Json) => void): Promise<string> {
   const json = JSON.parse(await readFile(path, 'utf8'))
-  for (const [i, step] of (json.steps as Record<string, unknown>[]).entries()) change(step, i)
+  change(json)
   const text = `${JSON.stringify(json, null, 2)}\n`
   await writeFile(path, text)
   return text
+}
+
+export function changeSteps(
+  path: string,
+  change: (step: Json, index: number) => void,
+): Promise<string> {
+  return changeFilm(path, (film) => {
+    // A film in scenes is changed step by step across them, as readFilm numbers its steps.
+    const steps = film.scenes
+      ? (film.scenes as { steps: Json[] }[]).flatMap((s) => s.steps)
+      : (film.steps as Json[])
+    for (const [i, step] of steps.entries()) change(step, i)
+  })
+}
+
+export function changeScene(
+  path: string,
+  index: number,
+  change: (scene: Json) => void,
+): Promise<string> {
+  return changeFilm(path, (film) => {
+    const scene = (film.scenes as Json[] | undefined)?.[index]
+    if (!scene) throw new Error(`${path} has no scene ${index + 1}.`)
+    change(scene)
+  })
 }
 
 export async function readFilm(path: string): Promise<Film> {
@@ -211,12 +263,35 @@ export async function readFilm(path: string): Promise<Film> {
       `${path} sets ${look.join(', ')}. How a video looks and sounds is set in its look.json, beside its film: remove it from the film.`,
     )
   }
-  const parsed = film.safeParse(json)
-  if (!parsed.success) {
-    throw new Error(`${path} is not a valid film:\n${z.prettifyError(parsed.error)}`)
+  const invalid = (error: z.ZodError) =>
+    new Error(`${path} is not a valid film:\n${z.prettifyError(error)}`)
+  // Checked against the one shape it's written in: checked against both, zod reports a bad step
+  // without saying where it is.
+  if (!(json && typeof json === 'object' && Object.hasOwn(json, 'scenes'))) {
+    const parsed = stepsFilm.safeParse(json)
+    if (!parsed.success) throw invalid(parsed.error)
+    if (parsed.data.steps.length === 0) throw new Error(`${path} has no steps.`)
+    return parsed.data
   }
-  if (parsed.data.steps.length === 0) throw new Error(`${path} has no steps.`)
-  return parsed.data
+  const parsed = scenesFilm.safeParse(json)
+  if (!parsed.success) throw invalid(parsed.error)
+  const { scenes, ...rest } = parsed.data
+  // A line carried into a scene would go on over its cover, its word landing a hold late.
+  for (const [i, part] of scenes.entries()) {
+    const first = part.steps[0]
+    if (i > 0 && part.cover && first?.on && !first.say) {
+      throw new Error(
+        `${path}: "${part.title}" opens on a cover, so its first step can't land on a word of the line before it. Give that step a "say" of its own, or start the scene a step later.`,
+      )
+    }
+  }
+  const steps: Step[] = []
+  const parts: Scene[] = []
+  for (const { steps: own, ...part } of scenes) {
+    parts.push({ ...part, from: steps.length })
+    steps.push(...own)
+  }
+  return { ...rest, steps, scenes: parts }
 }
 
 export function describeStep(step: Step): string {

@@ -160,6 +160,7 @@ export interface Config {
   cursor: Cursor
   sound: Sound
   music: Music | false
+  cover?: ProjectFile | undefined
   voice: VoiceChoice
   keep: number
   review: boolean
@@ -189,6 +190,20 @@ const config: z.ZodType<Config> = z.strictObject({
     .default(false)
     .describe(
       'Background music under the whole video, looped if the video runs longer and faded out at the end: false for none, ours (lofi), the path to an audio file in the project, or { "track": "lofi", "volume": 0.4 } (0.25 by default).',
+    ),
+  cover: z
+    .string()
+    .transform((value, context): ProjectFile => {
+      if (/\.html?$/i.test(value)) return projectFile(value, context)
+      context.addIssue({
+        code: 'custom',
+        message: `"${value}" isn't a cover: use a path to an .html file`,
+      })
+      return z.NEVER
+    })
+    .optional()
+    .describe(
+      "Each scene's cover, if the film has scenes: a path to an HTML file of the project's own, put over the backdrop on the 1920x1080 frame, with {{title}} and {{subtitle}} filled in from the scene. Animate it with CSS only. Library's default when left out.",
     ),
   voice: voiceSchema
     .default({ provider: 'elevenlabs', voice: JESSICA })
@@ -227,7 +242,15 @@ const config: z.ZodType<Config> = z.strictObject({
 
 export const CONFIG_FILE: string = join(HOME, 'config.json')
 
-export const LOOK_KEYS = ['backdrop', 'display', 'window', 'cursor', 'sound', 'music'] as const
+export const LOOK_KEYS = [
+  'backdrop',
+  'display',
+  'window',
+  'cursor',
+  'sound',
+  'music',
+  'cover',
+] as const
 export type LookSettings = Pick<Config, (typeof LOOK_KEYS)[number]>
 
 export async function readConfig(lookFile?: string): Promise<Config> {
@@ -262,6 +285,7 @@ export async function readRaw(file: string): Promise<Record<string, unknown>> {
   if ('backdrop' in raw) raw.backdrop = path(raw.backdrop)
   if ('cursor' in raw) raw.cursor = inside(raw.cursor, 'style')
   if ('music' in raw) raw.music = inside(raw.music, 'track')
+  if ('cover' in raw) raw.cover = path(raw.cover)
   return raw
 }
 
@@ -282,5 +306,6 @@ export function lookToRaw(look: LookSettings): Record<string, unknown> {
     },
     sound: look.sound,
     music: music ? { track: written(music.track), volume: music.volume } : false,
+    ...(look.cover ? { cover: look.cover.file } : {}),
   }
 }

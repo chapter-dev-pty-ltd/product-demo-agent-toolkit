@@ -1,0 +1,56 @@
+<!--
+  The default scene cover. It sits over the video's backdrop, on the 1920x1080 frame, from the
+  cover's start; the stage fades it out into the scene. {{title}} and {{subtitle}} are the scene's,
+  and --cover-text and --cover-size its text colour and title size, when the film sets them.
+  Animate with CSS only: the stage plays CSS animations frame by frame, timed from the cover's start.
+-->
+<style>
+  .cover-card {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--cover-text, #15151f);
+    font-family:
+      Inter,
+      -apple-system,
+      BlinkMacSystemFont,
+      sans-serif;
+    animation: cover-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 0.1s both;
+  }
+  .cover-card h1 {
+    margin: 0;
+    font-size: var(--cover-size, 88px);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+  }
+  .cover-card p {
+    margin: calc(var(--cover-size, 88px) * 0.25) 0 0;
+    font-size: calc(var(--cover-size, 88px) * 0.39);
+    font-weight: 500;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+    opacity: 0.6;
+  }
+  .cover-card p:empty {
+    display: none;
+  }
+  @keyframes cover-rise {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+</style>
+<div class="cover-card">
+  <h1>{{title}}</h1>
+  <p>{{subtitle}}</p>
+</div>

@@ -1,4 +1,4 @@
-import type { Span } from './time.ts'
+import type { Hold, Span } from './time.ts'
 
 export interface PageSettings {
   backdrop: string
@@ -44,6 +44,32 @@ export interface TimelineData {
   clicks: { at: number; step?: number; muted: boolean }[]
   highlights: Highlighted[]
   edits: ShownEdit[]
+  holds: ShownCover[]
+}
+
+// No background is the backdrop; size is the title's, in pixels of the 1920x1080 video.
+export interface CoverStyle {
+  colour?: string | undefined
+  background?: string | undefined
+  size?: number | undefined
+}
+
+export interface ShownCover extends Hold, CoverStyle {
+  scene: number
+  title: string
+  subtitle?: string | undefined
+}
+
+// A null background goes back to the backdrop.
+export interface CoverRequest {
+  scene: number
+  title?: string | undefined
+  subtitle?: string | undefined
+  colour?: string | undefined
+  background?: string | null | undefined
+  size?: number | undefined
+  hold?: number | undefined
+  remove?: true | undefined
 }
 
 export type EditRequest =

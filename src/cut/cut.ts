@@ -11,7 +11,7 @@ import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
 import { filmEdits, muteQuietSteps, retime, staleTake, toVideo, type Edit } from './edits.ts'
 import { openStage, type Highlighted } from './stage.ts'
-import type { Stem } from '../../studio/api.ts'
+import type { ShownCover, Stem } from '../../studio/api.ts'
 
 const FPS = 60
 
@@ -28,6 +28,8 @@ export async function prepare(footageDir: string): Promise<{
   recorded: Footage
   film: Film
   edits: Edit[]
+  holds: ShownCover[]
+  covers: ShownCover[]
   warnings: string[]
   highlights: Highlighted[]
   length: number
@@ -40,20 +42,45 @@ export async function prepare(footageDir: string): Promise<{
   const film = existsSync(read.source) ? await readFilm(read.source) : read.film
   const recorded = muteQuietSteps(film, read)
   const edits = filmEdits(film, recorded)
-  const footage = retime(recorded, edits)
+  const holds = coversOf(film, recorded)
+  const footage = retime(recorded, edits, holds)
   const stale = staleTake(film, recorded)
-  const length = toVideo(edits, videoLength(recorded))
+  const length = toVideo(edits, videoLength(recorded), holds)
   return {
     footage,
     recorded,
     film,
     edits,
-    warnings: stale ? [stale] : [],
+    holds,
+    covers: holds.map((c) => ({ ...c, at: toVideo(edits, c.at, holds) - c.hold })),
+    warnings: [stale, unplaced(film, recorded)].filter((w): w is string => !!w),
     highlights: highlightsOf(film, footage),
     length,
-    ending: length - toVideo(edits, recorded.end - (recorded.frames[0]?.at ?? 0)),
+    ending: length - toVideo(edits, recorded.end - (recorded.frames[0]?.at ?? 0), holds),
     title: film.notes?.split(/(?<=\.)\s/)[0] ?? '',
   }
+}
+
+function unplaced(film: Film, footage: Footage): string | undefined {
+  const lost = (film.scenes ?? []).filter((s) => s.cover && s.from > 0 && !footage.steps?.[s.from])
+  if (!lost.length) return undefined
+  return `this take was shot before steps' times were recorded, so it can't place the covers of ${lost.map((s) => `"${s.title}"`).join(', ')}: they're left out. Shoot it again to see them.`
+}
+
+// In the take's time: the first scene's cover at its very start, so before its opening frame.
+function coversOf(film: Film, footage: Footage): ShownCover[] {
+  const start = footage.frames[0]?.at ?? 0
+  return (film.scenes ?? []).flatMap((scene, i) => {
+    if (!scene.cover) return []
+    let at = 0
+    if (scene.from > 0) {
+      const step = footage.steps?.[scene.from]
+      if (!step) return []
+      at = step.at - start
+    }
+    const { hold = 2.5, ...rest } = scene.cover
+    return [{ ...rest, at, hold, scene: i, title: scene.title }]
+  })
 }
 
 export function highlightsOf(film: Film, footage: Footage): Highlighted[] {
@@ -80,7 +107,7 @@ export async function cut(
   config: Config,
   extra = '',
 ): Promise<number> {
-  const { footage, highlights, length, ending, title } = await prepare(footageDir)
+  const { footage, highlights, length, ending, title, covers } = await prepare(footageDir)
   const browser = await launchBrowser()
   try {
     const page = await openStage(
@@ -91,6 +118,7 @@ export async function cut(
       config,
       length,
       title,
+      covers,
       extra,
     )
     const camera = await page.context().newCDPSession(page)
@@ -206,14 +234,13 @@ export function stemsOf(footage: Footage): Stem[] {
 export const STEM_GAIN = 0.5
 export const LIMIT = 0.89
 
-// A sound file is named after the edits and mutes it was made with, so a change makes a new one.
-function soundKey(footage: Footage, edits: Edit[]): string {
-  const muted = [...footage.clicks, ...(footage.keys ?? [])].flatMap((c, i) => (c.muted ? [i] : []))
-  if (!edits.length && !muted.length) return ''
+// A sound file is named after when each of its sounds plays, so anything that moves one (an
+// edit, a cover, a mute) makes a new file rather than reusing one out of time.
+function soundKey(tracks: Track[], length: number): string {
   return (
     '-' +
     createHash('sha1')
-      .update(JSON.stringify([edits, muted]))
+      .update(JSON.stringify([tracks, length]))
       .digest('hex')
       .slice(0, 8)
   )
@@ -223,13 +250,12 @@ export async function stems(
   footageDir: string,
   footage: Footage,
   length: number,
-  edits: Edit[] = [],
 ): Promise<Partial<Record<Stem, string>>> {
   const ffmpeg = await findFfmpeg()
   const tracks = soundTracks(footage, true)
   const made = await Promise.all(
     stemsOf(footage).map(async (stem) => {
-      const out = join(footageDir, `sound-${stem}${soundKey(footage, edits)}.m4a`)
+      const out = join(footageDir, `sound-${stem}${soundKey(tracks[stem], length)}.m4a`)
       if (existsSync(out)) return [stem, out] as const
       const part = `${out}.part`
       const args = soundArgs(tracks[stem], length, undefined, true)

@@ -1,19 +1,23 @@
 import type {
+  CoverRequest,
   EditRequest,
   HighlightRequest,
   PageSettings,
+  ShownCover,
   ShownEdit,
   SoundRequest,
   StudioState,
 } from './api.ts'
 import type { Player } from './player.ts'
 import { createPopover, type Target } from './popover.ts'
-import { toVideo } from './time.ts'
+import { HOLD, toVideo } from './time.ts'
 import type { View } from './timeline.ts'
 import { $ } from './ui.ts'
 
 export interface Selection {
   drag(down: PointerEvent, clip: HTMLElement, edit: ShownEdit): void
+  resize(down: PointerEvent, clip: HTMLElement, cover: ShownCover): void
+  clear(): void
   // Called before the lanes are redrawn; what it returns selects the same item again after.
   keep(): () => void
   musicChanged(): void
@@ -24,6 +28,11 @@ interface MusicControl {
   set(music: PageSettings['music']): void
 }
 
+export interface CoverPages {
+  open(scene: number): void
+  close(): void
+}
+
 // What's selected on the timeline (an item, or a range shift-dragged across it), its popover,
 // and the changes made from there.
 export function createSelection(
@@ -31,11 +40,15 @@ export function createSelection(
   player: Player,
   state: StudioState,
   music: MusicControl,
+  cover: CoverPages,
 ): Selection {
   const { el } = view
-  const video = (at: number) => toVideo(view.data.edits, at)
+  const video = (at: number) => toVideo(view.data.edits, at, view.data.holds)
 
-  const post = async (path: string, request: EditRequest | HighlightRequest | SoundRequest) => {
+  const post = async (
+    path: string,
+    request: EditRequest | HighlightRequest | SoundRequest | CoverRequest,
+  ) => {
     const res = await fetch(path, { method: 'POST', body: JSON.stringify(request) })
     if (res.ok) return !($('export-status').textContent = '')
     const message = await res.text()
@@ -73,16 +86,19 @@ export function createSelection(
     if (!at) return
     const lane = $('ruler').getBoundingClientRect()
     const box = el.getBoundingClientRect()
-    $('selection').style.left = lane.left - box.left + (at.from / view.length) * lane.width + 'px'
-    $('selection').style.width = ((at.to - at.from) / view.length) * lane.width + 'px'
+    $('selection').style.left = lane.left - box.left + view.frac(at.from) * lane.width + 'px'
+    $('selection').style.width = (view.frac(at.to) - view.frac(at.from)) * lane.width + 'px'
   }
   window.addEventListener('resize', placeRange)
-  const clear = () => {
+  // Not closing a cover's page just to redraw the lanes.
+  const clear = (closing = true) => {
+    const was = picked
     range = null
     picked = null
     placeRange()
     showPicked()
     popover.hide()
+    if (closing && was?.startsWith('cover:')) cover.close()
   }
   const setRange = (next: { a: number; b: number }, open: boolean) => {
     clear()
@@ -110,6 +126,12 @@ export function createSelection(
   }
   const pick = (item: HTMLElement, at?: number) => {
     const key = item.dataset.key
+    if (key?.startsWith('cover:')) {
+      clear(false)
+      picked = key
+      showPicked()
+      return cover.open(Number(key.slice(6)))
+    }
     const target = key && targetOf(key)
     if (!key || !target) return clear()
     clear()
@@ -121,7 +143,7 @@ export function createSelection(
       const box = item.getBoundingClientRect()
       if (at === undefined || !view.length) return box
       const lane = $('ruler').getBoundingClientRect()
-      const x = lane.left + (at / view.length) * lane.width
+      const x = lane.left + view.frac(at) * lane.width
       return new DOMRect(Math.min(Math.max(x, box.left), box.right), box.top, 0, box.height)
     })
   }
@@ -129,7 +151,7 @@ export function createSelection(
   const drag = (down: PointerEvent, clip: HTMLElement, e: ShownEdit) => {
     down.stopPropagation()
     const end = (down.target as HTMLElement).dataset.end
-    const perSecond = $('ruler').getBoundingClientRect().width / view.length
+    const perSecond = $('ruler').getBoundingClientRect().width / view.span
     const was = { left: clip.style.left, width: clip.style.width }
     const back = () => Object.assign(clip.style, was)
     const fit = (by: number, low: number, high: number) => Math.min(Math.max(by, low), high)
@@ -144,7 +166,7 @@ export function createSelection(
       else by = fit(by, -e.from, view.length - e.to)
       const from = end === 'to' ? e.from : e.from + by
       clip.style.left = view.pct(from)
-      clip.style.width = view.pct((end === 'from' ? e.to : e.to + by) - from)
+      clip.style.width = view.width(from, end === 'from' ? e.to : e.to + by)
     }
     clip.onpointerup = () => {
       clip.onpointermove = clip.onpointerup = null
@@ -165,20 +187,45 @@ export function createSelection(
     }
   }
 
+  // A press on a cover's end that doesn't move picks the cover.
+  const resize = (down: PointerEvent, clip: HTMLElement, cover: ShownCover) => {
+    down.stopPropagation()
+    const perSecond = $('ruler').getBoundingClientRect().width / view.span
+    const was = clip.style.width
+    let hold = cover.hold
+    clip.setPointerCapture(down.pointerId)
+    clip.classList.add('dragging')
+    clip.onpointermove = (move) => {
+      const by = (move.clientX - down.clientX) / perSecond
+      hold = Math.min(HOLD.max, Math.max(HOLD.min, Math.round((cover.hold + by) * 10) / 10))
+      clip.style.width = `calc(${view.along(hold)} - 2px)`
+    }
+    clip.onpointerup = () => {
+      clip.onpointermove = clip.onpointerup = null
+      clip.classList.remove('dragging')
+      if (hold === cover.hold) return pick(clip)
+      void post('/studio/cover', { scene: cover.scene, hold }).then(
+        (ok) => ok || void (clip.style.width = was),
+      )
+    }
+  }
+
   document.addEventListener('keydown', (e) => {
     // Only keys meant for the timeline: not ones typed in the chat, the export dialog or elsewhere.
     if (e.target !== document.body && !el.contains(e.target as Node)) return
-    if (!popover.target && !ranged()) return
+    if (!popover.target && !ranged() && !picked) return
     if (e.code === 'Escape') clear()
     if (e.code === 'Backspace' || e.code === 'Delete') {
       e.preventDefault()
-      popover.remove()
+      if (picked?.startsWith('cover:'))
+        void post('/studio/cover', { scene: Number(picked.slice(6)), remove: true })
+      else popover.remove()
     }
   })
 
   // What the press that's down started on; a release only acts on a press the timeline took.
   let pressedOn: 'range' | { x: number; item: HTMLElement | null } | null = null
-  const scrubTo = (e: PointerEvent) => void player.seek(video(view.timeAt(e)))
+  const scrubTo = (e: PointerEvent) => void player.seek(view.videoAt(e))
   // A press on the timeline is where keys go next, even when it lands on an item that can't take
   // focus; caught before an edit's own handler, which stops the press going further.
   el.addEventListener(
@@ -224,9 +271,11 @@ export function createSelection(
 
   return {
     drag,
+    resize,
+    clear: () => clear(),
     keep: () => {
       const [key, at] = [picked, pickedAt]
-      clear()
+      clear(false)
       return () => {
         const again = key ? el.querySelector<HTMLElement>(`[data-key="${key}"]`) : null
         if (again) pick(again, at)

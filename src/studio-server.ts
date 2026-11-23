@@ -33,7 +33,14 @@ import {
   stemsOf,
   type Stem,
 } from './cut/cut.ts'
-import { planEdit, Refused, writeClickSound, writeHighlight, writePlan } from './cut/edits.ts'
+import {
+  planEdit,
+  Refused,
+  writeClickSound,
+  writeCover,
+  writeHighlight,
+  writePlan,
+} from './cut/edits.ts'
 import { convertExport } from './cut/export.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
 import { timelineOf } from './cut/timeline.ts'
@@ -83,6 +90,7 @@ function fromConfig(config: Config, was: Own = {}) {
     display: config.display,
     window: config.window,
     music: config.music,
+    ...(config.cover ? { cover: config.cover } : {}),
   }
   const mine: Own = {
     backdrop: own(config.backdrop) ? config.backdrop : was.backdrop,
@@ -122,10 +130,10 @@ export async function studio(
   const places = placesOf(video)
   const lookFile = filesOf(video).look
   const config = await readConfig(lookFile)
-  let { footage, recorded, film, edits, highlights, length, ending, title } =
+  let { footage, recorded, film, edits, holds, covers, highlights, length, ending, title } =
     await prepare(footageDir)
   const soundsNow = () => {
-    const made = stems(footageDir, footage, length, edits).catch(
+    const made = stems(footageDir, footage, length).catch(
       (error: Error): Partial<Record<Stem, string>> => (console.log(error.message), {}),
     )
     // Each set of edits makes its own sound files; once the newest is made, the rest go.
@@ -149,11 +157,12 @@ export async function studio(
   let exporting = false
   const writeEdit = (file: string, now: typeof film, raw: unknown) =>
     writePlan(file, planEdit(now, recorded, raw))
-  const staged = () => stageFiles(footageDir, footage, highlights, () => settings, length, title)
+  const staged = () =>
+    stageFiles(footageDir, footage, highlights, () => settings, length, title, covers)
   let stage = staged()
   let filmText = await readFile(footage.source, 'utf8').catch(() => '')
   const restage = async () => {
-    ;({ footage, recorded, film, edits, highlights, length, ending, title } =
+    ;({ footage, recorded, film, edits, holds, covers, highlights, length, ending, title } =
       await prepare(footageDir))
     stage = staged()
     sounds = soundsNow()
@@ -162,7 +171,7 @@ export async function studio(
     stemsOf(footage).filter((stem) => stem === 'voice' || soundOn(stem, extras.sound))
   const stageEvent = (): StudioEvent => ({
     type: 'stage',
-    timeline: timelineOf(recorded, film, edits),
+    timeline: timelineOf(recorded, film, edits, holds),
     stems: audible(),
     hold: Math.max(1, ending),
   })
@@ -267,7 +276,7 @@ export async function studio(
           stemGain: STEM_GAIN,
           limit: LIMIT,
           canvas: CANVAS,
-          timeline: timelineOf(recorded, film, edits),
+          timeline: timelineOf(recorded, film, edits, holds),
         }
         return send(200, 'application/json', JSON.stringify(state))
       }
@@ -357,8 +366,13 @@ export async function studio(
         writing = setTimeout(flush, 150)
         return send(200, 'application/json', JSON.stringify(toPage(settings)))
       }
-      const writers = { edits: writeEdit, sound: writeClickSound, highlight: writeHighlight }
-      const change = path.match(/^\/studio\/(edits|sound|highlight)$/)?.[1] as
+      const writers = {
+        edits: writeEdit,
+        sound: writeClickSound,
+        highlight: writeHighlight,
+        cover: writeCover,
+      }
+      const change = path.match(/^\/studio\/(edits|sound|highlight|cover)$/)?.[1] as
         keyof typeof writers | undefined
       if (change && req.method === 'POST') {
         const raw = JSON.parse(await body(req))
@@ -705,6 +719,7 @@ export function fromPage(raw: unknown, was: Settings, mine: Own): Settings {
       ...(own(style) && mine.tip ? { tip: mine.tip } : {}),
     },
     music: page.music ?? was.music,
+    ...(was.cover ? { cover: was.cover } : {}),
   }
 }
 
