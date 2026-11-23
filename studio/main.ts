@@ -18,14 +18,8 @@ $('title').title = state.title
 
 const mixer = createMixer(state, () => settings.look.music)
 const player = createPlayer(state, mixer, Math.max(0, Number(query.get('t')) || 0))
-const cover = createCoverPanel(state, (scene) => timeline.coverClosed(scene))
-const timeline = createTimeline(
-  player,
-  state,
-  (music) => settings.setMusic(music),
-  (scene) => cover.open(scene),
-  () => cover.close(),
-)
+const cover = createCoverPanel(state.timeline.holds, () => timeline.unselect())
+const timeline = createTimeline(player, state, (music) => settings.setMusic(music), cover)
 const settings = createSettings(state, player, timeline)
 const exporter = createExport(state, () => settings.look)
 const chat = createChat(state, player)
@@ -39,7 +33,7 @@ for (const tab of tabs) {
     const from = document.querySelector('.panel:not([hidden])')
     const swap = () => {
       from?.classList.remove('leaving')
-      cover.close()
+      timeline.unselect()
       for (const name of ['settings', 'chat']) $(name).hidden = tab.dataset.tab !== name
     }
     if (!from || matchMedia('(prefers-reduced-motion: reduce)').matches) return swap()

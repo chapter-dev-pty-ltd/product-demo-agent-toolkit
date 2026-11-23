@@ -22,20 +22,34 @@ export function toVideo(spans: Span[], at: number, holds: Hold[] = []): number {
     if (at <= s.from) break
     removed += (Math.min(at, s.to) - s.from) * (1 - 1 / rate(s))
   }
-  return holds.reduce((t, h) => (h.at <= at ? t + h.hold : t), at - removed)
+  return toTrack(holds, at) - removed
 }
+
+// Where x falls among the holds, given where each starts on x's clock (`held` is the hold time
+// before it): inside one, `into` it, or after `held` seconds of them.
+function among(
+  holds: Hold[],
+  x: number,
+  start: (h: Hold, held: number) => number,
+): { inside: Hold; into: number; held: number } | { inside?: undefined; held: number } {
+  let held = 0
+  for (const h of holds) {
+    const from = start(h, held)
+    if (x < from) break
+    if (x < from + h.hold) return { inside: h, into: x - from, held }
+    held += h.hold
+  }
+  return { held }
+}
+const onVideo = (spans: Span[]) => (h: Hold, held: number) => toVideo(spans, h.at) + held
+const onTrack = (h: Hold, held: number) => h.at + held
 
 // A moment on a cut's join is both the end of what's before it and the start of what's after:
 // a range ending there keeps the cut, one starting there begins after it.
 export function toTake(spans: Span[], at: number, end = false, holds: Hold[] = []): number {
-  let held = 0
-  for (const h of holds) {
-    const from = toVideo(spans, h.at) + held
-    if (at < from) break
-    if (at < from + h.hold) return h.at
-    held += h.hold
-  }
-  at -= held
+  const held = among(holds, at, onVideo(spans))
+  if (held.inside) return held.inside.at
+  at -= held.held
   let shift = 0
   for (const s of spans) {
     const from = s.from - shift
@@ -54,34 +68,18 @@ export function toTrack(holds: Hold[], at: number): number {
 }
 
 export function fromTrack(holds: Hold[], x: number): number {
-  let held = 0
-  for (const h of holds) {
-    const from = h.at + held
-    if (x < from) break
-    if (x < from + h.hold) return h.at
-    held += h.hold
-  }
-  return x - held
+  const held = among(holds, x, onTrack)
+  return held.inside ? held.inside.at : x - held.held
 }
 
 export function videoToTrack(spans: Span[], holds: Hold[], at: number): number {
-  let held = 0
-  for (const h of holds) {
-    const from = toVideo(spans, h.at, holds) - h.hold
-    if (at < from) break
-    if (at < from + h.hold) return h.at + held + (at - from)
-    held += h.hold
-  }
+  const held = among(holds, at, onVideo(spans))
+  if (held.inside) return held.inside.at + held.held + held.into
   return toTrack(holds, toTake(spans, at, false, holds))
 }
 
 export function trackToVideo(spans: Span[], holds: Hold[], x: number): number {
-  let held = 0
-  for (const h of holds) {
-    const from = h.at + held
-    if (x < from) break
-    if (x < from + h.hold) return toVideo(spans, h.at, holds) - h.hold + (x - from)
-    held += h.hold
-  }
-  return toVideo(spans, x - held, holds)
+  const held = among(holds, x, onTrack)
+  if (held.inside) return toVideo(spans, held.inside.at) + held.held + held.into
+  return toVideo(spans, x - held.held, holds)
 }

@@ -3,7 +3,7 @@ import { extname, resolve, sep } from 'node:path'
 import type { Browser, Page } from 'playwright-core'
 import { isHex, type Config, type CURSORS, type ProjectFile } from '../config.ts'
 import type { Footage } from '../perform.ts'
-import type { CoverStyle, Highlighted, StageData } from '../../studio/api.ts'
+import type { Highlighted, ShownCover, StageData } from '../../studio/api.ts'
 
 export const CANVAS = { width: 1920, height: 1080 }
 const ORIGIN = 'https://stage.product-demo'
@@ -128,8 +128,8 @@ export function stageFiles(
   look: () => Look,
   length: number,
   title: string,
+  covers: ShownCover[] = [],
   extra = '',
-  covers: Cover[] = [],
 ): StageFiles {
   const start = footage.frames[0]?.at ?? 0
   const time = <T extends { at: number }>(item: T): T => ({ ...item, at: item.at - start })
@@ -195,8 +195,8 @@ export async function openStage(
   look: Look,
   length: number,
   title: string,
+  covers: ShownCover[] = [],
   extra = '',
-  covers: Cover[] = [],
 ): Promise<Page> {
   const files = stageFiles(
     footageDir,
@@ -205,8 +205,8 @@ export async function openStage(
     () => look,
     length,
     title,
-    extra,
     covers,
+    extra,
   )
   const page = await browser.newPage({ viewport: CANVAS, deviceScaleFactor: 1 })
   await page.route(`${ORIGIN}/**`, async (route) => {
@@ -219,33 +219,21 @@ export async function openStage(
   return page
 }
 
-// A scene's cover: when it shows in the video, for how long, and what it says.
-export interface Cover extends CoverStyle {
-  at: number
-  hold: number
-  scene: number
-  title: string
-  subtitle?: string | undefined
-}
+const escape = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-// The covers, over everything: the backdrop with the look's cover (or the library's) on it,
-// its {{title}} and {{subtitle}} the scene's, fading out to the scene. One after the video has
-// begun fades in too.
 async function coversHtml(
-  covers: Cover[],
+  covers: ShownCover[],
   background: string,
   design: ProjectFile | undefined,
 ): Promise<string> {
   if (covers.length === 0) return ''
   const template = await readFile(design?.file ?? library('covers/default.html'), 'utf8')
-  const text = (s: string) =>
-    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-  const fill = (c: Cover) =>
+  const fill = (c: ShownCover) =>
     template
-      .replaceAll('{{title}}', text(c.title))
-      .replaceAll('{{subtitle}}', text(c.subtitle ?? ''))
-  // The cover's own colours and size reach its design as CSS variables.
-  const style = (c: Cover) =>
+      .replaceAll('{{title}}', escape(c.title))
+      .replaceAll('{{subtitle}}', escape(c.subtitle ?? ''))
+  const style = (c: ShownCover) =>
     [
       `animation-delay:${Math.max(0, c.hold - 0.45)}s`,
       c.colour && `--cover-text:${c.colour}`,
@@ -309,9 +297,7 @@ function html(
     tip: own.tip.map((at) => at * look.cursor.size),
   }
   const k = look.cursor.size
-  const label = look.cursor.label
-    ? `<div id="label">${look.cursor.label.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</div>`
-    : ''
+  const label = look.cursor.label ? `<div id="label">${escape(look.cursor.label)}</div>` : ''
   const { width: W, height: H } = view
   const chrome = browser ? { x: RIM * 2, y: BAR + RIM } : { x: 0, y: 0 }
   const fill = look.window.fill

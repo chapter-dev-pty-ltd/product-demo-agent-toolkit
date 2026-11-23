@@ -160,7 +160,6 @@ export interface Config {
   cursor: Cursor
   sound: Sound
   music: Music | false
-  // An HTML file for each scene's cover, in place of library/covers/default.html.
   cover?: ProjectFile | undefined
   voice: VoiceChoice
   keep: number

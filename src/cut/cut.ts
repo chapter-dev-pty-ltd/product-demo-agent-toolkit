@@ -10,9 +10,8 @@ import { readFilm, type Film } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
 import { filmEdits, muteQuietSteps, retime, staleTake, toVideo, type Edit } from './edits.ts'
-import type { ShownCover } from '../../studio/api.ts'
-import { openStage, type Cover, type Highlighted } from './stage.ts'
-import type { Stem } from '../../studio/api.ts'
+import { openStage, type Highlighted } from './stage.ts'
+import type { ShownCover, Stem } from '../../studio/api.ts'
 
 const FPS = 60
 
@@ -30,7 +29,7 @@ export async function prepare(footageDir: string): Promise<{
   film: Film
   edits: Edit[]
   holds: ShownCover[]
-  covers: Cover[]
+  covers: ShownCover[]
   warnings: string[]
   highlights: Highlighted[]
   length: number
@@ -43,8 +42,7 @@ export async function prepare(footageDir: string): Promise<{
   const film = existsSync(read.source) ? await readFilm(read.source) : read.film
   const recorded = muteQuietSteps(film, read)
   const edits = filmEdits(film, recorded)
-  const scenes = coversOf(film, recorded)
-  const holds: ShownCover[] = scenes
+  const holds = coversOf(film, recorded)
   const footage = retime(recorded, edits, holds)
   const stale = staleTake(film, recorded)
   const length = toVideo(edits, videoLength(recorded), holds)
@@ -54,7 +52,7 @@ export async function prepare(footageDir: string): Promise<{
     film,
     edits,
     holds,
-    covers: scenes.map((c) => ({ ...c, at: toVideo(edits, c.at, holds) - c.hold })),
+    covers: holds.map((c) => ({ ...c, at: toVideo(edits, c.at, holds) - c.hold })),
     warnings: stale ? [stale] : [],
     highlights: highlightsOf(film, footage),
     length,
@@ -64,17 +62,20 @@ export async function prepare(footageDir: string): Promise<{
 }
 
 // In the take's time: the first scene's cover at its very start, so before its opening frame.
-export function coversOf(film: Film, footage: Footage): Cover[] {
+function coversOf(film: Film, footage: Footage): ShownCover[] {
   const start = footage.frames[0]?.at ?? 0
   return (film.scenes ?? []).flatMap((scene, i) => {
     if (!scene.cover) return []
-    const step = footage.steps?.[scene.from]
-    if (scene.from > 0 && !step) {
-      throw new Error(
-        `This take doesn't say where "${scene.title}" starts: it was shot before steps' times were recorded. Shoot it again.`,
-      )
+    let at = 0
+    if (scene.from > 0) {
+      const step = footage.steps?.[scene.from]
+      if (!step) {
+        throw new Error(
+          `This take doesn't say where "${scene.title}" starts: it was shot before steps' times were recorded. Shoot it again.`,
+        )
+      }
+      at = step.at - start
     }
-    const at = scene.from === 0 ? 0 : (step?.at ?? start) - start
     const { hold = 2.5, ...rest } = scene.cover
     return [{ ...rest, at, hold, scene: i, title: scene.title }]
   })
@@ -115,8 +116,8 @@ export async function cut(
       config,
       length,
       title,
-      extra,
       covers,
+      extra,
     )
     const camera = await page.context().newCDPSession(page)
     const ffmpeg = await findFfmpeg()
@@ -216,10 +217,9 @@ export function stemsOf(footage: Footage): Stem[] {
 export const STEM_GAIN = 0.5
 export const LIMIT = 0.89
 
-// A sound file is named after the edits and mutes it was made with, so a change makes a new one.
-// Keyed on when every sound plays, so anything that moves one (an edit, a cover, a mute) makes
-// new files rather than reusing ones out of time.
-function soundKey(tracks: Record<Stem, Track[]>, length: number): string {
+// A sound file is named after when each of its sounds plays, so anything that moves one (an
+// edit, a cover, a mute) makes a new file rather than reusing one out of time.
+function soundKey(tracks: Track[], length: number): string {
   return (
     '-' +
     createHash('sha1')
@@ -238,7 +238,7 @@ export async function stems(
   const tracks = soundTracks(footage, true)
   const made = await Promise.all(
     stemsOf(footage).map(async (stem) => {
-      const out = join(footageDir, `sound-${stem}${soundKey(tracks, length)}.m4a`)
+      const out = join(footageDir, `sound-${stem}${soundKey(tracks[stem], length)}.m4a`)
       if (existsSync(out)) return [stem, out] as const
       const part = `${out}.part`
       const args = soundArgs(tracks[stem], length, undefined, true)

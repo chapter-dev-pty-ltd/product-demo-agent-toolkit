@@ -157,7 +157,7 @@ export async function studio(
   const writeEdit = (file: string, now: typeof film, raw: unknown) =>
     writePlan(file, planEdit(now, recorded, raw))
   const staged = () =>
-    stageFiles(footageDir, footage, highlights, () => settings, length, title, '', covers)
+    stageFiles(footageDir, footage, highlights, () => settings, length, title, covers)
   let stage = staged()
   let filmText = await readFile(footage.source, 'utf8').catch(() => '')
   const restage = async () => {

@@ -17,8 +17,7 @@ import { $ } from './ui.ts'
 export interface Selection {
   drag(down: PointerEvent, clip: HTMLElement, edit: ShownEdit): void
   resize(down: PointerEvent, clip: HTMLElement, cover: ShownCover): void
-  // Unselects that item, if it's the one selected.
-  unpick(key: string): void
+  clear(): void
   // Called before the lanes are redrawn; what it returns selects the same item again after.
   keep(): () => void
   musicChanged(): void
@@ -29,6 +28,12 @@ interface MusicControl {
   set(music: PageSettings['music']): void
 }
 
+// A selected cover opens its page, and unselecting it closes the page.
+export interface CoverPages {
+  open(scene: number): void
+  close(): void
+}
+
 // What's selected on the timeline (an item, or a range shift-dragged across it), its popover,
 // and the changes made from there.
 export function createSelection(
@@ -36,6 +41,7 @@ export function createSelection(
   player: Player,
   state: StudioState,
   music: MusicControl,
+  cover: CoverPages,
 ): Selection {
   const { el } = view
   const video = (at: number) => toVideo(view.data.edits, at, view.data.holds)
@@ -85,7 +91,7 @@ export function createSelection(
     $('selection').style.width = (view.frac(at.to) - view.frac(at.from)) * lane.width + 'px'
   }
   window.addEventListener('resize', placeRange)
-  // Unselecting a cover goes back from its page too, except to redraw the lanes.
+  // Not closing a cover's page just to redraw the lanes.
   const clear = (closing = true) => {
     const was = picked
     range = null
@@ -93,7 +99,7 @@ export function createSelection(
     placeRange()
     showPicked()
     popover.hide()
-    if (closing && was?.startsWith('cover:')) view.closeCover()
+    if (closing && was?.startsWith('cover:')) cover.close()
   }
   const setRange = (next: { a: number; b: number }, open: boolean) => {
     clear()
@@ -125,7 +131,7 @@ export function createSelection(
       clear(false)
       picked = key
       showPicked()
-      return view.openCover(Number(key.slice(6)))
+      return cover.open(Number(key.slice(6)))
     }
     const target = key && targetOf(key)
     if (!key || !target) return clear()
@@ -182,7 +188,7 @@ export function createSelection(
     }
   }
 
-  // Dragging a cover's end changes how long it holds; a press that doesn't move picks it.
+  // A press on a cover's end that doesn't move picks the cover.
   const resize = (down: PointerEvent, clip: HTMLElement, cover: ShownCover) => {
     down.stopPropagation()
     const perSecond = $('ruler').getBoundingClientRect().width / view.span
@@ -265,9 +271,7 @@ export function createSelection(
   return {
     drag,
     resize,
-    unpick: (key) => {
-      if (picked === key) clear()
-    },
+    clear: () => clear(),
     keep: () => {
       const [key, at] = [picked, pickedAt]
       clear(false)

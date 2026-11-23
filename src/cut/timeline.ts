@@ -10,12 +10,16 @@ export function timelineOf(
   recorded: Footage,
   film: Film,
   edits: Edit[],
-  holds: ShownCover[] = [],
+  holds: ShownCover[],
 ): TimelineData {
   const start = recorded.frames[0]?.at ?? 0
   return {
     length: videoLength(recorded),
-    addresses: (recorded.addresses ?? []).map((a) => ({ at: a.at - start, label: label(a.url) })),
+    // From the take's start at the earliest, where an opening cover goes before it.
+    addresses: (recorded.addresses ?? []).map((a) => ({
+      at: Math.max(0, a.at - start),
+      label: label(a.url),
+    })),
     clicks: recorded.clicks.map((c) => {
       const step = stepAt(recorded, c.at)
       return { at: c.at - start, ...(step === undefined ? {} : { step }), muted: !!c.muted }

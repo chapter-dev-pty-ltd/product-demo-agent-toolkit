@@ -1,7 +1,5 @@
-import type { CoverRequest, ShownCover, StudioState, TimelineData } from './api.ts'
+import type { CoverRequest, ShownCover, TimelineData } from './api.ts'
 import { $, pressed } from './ui.ts'
-
-// A cover's own page in the Configuration panel, opened from its clip on the timeline.
 
 const DARK = '#15151f'
 const COLOURS = [DARK, '#ffffff']
@@ -12,8 +10,9 @@ export interface CoverPanel {
   close(): void
 }
 
-export function createCoverPanel(state: StudioState, closed: (scene: number) => void): CoverPanel {
-  let covers: ShownCover[] = state.timeline.holds
+// Its back button unselects the cover, and the selection closes the page.
+export function createCoverPanel(holds: ShownCover[], back: () => void): CoverPanel {
+  let covers = holds
   let scene: number | undefined
   const now = () => covers.find((c) => c.scene === scene)
 
@@ -39,7 +38,8 @@ export function createCoverPanel(state: StudioState, closed: (scene: number) => 
 
   const size = $<HTMLInputElement>('cover-size')
   const showSize = (px: number) => {
-    size.style.setProperty('--fill', ((px - 32) / 168) * 100 + '%')
+    const [min, max] = [Number(size.min), Number(size.max)]
+    size.style.setProperty('--fill', ((px - min) / (max - min)) * 100 + '%')
     $('cover-size-value').textContent = px + 'px'
   }
   size.oninput = () => showSize(Number(size.value))
@@ -66,14 +66,14 @@ export function createCoverPanel(state: StudioState, closed: (scene: number) => 
   for (const colour of COLOURS) swatch($('cover-colour'), colour, () => void send({ colour }))
   const ownText = picker($('cover-colour'), (colour) => void send({ colour }))
 
-  const modes = ['Backdrop', 'Colour'].map((name) => {
+  const mode = (name: string) => {
     const b = document.createElement('button')
     b.type = 'button'
     b.textContent = name
-    $('cover-background').appendChild(b)
-    return b
-  })
-  const [backdrop, flat] = modes as [HTMLButtonElement, HTMLButtonElement]
+    return $('cover-background').appendChild(b)
+  }
+  const backdrop = mode('Backdrop')
+  const flat = mode('Colour')
   const ownFill = picker($('cover-fill'), (background) => void send({ background }))
   backdrop.onclick = () => void send({ background: null })
   flat.onclick = () => void send({ background: ownFill.input.value })
@@ -103,13 +103,11 @@ export function createCoverPanel(state: StudioState, closed: (scene: number) => 
   }
 
   const close = () => {
-    const was = scene
     scene = undefined
-    if (was !== undefined) closed(was)
     $('cover').hidden = true
     $('settings').hidden = false
   }
-  $('cover-back').onclick = close
+  $('cover-back').onclick = back
 
   return {
     open: (next) => {

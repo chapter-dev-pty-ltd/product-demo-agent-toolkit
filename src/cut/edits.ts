@@ -77,7 +77,7 @@ export function retime(footage: Footage, edits: Edit[], holds: Hold[] = []): Foo
   const map = (at: number) => start + toVideo(edits, at - start, holds)
   const moved = <T extends { at: number }>(item: T): T => ({ ...item, at: map(item.at) })
   // A cover at the very start moves the first frame too; the stage times everything from it.
-  const first = holds.length && footage.frames[0] ? [footage.frames[0]] : []
+  const first = footage.frames[0] && holds.some((h) => h.at <= 0) ? [footage.frames[0]] : []
   return {
     ...footage,
     frames: [...first, ...footage.frames.map(moved)],
@@ -253,7 +253,7 @@ export function writeCover(filmFile: string, film: Film, raw: unknown): Promise<
   if (!film.scenes?.[request.scene]?.cover)
     throw new Refused(`Scene ${request.scene + 1} has no cover.`)
   return changeScene(filmFile, request.scene, (scene) => {
-    const cover = { ...(scene.cover as Record<string, unknown>) }
+    const cover = scene.cover as Record<string, unknown>
     const { title, subtitle, colour, background, size, hold } = request
     if (title) scene.title = title
     if (subtitle) cover.subtitle = subtitle
@@ -263,7 +263,6 @@ export function writeCover(filmFile: string, film: Film, raw: unknown): Promise<
     else if (background === null) delete cover.background
     if (size) cover.size = size
     if (hold) cover.hold = hold
-    scene.cover = cover
   })
 }
 

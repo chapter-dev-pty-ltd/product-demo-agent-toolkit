@@ -47,15 +47,13 @@ export interface TimelineData {
   holds: ShownCover[]
 }
 
-// How a cover looks within its design: its text colour, its background (the backdrop when
-// unset) and its title's size, in pixels of the 1920x1080 video.
+// No background is the backdrop; size is the title's, in pixels of the 1920x1080 video.
 export interface CoverStyle {
   colour?: string | undefined
   background?: string | undefined
   size?: number | undefined
 }
 
-// A scene's cover, held at its moment of the take.
 export interface ShownCover extends Hold, CoverStyle {
   scene: number
   title: string

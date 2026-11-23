@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
 import type { CoverStyle } from '../studio/api.ts'
-import { soundSchema, type Sound } from './config.ts'
+import { isHex, soundSchema, type Sound } from './config.ts'
 import type { Fingerprint } from './similo.ts'
 
 export type Target =
@@ -75,12 +75,9 @@ export interface Film {
   notes?: string | undefined
   steps: Step[]
   ending?: { hold: number } | undefined
-  // The film's parts, when it has them: each starts at step `from`. Written as `scenes`, each
-  // with its own steps; readFilm lays their steps end to end.
   scenes?: Scene[] | undefined
 }
 
-// A part of a film, and its cover: a card with its title shown for `hold` seconds before it.
 export interface Scene {
   title: string
   cover?: ({ subtitle?: string | undefined; hold?: number | undefined } & CoverStyle) | undefined
@@ -187,7 +184,7 @@ const top = {
   ending: z.strictObject({ hold: z.number().nonnegative() }).optional(),
 }
 
-export const hex: z.ZodString = z.string().regex(/^#[0-9a-f]{6}$/i)
+export const hex: z.ZodString = z.string().refine(isHex)
 export const coverSize: z.ZodNumber = z.number().int().min(32).max(200)
 
 const scene = z.strictObject({
@@ -222,34 +219,40 @@ export async function readJson(path: string): Promise<unknown> {
 
 const LOOK = ['backdrop', 'display', 'window', 'cursor', 'sound', 'music', 'voice']
 
+type Json = Record<string, unknown>
+
 // Changed in the film's own JSON, not a parsed copy, so the rest of the file stays as written.
-export async function changeSteps(
-  path: string,
-  change: (step: Record<string, unknown>, index: number) => void,
-): Promise<string> {
+async function changeFilm(path: string, change: (film: Json) => void): Promise<string> {
   const json = JSON.parse(await readFile(path, 'utf8'))
-  // A film in scenes is changed step by step across them, as readFilm numbers its steps.
-  const steps: Record<string, unknown>[] = json.scenes
-    ? (json.scenes as { steps: Record<string, unknown>[] }[]).flatMap((s) => s.steps)
-    : json.steps
-  for (const [i, step] of steps.entries()) change(step, i)
+  change(json)
   const text = `${JSON.stringify(json, null, 2)}\n`
   await writeFile(path, text)
   return text
 }
 
-export async function changeScene(
+export function changeSteps(
+  path: string,
+  change: (step: Json, index: number) => void,
+): Promise<string> {
+  return changeFilm(path, (film) => {
+    // A film in scenes is changed step by step across them, as readFilm numbers its steps.
+    const steps = film.scenes
+      ? (film.scenes as { steps: Json[] }[]).flatMap((s) => s.steps)
+      : (film.steps as Json[])
+    for (const [i, step] of steps.entries()) change(step, i)
+  })
+}
+
+export function changeScene(
   path: string,
   index: number,
-  change: (scene: Record<string, unknown>) => void,
+  change: (scene: Json) => void,
 ): Promise<string> {
-  const json = JSON.parse(await readFile(path, 'utf8'))
-  const scene = (json.scenes as Record<string, unknown>[] | undefined)?.[index]
-  if (!scene) throw new Error(`${path} has no scene ${index + 1}.`)
-  change(scene)
-  const text = `${JSON.stringify(json, null, 2)}\n`
-  await writeFile(path, text)
-  return text
+  return changeFilm(path, (film) => {
+    const scene = (film.scenes as Json[] | undefined)?.[index]
+    if (!scene) throw new Error(`${path} has no scene ${index + 1}.`)
+    change(scene)
+  })
 }
 
 export async function readFilm(path: string): Promise<Film> {

@@ -2,7 +2,7 @@ import type { Highlighted, PageSettings, ShownEdit, StudioState, TimelineData } 
 import { musicSrc } from './audio.ts'
 import type { Player } from './player.ts'
 import { stepsName } from './steps.ts'
-import { createSelection } from './selection.ts'
+import { createSelection, type CoverPages } from './selection.ts'
 import { fromTrack, toTrack, trackToVideo, videoToTrack } from './time.ts'
 import { $, clock, fileName, pretty } from './ui.ts'
 
@@ -23,16 +23,14 @@ const STYLES: Record<Highlighted['style'], string> = { magnify: LENS, box: SPARK
 export interface Timeline {
   music(m: PageSettings['music']): void
   update(next: TimelineData): void
-  coverClosed(scene: number): void
+  unselect(): void
 }
 
-// The timeline is drawn in the take's own time, so a cut keeps its length, with each cover given
-// its own length (time.ts, toTrack); the player runs on the video's. Times given and taken here
-// are the take's.
+// The timeline is drawn in the take's own time, so a cut keeps its length, with each cover
+// given its hold (time.ts, toTrack); the player runs on the video's.
 export interface View {
   readonly el: HTMLElement
   readonly length: number
-  // The timeline's own length: the take's, and every cover's.
   readonly span: number
   readonly data: TimelineData
   frac(at: number): number
@@ -40,18 +38,14 @@ export interface View {
   width(from: number, to: number): string
   timeAt(e: PointerEvent): number
   videoAt(e: PointerEvent): number
-  // A length on the timeline, in its own seconds, as a share of it.
   along(seconds: number): string
-  openCover(scene: number): void
-  closeCover(): void
 }
 
 export function createTimeline(
   player: Player,
   state: StudioState,
   setMusic: (music: PageSettings['music']) => void,
-  openCover: (scene: number) => void,
-  closeCover: () => void,
+  cover: CoverPages,
 ): Timeline {
   const ownedMusic = state.owned.music
   const el = document.querySelector<HTMLElement>('.timeline')!
@@ -87,10 +81,8 @@ export function createTimeline(
     timeAt,
     videoAt,
     along,
-    openCover,
-    closeCover,
   }
-  const selection = createSelection(view, player, state, { get: () => music, set: setMusic })
+  const selection = createSelection(view, player, state, { get: () => music, set: setMusic }, cover)
 
   const track = (name: string, sub: string, icon: string) => {
     const row = document.createElement('div')
@@ -123,10 +115,8 @@ export function createTimeline(
       const end = addresses[i + 1]?.at ?? length
       const clip = document.createElement('div')
       clip.className = 'clip page'
-      // From the take's start, not the address before it: an opening cover comes first.
-      const from = Math.max(0, a.at)
-      clip.style.left = `calc(${pct(from)} + 1px)`
-      clip.style.width = `calc(${width(from, end)} - 2px)`
+      clip.style.left = `calc(${pct(a.at)} + 1px)`
+      clip.style.width = `calc(${width(a.at, end)} - 2px)`
       clip.title = a.label
       const slash = a.label.indexOf('/')
       const host = slash < 0 ? a.label : a.label.slice(0, slash)
@@ -327,6 +317,6 @@ export function createTimeline(
       selection.musicChanged()
     },
     update: (next) => void (data = next),
-    coverClosed: (scene) => selection.unpick(`cover:${scene}`),
+    unselect: () => selection.clear(),
   }
 }
