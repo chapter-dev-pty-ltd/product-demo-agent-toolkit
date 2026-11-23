@@ -18,7 +18,7 @@ $('title').title = state.title
 
 const mixer = createMixer(state, () => settings.look.music)
 const player = createPlayer(state, mixer, Math.max(0, Number(query.get('t')) || 0))
-const cover = createCoverPanel(state)
+const cover = createCoverPanel(state, (scene) => timeline.coverClosed(scene))
 const timeline = createTimeline(
   player,
   state,

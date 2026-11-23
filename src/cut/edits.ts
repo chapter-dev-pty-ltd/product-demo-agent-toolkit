@@ -245,6 +245,7 @@ const coverRequest: z.ZodType<CoverRequest> = z.strictObject({
   colour: hex.optional(),
   background: hex.nullable().optional(),
   size: coverSize.optional(),
+  hold: z.number().min(0.5).max(10).optional(),
 })
 
 export function writeCover(filmFile: string, film: Film, raw: unknown): Promise<string> {
@@ -253,7 +254,7 @@ export function writeCover(filmFile: string, film: Film, raw: unknown): Promise<
     throw new Refused(`Scene ${request.scene + 1} has no cover.`)
   return changeScene(filmFile, request.scene, (scene) => {
     const cover = { ...(scene.cover as Record<string, unknown>) }
-    const { title, subtitle, colour, background, size } = request
+    const { title, subtitle, colour, background, size, hold } = request
     if (title) scene.title = title
     if (subtitle) cover.subtitle = subtitle
     else if (subtitle === '') delete cover.subtitle
@@ -261,6 +262,7 @@ export function writeCover(filmFile: string, film: Film, raw: unknown): Promise<
     if (background) cover.background = background
     else if (background === null) delete cover.background
     if (size) cover.size = size
+    if (hold) cover.hold = hold
     scene.cover = cover
   })
 }

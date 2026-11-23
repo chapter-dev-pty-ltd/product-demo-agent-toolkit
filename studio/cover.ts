@@ -12,7 +12,7 @@ export interface CoverPanel {
   close(): void
 }
 
-export function createCoverPanel(state: StudioState): CoverPanel {
+export function createCoverPanel(state: StudioState, closed: (scene: number) => void): CoverPanel {
   let covers: ShownCover[] = state.timeline.holds
   let scene: number | undefined
   const now = () => covers.find((c) => c.scene === scene)
@@ -103,6 +103,7 @@ export function createCoverPanel(state: StudioState): CoverPanel {
   }
 
   const close = () => {
+    if (scene !== undefined) closed(scene)
     scene = undefined
     $('cover').hidden = true
     $('settings').hidden = false

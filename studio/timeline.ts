@@ -23,6 +23,7 @@ const STYLES: Record<Highlighted['style'], string> = { magnify: LENS, box: SPARK
 export interface Timeline {
   music(m: PageSettings['music']): void
   update(next: TimelineData): void
+  coverClosed(scene: number): void
 }
 
 // The timeline is drawn in the take's own time, so a cut keeps its length, with each cover given
@@ -39,6 +40,8 @@ export interface View {
   width(from: number, to: number): string
   timeAt(e: PointerEvent): number
   videoAt(e: PointerEvent): number
+  // A length on the timeline, in its own seconds, as a share of it.
+  along(seconds: number): string
   openCover(scene: number): void
 }
 
@@ -81,6 +84,7 @@ export function createTimeline(
     width,
     timeAt,
     videoAt,
+    along,
     openCover,
   }
   const selection = createSelection(view, player, state, { get: () => music, set: setMusic })
@@ -165,13 +169,18 @@ export function createTimeline(
       const from = toTrack(data.holds, h.at) - h.hold
       clip.className = 'clip cover'
       clip.dataset.key = `cover:${h.scene}`
-      clip.title = `${h.title}: ${h.hold}s. Click to change it.`
+      clip.title = `${h.title}: ${h.hold}s. Click to change it, or drag its end to change how long it shows.`
       clip.style.left = `calc(${along(from)} + 1px)`
       clip.style.width = `calc(${along(h.hold)} - 2px)`
       clip.innerHTML = SPARK
       const name = document.createElement('span')
       name.textContent = h.title
       clip.appendChild(name)
+      const end = document.createElement('i')
+      end.className = 'handle'
+      end.dataset.end = 'to'
+      end.onpointerdown = (down) => selection.resize(down, clip, h)
+      clip.appendChild(end)
       lane.appendChild(clip)
     }
   }
@@ -315,5 +324,6 @@ export function createTimeline(
       selection.musicChanged()
     },
     update: (next) => void (data = next),
+    coverClosed: (scene) => selection.unpick(`cover:${scene}`),
   }
 }

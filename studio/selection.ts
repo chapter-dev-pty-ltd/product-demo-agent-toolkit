@@ -1,7 +1,9 @@
 import type {
+  CoverRequest,
   EditRequest,
   HighlightRequest,
   PageSettings,
+  ShownCover,
   ShownEdit,
   SoundRequest,
   StudioState,
@@ -14,6 +16,9 @@ import { $ } from './ui.ts'
 
 export interface Selection {
   drag(down: PointerEvent, clip: HTMLElement, edit: ShownEdit): void
+  resize(down: PointerEvent, clip: HTMLElement, cover: ShownCover): void
+  // Unselects that item, if it's the one selected.
+  unpick(key: string): void
   // Called before the lanes are redrawn; what it returns selects the same item again after.
   keep(): () => void
   musicChanged(): void
@@ -35,7 +40,10 @@ export function createSelection(
   const { el } = view
   const video = (at: number) => toVideo(view.data.edits, at, view.data.holds)
 
-  const post = async (path: string, request: EditRequest | HighlightRequest | SoundRequest) => {
+  const post = async (
+    path: string,
+    request: EditRequest | HighlightRequest | SoundRequest | CoverRequest,
+  ) => {
     const res = await fetch(path, { method: 'POST', body: JSON.stringify(request) })
     if (res.ok) return !($('export-status').textContent = '')
     const message = await res.text()
@@ -110,7 +118,12 @@ export function createSelection(
   }
   const pick = (item: HTMLElement, at?: number) => {
     const key = item.dataset.key
-    if (key?.startsWith('cover:')) return void (clear(), view.openCover(Number(key.slice(6))))
+    if (key?.startsWith('cover:')) {
+      clear()
+      picked = key
+      showPicked()
+      return view.openCover(Number(key.slice(6)))
+    }
     const target = key && targetOf(key)
     if (!key || !target) return clear()
     clear()
@@ -163,6 +176,29 @@ export function createSelection(
           }
         : { steps: e.steps, by }
       void edit(request).then((ok) => ok || back())
+    }
+  }
+
+  // Dragging a cover's end changes how long it holds; a press that doesn't move picks it.
+  const resize = (down: PointerEvent, clip: HTMLElement, cover: ShownCover) => {
+    down.stopPropagation()
+    const perSecond = $('ruler').getBoundingClientRect().width / view.span
+    const was = clip.style.width
+    let hold = cover.hold
+    clip.setPointerCapture(down.pointerId)
+    clip.classList.add('dragging')
+    clip.onpointermove = (move) => {
+      const by = (move.clientX - down.clientX) / perSecond
+      hold = Math.min(10, Math.max(0.5, Math.round((cover.hold + by) * 10) / 10))
+      clip.style.width = `calc(${view.along(hold)} - 2px)`
+    }
+    clip.onpointerup = () => {
+      clip.onpointermove = clip.onpointerup = null
+      clip.classList.remove('dragging')
+      if (hold === cover.hold) return pick(clip)
+      void post('/studio/cover', { scene: cover.scene, hold }).then(
+        (ok) => ok || void (clip.style.width = was),
+      )
     }
   }
 
@@ -225,6 +261,10 @@ export function createSelection(
 
   return {
     drag,
+    resize,
+    unpick: (key) => {
+      if (picked === key) clear()
+    },
     keep: () => {
       const [key, at] = [picked, pickedAt]
       clear()

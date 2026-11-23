@@ -70,6 +70,7 @@ export interface CoverRequest {
   colour?: string | undefined
   background?: string | null | undefined
   size?: number | undefined
+  hold?: number | undefined
 }
 
 export type EditRequest =
