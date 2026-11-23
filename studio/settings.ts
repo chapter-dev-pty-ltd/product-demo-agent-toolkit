@@ -14,6 +14,7 @@ type Patch = Partial<Omit<PageSettings, 'cursor'>> & { cursor?: Partial<PageSett
 
 export interface Settings {
   readonly look: PageSettings
+  place(x: number | null, y: number | null): void
 }
 
 export function createSettings(state: StudioState, player: Player, timeline: Timeline): Settings {
@@ -51,7 +52,8 @@ export function createSettings(state: StudioState, player: Player, timeline: Tim
     return el
   }
 
-  const visual = (l: PageSettings) => JSON.stringify([l.backdrop, l.display, l.fill, l.cursor])
+  const visual = (l: PageSettings) =>
+    JSON.stringify([l.backdrop, l.display, l.fill, l.x, l.y, l.cursor])
   let shown = visual(look)
   let edits = 0
   const save = async () => {
@@ -202,5 +204,6 @@ export function createSettings(state: StudioState, player: Player, timeline: Tim
     get look() {
       return look
     },
+    place: (x, y) => change({ x, y }),
   }
 }

@@ -565,6 +565,8 @@ function toPage(settings: Settings): PageSettings {
     backdrop: own(settings.backdrop) ? 'own' : settings.backdrop,
     display: settings.display,
     fill: settings.window.fill,
+    x: settings.window.x,
+    y: settings.window.y,
     cursor: {
       style: own(cursor.style) ? 'own' : cursor.style,
       size: cursor.size,
@@ -605,6 +607,8 @@ function pageSchema(mine: Own) {
       backdrop: choice('backdrop', BACKDROPS, mine.backdrop, HEX),
       display: z.enum(DISPLAYS),
       fill: fillSchema.transform((fill) => Math.round(fill * 100) / 100),
+      x: z.number().int().min(-CANVAS.width).max(CANVAS.width).nullable(),
+      y: z.number().int().min(-CANVAS.height).max(CANVAS.height).nullable(),
       cursor: z
         .strictObject({
           style: choice('cursor', CURSORS, mine.cursor, HEX),
@@ -628,13 +632,18 @@ function pageSchema(mine: Own) {
     .partial()
 }
 
-// Left out, a setting stays as it was; only an empty label clears it.
+// Left out, a setting stays as it was; only an empty label or a null position clears it.
 export function fromPage(raw: unknown, was: Settings, mine: Own): Settings {
   const page = pageSchema(mine).parse(raw)
   const style = page.cursor?.style ?? was.cursor.style
   const label = page.cursor?.label ?? was.cursor.label
   return {
-    window: { ...was.window, fill: page.fill ?? was.window.fill },
+    window: {
+      ...was.window,
+      fill: page.fill ?? was.window.fill,
+      x: page.x === undefined ? was.window.x : (page.x ?? undefined),
+      y: page.y === undefined ? was.window.y : (page.y ?? undefined),
+    },
     backdrop: page.backdrop ?? was.backdrop,
     display: page.display ?? was.display,
     cursor: {
