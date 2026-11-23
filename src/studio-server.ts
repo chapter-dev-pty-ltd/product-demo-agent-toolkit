@@ -6,15 +6,19 @@ import { createServer, request, type IncomingMessage, type ServerResponse } from
 import { stripTypeScriptTypes } from 'node:module'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
+import { z } from 'zod'
 import {
   BACKDROPS,
   CURSORS,
   DISPLAYS,
   MUSIC,
+  cursorSizeSchema,
+  fillSchema,
   isHex,
   lookToRaw,
   readConfig,
   soundOn,
+  volumeSchema,
   type Config,
   type Music,
   type ProjectFile,
@@ -115,6 +119,15 @@ export async function studio(
   )
   let { settings, mine, extras } = fromConfig(config, hold)
   let saving = Promise.resolve()
+  let writing: NodeJS.Timeout | undefined
+  const flush = () => {
+    if (writing) {
+      clearTimeout(writing)
+      writing = undefined
+      saving = saving.then(() => saveLook(lookFile, settings)).catch((e) => void console.log(e))
+    }
+    return saving
+  }
   let exporting = false
   const staged = (lit: typeof highlights) =>
     stageFiles(footageDir, footage, lit, () => settings, length, title)
@@ -155,7 +168,8 @@ export async function studio(
       const next = await readConfig(lookFile).catch(
         (error: Error) => void console.log(error.message),
       )
-      if (!next) return
+      // Our own write is about to replace whatever this read.
+      if (!next || writing) return
       const fresh = fromConfig(next, hold, mine)
       const same = (a: typeof fresh) => JSON.stringify([toPage(a.settings), a.extras])
       if (same(fresh) === same({ settings, mine, extras })) return
@@ -297,13 +311,12 @@ export async function studio(
       }
       if (path === '/studio/settings' && req.method === 'POST') {
         settings = fromPage(JSON.parse(await body(req)), settings, mine)
-        saving = saving.then(() => saveLook(lookFile, settings)).catch((e) => void console.log(e))
-        await saving
+        clearTimeout(writing)
+        writing = setTimeout(flush, 150)
         return send(200, 'application/json', JSON.stringify(toPage(settings)))
       }
       if (path === '/studio/export' && req.method === 'POST') {
-        const raw = JSON.parse(await body(req))
-        const format: unknown = raw.format ?? 'mp4'
+        const { format = 'mp4', ...look }: { format?: unknown } = JSON.parse(await body(req))
         if (format !== 'mp4' && format !== 'webm' && format !== 'gif') {
           return send(400, 'text/plain', 'Choose MP4, WebM, or GIF.')
         }
@@ -317,8 +330,8 @@ export async function studio(
         const temporary = join(places.dir, `export-${randomBytes(8).toString('hex')}.mp4`)
         const converted = `${temporary}.${format}`
         try {
-          const snapshot = fromPage(raw, settings, mine)
-          await saving
+          const snapshot = fromPage(look, settings, mine)
+          await flush()
           await cut(footageDir, temporary, { ...(await readConfig(lookFile)), ...snapshot })
           if (format !== 'mp4') await convertExport(temporary, converted, format)
           await rename(temporary, filesOf(video).cut)
@@ -361,6 +374,9 @@ export async function studio(
       if (!served) return send(404, 'text/plain', 'Not found')
       return send(200, served.contentType, served.body)
     } catch (error) {
+      if (error instanceof z.ZodError && !res.headersSent) {
+        return send(400, 'text/plain', z.prettifyError(error))
+      }
       console.log(error)
       if (!res.headersSent) send(400, 'text/plain', `That didn't work. See ${places.log}`)
     }
@@ -370,6 +386,7 @@ export async function studio(
     if (closed) return
     closed = true
     clearTimeout(idle)
+    await flush()
     watcher.close()
     filmWatcher.close()
     for (const open of [...pages, ...waiters.map((w) => w.res)]) open.end()
@@ -558,61 +575,75 @@ function toPage(settings: Settings): PageSettings {
   }
 }
 
-function fromPage(raw: Partial<PageSettings>, was: Settings, mine: Own): Settings {
-  const cursor: Partial<PageSettings['cursor']> = raw.cursor ?? {}
-  const style = String(cursor.style)
-  const size = Number(cursor.size ?? was.cursor.size)
-  // Left out, the label stays; only an empty one clears it.
-  const label =
-    typeof cursor.label === 'string' ? cursor.label.trim().slice(0, 30) : (was.cursor.label ?? '')
-  const backdrop = String(raw.backdrop)
-  const music = raw.music
-  const track = music ? String(music.track) : ''
-  const volume = music ? Number(music.volume) : NaN
-  const fill = Number(raw.fill)
+const HEX = { is: isHex, hint: 'a hex colour like "#8fd3ff"' }
+
+function choice<T extends string, X extends string = never>(
+  kind: string,
+  list: readonly T[],
+  file: ProjectFile | undefined,
+  extra?: { is: (value: string) => value is X; hint: string },
+) {
+  const options = [...list, ...(extra ? [extra.hint] : []), ...(file ? ['own'] : [])]
+  return z.string().transform((value, context): T | X | ProjectFile => {
+    if (value === 'own' && file) return file
+    if ((list as readonly string[]).includes(value)) return value as T
+    if (extra?.is(value)) return value
+    context.addIssue({
+      code: 'custom',
+      message:
+        value === 'own'
+          ? `There's no ${kind} of your own to use.`
+          : `"${value}" isn't a ${kind}: use ${options.join(', ')}.`,
+    })
+    return z.NEVER
+  })
+}
+
+function pageSchema(mine: Own) {
+  return z
+    .strictObject({
+      backdrop: choice('backdrop', BACKDROPS, mine.backdrop, HEX),
+      display: z.enum(DISPLAYS),
+      fill: fillSchema.transform((fill) => Math.round(fill * 100) / 100),
+      cursor: z
+        .strictObject({
+          style: choice('cursor', CURSORS, mine.cursor, HEX),
+          size: cursorSizeSchema,
+          label: z.string().trim().max(30),
+          tip: z.tuple([z.number(), z.number()]),
+        })
+        .partial(),
+      music: z
+        .preprocess(
+          (music) => (music === false ? null : music),
+          z
+            .strictObject({
+              track: choice('music track', MUSIC, mine.music),
+              volume: volumeSchema,
+            })
+            .nullable(),
+        )
+        .transform((music) => music ?? false),
+    })
+    .partial()
+}
+
+// Left out, a setting stays as it was; only an empty label clears it.
+export function fromPage(raw: unknown, was: Settings, mine: Own): Settings {
+  const page = pageSchema(mine).parse(raw)
+  const style = page.cursor?.style ?? was.cursor.style
+  const label = page.cursor?.label ?? was.cursor.label
   return {
-    window: {
-      ...was.window,
-      fill: Number.isFinite(fill)
-        ? Math.round(Math.min(1, Math.max(0.5, fill)) * 100) / 100
-        : was.window.fill,
-    },
-    backdrop:
-      backdrop === 'own' && mine.backdrop
-        ? mine.backdrop
-        : (BACKDROPS as readonly string[]).includes(backdrop) || isHex(backdrop)
-          ? (backdrop as Look['backdrop'])
-          : was.backdrop,
-    display: (DISPLAYS as readonly string[]).includes(String(raw.display))
-      ? (raw.display as Look['display'])
-      : was.display,
+    window: { ...was.window, fill: page.fill ?? was.window.fill },
+    backdrop: page.backdrop ?? was.backdrop,
+    display: page.display ?? was.display,
     cursor: {
-      style:
-        style === 'own' && mine.cursor
-          ? mine.cursor
-          : (CURSORS as readonly string[]).includes(style) || isHex(style)
-            ? (style as Config['cursor']['style'])
-            : was.cursor.style,
-      size: Number.isFinite(size) ? Math.min(3, Math.max(0.5, size)) : was.cursor.size,
+      style,
+      size: page.cursor?.size ?? was.cursor.size,
       ...(label ? { label } : {}),
-      ...(style === 'own' && mine.tip ? { tip: mine.tip } : {}),
+      ...(own(style) && mine.tip ? { tip: mine.tip } : {}),
     },
-    music:
-      music === false
-        ? false
-        : !music
-          ? was.music
-          : {
-              track:
-                track === 'own' && mine.music
-                  ? mine.music
-                  : (MUSIC as readonly string[]).includes(track)
-                    ? (track as Music['track'])
-                    : was.music
-                      ? was.music.track
-                      : 'lofi',
-              volume: Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 0.25,
-            },
+    music: page.music ?? was.music,
   }
 }
 

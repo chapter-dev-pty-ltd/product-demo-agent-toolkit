@@ -56,6 +56,10 @@ function projectFile(path: string, context: z.RefinementCtx): ProjectFile {
   return { file }
 }
 
+export const fillSchema: z.ZodNumber = z.number().min(0.5).max(1)
+export const cursorSizeSchema: z.ZodNumber = z.number().min(0.5).max(3)
+export const volumeSchema: z.ZodNumber = z.number().min(0).max(1)
+
 export type Backdrop = (typeof BACKDROPS)[number] | Hex | ProjectFile
 
 const backdropSchema = z.string().transform((value, context): Backdrop => {
@@ -91,7 +95,7 @@ const cursorSchema: z.ZodType<Cursor, unknown> = z.preprocess(
   (cursor) => (typeof cursor === 'string' ? { style: cursor } : cursor),
   z.strictObject({
     style: styleSchema.default('black'),
-    size: z.number().min(0.5).max(3).default(1),
+    size: cursorSizeSchema.default(1),
     label: z.string().trim().min(1).max(30).optional(),
     tip: z.tuple([z.number(), z.number()]).optional(),
   }),
@@ -128,9 +132,7 @@ const trackSchema = z.string().transform((value, context): Music['track'] => {
 const musicSchema: z.ZodType<Music | false, unknown> = z
   .preprocess(
     (music) => (typeof music === 'string' ? { track: music } : music === false ? null : music),
-    z
-      .strictObject({ track: trackSchema, volume: z.number().min(0).max(1).default(0.25) })
-      .nullable(),
+    z.strictObject({ track: trackSchema, volume: volumeSchema.default(0.25) }).nullable(),
   )
   .transform((music) => music ?? false)
 
@@ -195,7 +197,7 @@ const config: z.ZodType<Config> = z.strictObject({
     .strictObject({
       width: z.number().int().min(800).max(2560).default(1600),
       height: z.number().int().min(600).max(1600).default(900),
-      fill: z.number().min(0.5).max(1).default(0.92),
+      fill: fillSchema.default(0.92),
     })
     .default({ width: 1600, height: 900, fill: 0.92 })
     .describe(

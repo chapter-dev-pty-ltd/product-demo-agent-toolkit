@@ -54,11 +54,12 @@ export function createSettings(state: StudioState, player: Player, timeline: Tim
   const visual = (l: PageSettings) => JSON.stringify([l.backdrop, l.display, l.fill, l.cursor])
   let shown = visual(look)
   let edits = 0
-  let pending: ReturnType<typeof setTimeout> | undefined
-  const save = async (edit: number) => {
+  const save = async () => {
+    const edit = ++edits
     const res = await fetch('/studio/settings', { method: 'POST', body: JSON.stringify(look) })
+    if (!res.ok) throw new Error(await res.text())
     const saved: PageSettings = await res.json()
-    // A newer edit is waiting to save; this older reply would undo it.
+    // A newer edit is on its way; this older reply would undo it.
     if (edit !== edits) return
     look = saved
     render()
@@ -71,9 +72,7 @@ export function createSettings(state: StudioState, player: Player, timeline: Tim
     look = { ...look, ...patch, cursor: { ...look.cursor, ...patch.cursor } }
     render()
     player.sound()
-    const edit = ++edits
-    clearTimeout(pending)
-    pending = setTimeout(() => void save(edit), 150)
+    void save()
   }
 
   $('backdrop-picker').onclick = () => {
