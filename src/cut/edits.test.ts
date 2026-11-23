@@ -38,6 +38,14 @@ test('take time to video time and back, with a cut join ending before the cut an
   expect(toTake([cut], 10, true)).toBe(10)
 })
 
+test('a cover holds the video at its moment of the take, and maps back to that moment', () => {
+  const holds = [{ at: 12, hold: 2 }]
+  expect(toVideo([cut], 12, holds)).toBe(12)
+  expect(toVideo([cut], 20, holds)).toBe(17)
+  expect(toTake([cut], 11, false, holds)).toBe(12)
+  expect(toTake([cut], 17, false, holds)).toBe(20)
+})
+
 test('retiming moves what is kept and drops sounds and highlights inside a cut', () => {
   const out = retime(footage, [cut, fast])
   expect(out.frames.map((f) => f.at)).toEqual([100, 110, 111])

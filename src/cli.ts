@@ -278,7 +278,7 @@ try {
   } else if (command === 'edit') {
     const video = await videoNamed(input)
     const take = await latestTake(video)
-    const { recorded, film, edits: before } = await prepare(take.dir)
+    const { recorded, film, edits: before, holds: held } = await prepare(take.dir)
     const [kind, ...rest] = args.slice(1)
     if (values.clear) await writePlan(recorded.source, clearPlan(film))
     else if (kind) {
@@ -292,18 +292,18 @@ try {
       const change = speed === undefined ? ({ cut: true } as const) : { speed }
       // The user gives the video's own clock; the edits are kept on the take's.
       const range = {
-        from: toTake(before, clockTime(from)),
-        to: toTake(before, clockTime(to), true),
+        from: toTake(before, clockTime(from), false, held),
+        to: toTake(before, clockTime(to), true, held),
         ...change,
       }
       await writePlan(recorded.source, planEdit(film, recorded, range))
     }
-    const { edits, length, warnings } = await prepare(take.dir)
+    const { edits, holds, length, warnings } = await prepare(take.dir)
     warn(warnings)
     for (const e of shownEdits(edits)) {
       const step = stepsName(e.steps)
       const taken = `${(e.to - e.from).toFixed(1)}s of the take`
-      const [from, to] = [toVideo(edits, e.from), toVideo(edits, e.to)]
+      const [from, to] = [toVideo(edits, e.from, holds), toVideo(edits, e.to, holds)]
       console.log(
         e.speed === 'cut'
           ? `  ${step}: cut at ${clock(from)} (${taken})`

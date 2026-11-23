@@ -19,3 +19,7 @@
 ## Pull requests
 
 - Prefer shorter PR descriptions that note, at a high level, the why of a change, not so much the how.
+
+## The studio and the cut
+
+- The studio and the cut video must always match. Never ship something that shows in a cut video but not in the studio (or the other way round): a change to what the video shows lands in both, in the same PR.

@@ -1,4 +1,4 @@
-import type { Span } from './time.ts'
+import type { Hold, Span } from './time.ts'
 
 export interface PageSettings {
   backdrop: string
@@ -44,6 +44,7 @@ export interface TimelineData {
   clicks: { at: number; step?: number; muted: boolean }[]
   highlights: Highlighted[]
   edits: ShownEdit[]
+  holds: Hold[]
 }
 
 export type EditRequest =

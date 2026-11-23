@@ -10,18 +10,32 @@ export interface Span {
 const SAME = 1e-3
 const rate = (span: Span) => (span.speed === 'cut' ? Infinity : span.speed)
 
-export function toVideo(spans: Span[], at: number): number {
+// Time the video has that the take doesn't: a scene's cover, held at a moment of the take.
+export interface Hold {
+  at: number
+  hold: number
+}
+
+export function toVideo(spans: Span[], at: number, holds: Hold[] = []): number {
   let removed = 0
   for (const s of spans) {
     if (at <= s.from) break
     removed += (Math.min(at, s.to) - s.from) * (1 - 1 / rate(s))
   }
-  return at - removed
+  return holds.reduce((t, h) => (h.at <= at ? t + h.hold : t), at - removed)
 }
 
 // A moment on a cut's join is both the end of what's before it and the start of what's after:
 // a range ending there keeps the cut, one starting there begins after it.
-export function toTake(spans: Span[], at: number, end = false): number {
+export function toTake(spans: Span[], at: number, end = false, holds: Hold[] = []): number {
+  let held = 0
+  for (const h of holds) {
+    const from = toVideo(spans, h.at) + held
+    if (at < from) break
+    if (at < from + h.hold) return h.at
+    held += h.hold
+  }
+  at -= held
   let shift = 0
   for (const s of spans) {
     const from = s.from - shift

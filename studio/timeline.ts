@@ -133,6 +133,18 @@ export function createTimeline(
     }
   }
 
+  const covers = (data: TimelineData) => {
+    if (!data.holds.length) return
+    const lane = track('Covers', String(data.holds.length), SPARK)
+    for (const h of data.holds) {
+      const mark = document.createElement('div')
+      mark.className = 'mark'
+      mark.title = `A scene's cover, held ${h.hold}s here`
+      mark.style.left = pct(h.at)
+      lane.appendChild(mark)
+    }
+  }
+
   const highlights = (data: TimelineData) => {
     const lane = track('Highlights', '', SPARK)
     if (!data.highlights.length) lane.innerHTML = '<span class="empty">None in this take</span>'
@@ -235,6 +247,7 @@ export function createTimeline(
     $('tracks').replaceChildren()
     ruler()
     pages(data)
+    covers(data)
     clicks(data)
     musicClip = document.createElement('div')
     musicClip.className = 'clip music'
@@ -257,7 +270,10 @@ export function createTimeline(
     const box = el.getBoundingClientRect()
     if (length)
       $('playhead').style.left =
-        lane.left - box.left + (toTake(data.edits, player.t) / length) * lane.width + 'px'
+        lane.left -
+        box.left +
+        (toTake(data.edits, player.t, false, data.holds) / length) * lane.width +
+        'px'
   })
 
   return {

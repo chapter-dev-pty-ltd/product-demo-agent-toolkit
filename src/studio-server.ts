@@ -122,7 +122,7 @@ export async function studio(
   const places = placesOf(video)
   const lookFile = filesOf(video).look
   const config = await readConfig(lookFile)
-  let { footage, recorded, film, edits, highlights, length, ending, title } =
+  let { footage, recorded, film, edits, holds, covers, highlights, length, ending, title } =
     await prepare(footageDir)
   const soundsNow = () => {
     const made = stems(footageDir, footage, length, edits).catch(
@@ -149,11 +149,12 @@ export async function studio(
   let exporting = false
   const writeEdit = (file: string, now: typeof film, raw: unknown) =>
     writePlan(file, planEdit(now, recorded, raw))
-  const staged = () => stageFiles(footageDir, footage, highlights, () => settings, length, title)
+  const staged = () =>
+    stageFiles(footageDir, footage, highlights, () => settings, length, title, '', covers)
   let stage = staged()
   let filmText = await readFile(footage.source, 'utf8').catch(() => '')
   const restage = async () => {
-    ;({ footage, recorded, film, edits, highlights, length, ending, title } =
+    ;({ footage, recorded, film, edits, holds, covers, highlights, length, ending, title } =
       await prepare(footageDir))
     stage = staged()
     sounds = soundsNow()
@@ -162,7 +163,7 @@ export async function studio(
     stemsOf(footage).filter((stem) => stem === 'voice' || soundOn(stem, extras.sound))
   const stageEvent = (): StudioEvent => ({
     type: 'stage',
-    timeline: timelineOf(recorded, film, edits),
+    timeline: timelineOf(recorded, film, edits, holds),
     stems: audible(),
     hold: Math.max(1, ending),
   })
@@ -267,7 +268,7 @@ export async function studio(
           stemGain: STEM_GAIN,
           limit: LIMIT,
           canvas: CANVAS,
-          timeline: timelineOf(recorded, film, edits),
+          timeline: timelineOf(recorded, film, edits, holds),
         }
         return send(200, 'application/json', JSON.stringify(state))
       }

@@ -10,6 +10,7 @@ import { readFilm, type Film } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
 import { filmEdits, muteQuietSteps, retime, staleTake, toVideo, type Edit } from './edits.ts'
+import type { Hold } from '../../studio/time.ts'
 import { openStage, type Cover, type Highlighted } from './stage.ts'
 import type { Stem } from '../../studio/api.ts'
 
@@ -28,6 +29,8 @@ export async function prepare(footageDir: string): Promise<{
   recorded: Footage
   film: Film
   edits: Edit[]
+  holds: Hold[]
+  covers: Cover[]
   warnings: string[]
   highlights: Highlighted[]
   length: number
@@ -40,25 +43,28 @@ export async function prepare(footageDir: string): Promise<{
   const film = existsSync(read.source) ? await readFilm(read.source) : read.film
   const recorded = muteQuietSteps(film, read)
   const edits = filmEdits(film, recorded)
-  const footage = retime(recorded, edits)
+  const scenes = coversOf(film, recorded)
+  const holds = scenes.map(({ at, hold }) => ({ at, hold }))
+  const footage = retime(recorded, edits, holds)
   const stale = staleTake(film, recorded)
-  const length = toVideo(edits, videoLength(recorded))
+  const length = toVideo(edits, videoLength(recorded), holds)
   return {
     footage,
     recorded,
     film,
     edits,
+    holds,
+    covers: scenes.map((c) => ({ ...c, at: toVideo(edits, c.at, holds) - c.hold })),
     warnings: stale ? [stale] : [],
     highlights: highlightsOf(film, footage),
     length,
-    ending: length - toVideo(edits, recorded.end - (recorded.frames[0]?.at ?? 0)),
+    ending: length - toVideo(edits, recorded.end - (recorded.frames[0]?.at ?? 0), holds),
     title: film.notes?.split(/(?<=\.)\s/)[0] ?? '',
   }
 }
 
-// Each scene's cover, in seconds from the footage's start: the first scene's at the start, the
-// others where their first step starts.
-export function coversOf(film: Film, footage: Footage): (Omit<Cover, 'at'> & { from: number })[] {
+// In the take's time: the first scene's cover at its very start, so before its opening frame.
+export function coversOf(film: Film, footage: Footage): Cover[] {
   const start = footage.frames[0]?.at ?? 0
   return (film.scenes ?? []).flatMap((scene) => {
     if (!scene.cover) return []
@@ -68,45 +74,10 @@ export function coversOf(film: Film, footage: Footage): (Omit<Cover, 'at'> & { f
         `This take doesn't say where "${scene.title}" starts: it was shot before steps' times were recorded. Shoot it again.`,
       )
     }
-    const from = scene.from === 0 ? 0 : (step?.at ?? start) - start
+    const at = scene.from === 0 ? 0 : (step?.at ?? start) - start
     const { subtitle, hold = 2.5 } = scene.cover
-    return [{ from, hold, title: scene.title, subtitle }]
+    return [{ at, hold, title: scene.title, subtitle }]
   })
-}
-
-// Makes room for the covers: everything from where a cover goes is pushed later by its hold.
-// The opening frame is kept at the start too, so it's under the first cover.
-export function withCovers(prepared: {
-  film: Film
-  footage: Footage
-  highlights: Highlighted[]
-  length: number
-}): { footage: Footage; highlights: Highlighted[]; length: number; covers: Cover[] } {
-  const { film, footage, highlights, length } = prepared
-  const all = coversOf(film, footage)
-  if (all.length === 0) return { footage, highlights, length, covers: [] }
-  const start = footage.frames[0]?.at ?? 0
-  const later = (t: number) => all.reduce((sum, c) => (c.from <= t ? sum + c.hold : sum), 0)
-  const map = (at: number) => at + later(at - start)
-  const moved = <T extends { at: number }>(item: T): T => ({ ...item, at: map(item.at) })
-  const [first] = footage.frames
-  return {
-    footage: {
-      ...footage,
-      frames: [...(first ? [first] : []), ...footage.frames.map(moved)],
-      pointer: footage.pointer.map(moved),
-      addresses: (footage.addresses ?? []).map(moved),
-      clicks: footage.clicks.map(moved),
-      keys: (footage.keys ?? []).map(moved),
-      lines: (footage.lines ?? []).map(moved),
-      highlights: footage.highlights.map((h) => ({ ...h, at: map(h.at), until: map(h.until) })),
-      ...(footage.steps ? { steps: footage.steps.map(moved) } : {}),
-      end: map(footage.end),
-    },
-    highlights: highlights.map((h) => ({ ...h, at: map(h.at), until: map(h.until) })),
-    length: length + all.reduce((sum, c) => sum + c.hold, 0),
-    covers: all.map(({ from, ...c }) => ({ ...c, at: from + later(from) - c.hold })),
-  }
 }
 
 export function highlightsOf(film: Film, footage: Footage): Highlighted[] {
@@ -133,9 +104,7 @@ export async function cut(
   config: Config,
   extra = '',
 ): Promise<number> {
-  const prepared = await prepare(footageDir)
-  const { ending, title } = prepared
-  const { footage, highlights, length, covers } = withCovers(prepared)
+  const { footage, highlights, length, ending, title, covers } = await prepare(footageDir)
   const browser = await launchBrowser()
   try {
     const page = await openStage(

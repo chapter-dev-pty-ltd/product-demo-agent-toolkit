@@ -3,7 +3,7 @@ import { soundOn, type Sound } from '../config.ts'
 import { changeSteps, type Film, type Part, type Step } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import type { EditRequest, HighlightRequest, ShownEdit, SoundRequest } from '../../studio/api.ts'
-import { toVideo, type Span } from '../../studio/time.ts'
+import { toVideo, type Hold, type Span } from '../../studio/time.ts'
 
 export { toTake, toVideo } from '../../studio/time.ts'
 
@@ -55,16 +55,18 @@ export function filmEdits(film: Film, footage: Footage): Edit[] {
   })
 }
 
-export function retime(footage: Footage, edits: Edit[]): Footage {
-  if (!edits.length) return footage
+export function retime(footage: Footage, edits: Edit[], holds: Hold[] = []): Footage {
+  if (!edits.length && !holds.length) return footage
   const start = footage.frames[0]?.at ?? 0
   const kept = (item: { at: number }) =>
     !edits.some((e) => e.speed === 'cut' && item.at - start >= e.from && item.at - start < e.to)
-  const map = (at: number) => start + toVideo(edits, at - start)
+  const map = (at: number) => start + toVideo(edits, at - start, holds)
   const moved = <T extends { at: number }>(item: T): T => ({ ...item, at: map(item.at) })
+  // A cover at the very start moves the first frame too; the stage times everything from it.
+  const first = holds.length && footage.frames[0] ? [footage.frames[0]] : []
   return {
     ...footage,
-    frames: footage.frames.map(moved),
+    frames: [...first, ...footage.frames.map(moved)],
     pointer: footage.pointer.map(moved),
     addresses: (footage.addresses ?? []).map(moved),
     clicks: footage.clicks.filter(kept).map(moved),

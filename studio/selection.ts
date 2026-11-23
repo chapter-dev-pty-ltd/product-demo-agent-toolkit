@@ -33,7 +33,7 @@ export function createSelection(
   music: MusicControl,
 ): Selection {
   const { el } = view
-  const video = (at: number) => toVideo(view.data.edits, at)
+  const video = (at: number) => toVideo(view.data.edits, at, view.data.holds)
 
   const post = async (path: string, request: EditRequest | HighlightRequest | SoundRequest) => {
     const res = await fetch(path, { method: 'POST', body: JSON.stringify(request) })
