@@ -29,6 +29,9 @@ file of the project's own. Write one when the user wants covers of their own:
   1920x1080 frame. Fill the frame with your own background to hide the backdrop.
 - `{{title}}` and `{{subtitle}}` are filled in from each scene (subtitle empty if it has none),
   so one design serves every scene.
+- A scene's `colour`, `background` and `size` reach it as the CSS variables `--cover-text`,
+  `--cover-background` (already behind it) and `--cover-size`: use them, with a fallback, so
+  the studio's cover settings still work on your design.
 - Animate with CSS `@keyframes` only, timed from the cover's start. The cut plays CSS animations
   frame by frame; scripts and timers don't run in step with it. The cut fades the cover out into
   the scene itself.

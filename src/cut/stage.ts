@@ -3,7 +3,7 @@ import { extname, resolve, sep } from 'node:path'
 import type { Browser, Page } from 'playwright-core'
 import { isHex, type Config, type CURSORS, type ProjectFile } from '../config.ts'
 import type { Footage } from '../perform.ts'
-import type { Highlighted, StageData } from '../../studio/api.ts'
+import type { CoverStyle, Highlighted, StageData } from '../../studio/api.ts'
 
 export const CANVAS = { width: 1920, height: 1080 }
 const ORIGIN = 'https://stage.product-demo'
@@ -220,7 +220,7 @@ export async function openStage(
 }
 
 // A scene's cover: when it shows in the video, for how long, and what it says.
-export interface Cover {
+export interface Cover extends CoverStyle {
   at: number
   hold: number
   scene: number
@@ -244,13 +244,23 @@ async function coversHtml(
     template
       .replaceAll('{{title}}', text(c.title))
       .replaceAll('{{subtitle}}', text(c.subtitle ?? ''))
+  // The cover's own colours and size reach its design as CSS variables.
+  const style = (c: Cover) =>
+    [
+      `animation-delay:${Math.max(0, c.hold - 0.45)}s`,
+      c.colour && `--cover-text:${c.colour}`,
+      c.background && `--cover-background:${c.background}`,
+      c.size && `--cover-size:${c.size}px`,
+    ]
+      .filter(Boolean)
+      .join(';')
   const cards = covers.map(
     (c) =>
-      `<div class="cover" data-at="${c.at}" data-for="${c.hold}" style="animation-delay:${Math.max(0, c.hold - 0.45)}s"><div class="cover-in${c.at > 0 ? ' fade' : ''}">${fill(c)}</div></div>`,
+      `<div class="cover" data-at="${c.at}" data-for="${c.hold}" style="${style(c)}"><div class="cover-in${c.at > 0 ? ' fade' : ''}">${fill(c)}</div></div>`,
   )
   return `<style>
 .cover { position: absolute; inset: 0; z-index: 10; visibility: hidden; animation: cover-out 0.45s ease-in both; }
-.cover-in { position: absolute; inset: 0; overflow: hidden; background: ${background}; }
+.cover-in { position: absolute; inset: 0; overflow: hidden; background: var(--cover-background, ${background}); }
 .cover-in.fade { animation: cover-fade 0.35s ease-out both; }
 @keyframes cover-out { from { opacity: 1; } to { opacity: 0; } }
 @keyframes cover-fade { from { opacity: 0; } to { opacity: 1; } }

@@ -1,5 +1,4 @@
 import type {
-  CoverRequest,
   EditRequest,
   HighlightRequest,
   PageSettings,
@@ -36,10 +35,7 @@ export function createSelection(
   const { el } = view
   const video = (at: number) => toVideo(view.data.edits, at, view.data.holds)
 
-  const post = async (
-    path: string,
-    request: EditRequest | HighlightRequest | SoundRequest | CoverRequest,
-  ) => {
+  const post = async (path: string, request: EditRequest | HighlightRequest | SoundRequest) => {
     const res = await fetch(path, { method: 'POST', body: JSON.stringify(request) })
     if (res.ok) return !($('export-status').textContent = '')
     const message = await res.text()
@@ -54,7 +50,6 @@ export function createSelection(
   const popover = createPopover(el, state, {
     edit: (request) => void edit(request),
     highlight: (request) => void post('/studio/highlight', request),
-    cover: (request) => void post('/studio/cover', request),
     sound: (request) => void post('/studio/sound', request),
     music: music.get,
     setMusic: music.set,
@@ -106,10 +101,6 @@ export function createSelection(
       const c = data.clicks[Number(id)]
       return c?.step === undefined ? undefined : { kind: 'click', step: c.step, muted: c.muted }
     }
-    if (kind === 'cover') {
-      const cover = data.holds.find((h) => String(h.scene) === id)
-      return cover && { kind: 'cover', cover }
-    }
     if (kind === 'highlight') {
       const highlight = data.highlights.find((h) => String(h.step) === id)
       return highlight && { kind: 'highlight', highlight }
@@ -119,6 +110,7 @@ export function createSelection(
   }
   const pick = (item: HTMLElement, at?: number) => {
     const key = item.dataset.key
+    if (key?.startsWith('cover:')) return void (clear(), view.openCover(Number(key.slice(6))))
     const target = key && targetOf(key)
     if (!key || !target) return clear()
     clear()
@@ -177,7 +169,6 @@ export function createSelection(
   document.addEventListener('keydown', (e) => {
     // Only keys meant for the timeline: not ones typed in the chat, the export dialog or elsewhere.
     if (e.target !== document.body && !el.contains(e.target as Node)) return
-    if ((e.target as HTMLElement).closest('input')) return
     if (!popover.target && !ranged()) return
     if (e.code === 'Escape') clear()
     if (e.code === 'Backspace' || e.code === 'Delete') {

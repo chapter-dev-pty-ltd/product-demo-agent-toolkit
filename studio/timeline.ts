@@ -39,12 +39,14 @@ export interface View {
   width(from: number, to: number): string
   timeAt(e: PointerEvent): number
   videoAt(e: PointerEvent): number
+  openCover(scene: number): void
 }
 
 export function createTimeline(
   player: Player,
   state: StudioState,
   setMusic: (music: PageSettings['music']) => void,
+  openCover: (scene: number) => void,
 ): Timeline {
   const ownedMusic = state.owned.music
   const el = document.querySelector<HTMLElement>('.timeline')!
@@ -79,6 +81,7 @@ export function createTimeline(
     width,
     timeAt,
     videoAt,
+    openCover,
   }
   const selection = createSelection(view, player, state, { get: () => music, set: setMusic })
 
@@ -162,7 +165,7 @@ export function createTimeline(
       const from = toTrack(data.holds, h.at) - h.hold
       clip.className = 'clip cover'
       clip.dataset.key = `cover:${h.scene}`
-      clip.title = `${h.title}: ${h.hold}s`
+      clip.title = `${h.title}: ${h.hold}s. Click to change it.`
       clip.style.left = `calc(${along(from)} + 1px)`
       clip.style.width = `calc(${along(h.hold)} - 2px)`
       clip.innerHTML = SPARK

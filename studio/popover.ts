@@ -1,10 +1,8 @@
 import type {
-  CoverRequest,
   EditRequest,
   HighlightRequest,
   Highlighted,
   PageSettings,
-  ShownCover,
   ShownEdit,
   SoundRequest,
   StudioState,
@@ -19,13 +17,11 @@ export type Target =
   | { kind: 'highlight'; highlight: Highlighted }
   | { kind: 'music' }
   | { kind: 'click'; step: number; muted: boolean }
-  | { kind: 'cover'; cover: ShownCover }
 
 export interface Actions {
   edit(request: EditRequest): void
   highlight(request: HighlightRequest): void
   sound(request: SoundRequest): void
-  cover(request: CoverRequest): void
   music(): PageSettings['music']
   setMusic(music: PageSettings['music']): void
 }
@@ -94,7 +90,6 @@ export function createPopover(
     if (target?.kind === 'highlight')
       actions.highlight({ step: target.highlight.step, remove: true })
     if (target?.kind === 'music') actions.setMusic(false)
-    if (target?.kind === 'cover') actions.cover({ scene: target.cover.scene, remove: true })
     if (target?.kind === 'range') actions.edit({ from: target.from, to: target.to, cut: true })
   }
   const trash = () => {
@@ -159,43 +154,6 @@ export function createPopover(
     return [...tracks, sep(), volume, sep(), trash()]
   }
 
-  const coverControls = ({ scene, title, subtitle = '', hold }: ShownCover) => {
-    const text = (value: string, label: string, key: 'title' | 'subtitle') => {
-      const input = document.createElement('input')
-      input.className = 'text'
-      input.value = value
-      input.placeholder = label
-      input.setAttribute('aria-label', label)
-      input.onchange = () => {
-        const now = input.value.trim()
-        if (now !== value && (now || key === 'subtitle')) actions.cover({ scene, [key]: now })
-      }
-      input.onkeydown = (e) => void (e.key === 'Enter' && input.blur())
-      return input
-    }
-    const length = document.createElement('label')
-    length.className = 'volume'
-    length.innerHTML = `<input type="range" min="0.5" max="6" step="0.5" aria-label="How long the cover shows"><output></output>`
-    const slider = length.querySelector('input')!
-    const readout = length.querySelector('output')!
-    const fill = (v: number) => {
-      slider.style.setProperty('--fill', ((v - 0.5) / 5.5) * 100 + '%')
-      readout.textContent = v + 's'
-    }
-    slider.value = String(hold)
-    fill(hold)
-    slider.oninput = () => fill(Number(slider.value))
-    slider.onchange = () => actions.cover({ scene, hold: Number(slider.value) })
-    return [
-      text(title, 'Title', 'title'),
-      text(subtitle, 'Subtitle', 'subtitle'),
-      sep(),
-      length,
-      sep(),
-      trash(),
-    ]
-  }
-
   // The label is read out for the pill, which shows only its controls.
   const contents = (t: Target): [string, HTMLElement[]] => {
     if (t.kind === 'range') return [`${clock(t.from)} – ${clock(t.to)}`, editControls(t)]
@@ -212,7 +170,6 @@ export function createPopover(
       return [`Step ${step + 1} highlight`, [...styles, sep(), trash()]]
     }
     if (t.kind === 'music') return ['Music', musicControls()]
-    if (t.kind === 'cover') return [`${t.cover.title} cover`, coverControls(t.cover)]
     const { step, muted } = t
     const set = (click: boolean) => () => muted === click && actions.sound({ step, click })
     return [

@@ -47,21 +47,30 @@ export interface TimelineData {
   holds: ShownCover[]
 }
 
+// How a cover looks within its design: its text colour, its background (the backdrop when
+// unset) and its title's size, in pixels of the 1920x1080 video.
+export interface CoverStyle {
+  colour?: string | undefined
+  background?: string | undefined
+  size?: number | undefined
+}
+
 // A scene's cover, held at its moment of the take.
-export interface ShownCover extends Hold {
+export interface ShownCover extends Hold, CoverStyle {
   scene: number
   title: string
   subtitle?: string | undefined
 }
 
-export type CoverRequest =
-  | {
-      scene: number
-      title?: string | undefined
-      subtitle?: string | undefined
-      hold?: number | undefined
-    }
-  | { scene: number; remove: true }
+// A null background goes back to the backdrop.
+export interface CoverRequest {
+  scene: number
+  title?: string | undefined
+  subtitle?: string | undefined
+  colour?: string | undefined
+  background?: string | null | undefined
+  size?: number | undefined
+}
 
 export type EditRequest =
   | { from: number; to: number; cut: true }

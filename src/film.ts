@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
+import type { CoverStyle } from '../studio/api.ts'
 import { soundSchema, type Sound } from './config.ts'
 import type { Fingerprint } from './similo.ts'
 
@@ -82,7 +83,7 @@ export interface Film {
 // A part of a film, and its cover: a card with its title shown for `hold` seconds before it.
 export interface Scene {
   title: string
-  cover?: { subtitle?: string | undefined; hold?: number | undefined } | undefined
+  cover?: ({ subtitle?: string | undefined; hold?: number | undefined } & CoverStyle) | undefined
   from: number
 }
 
@@ -186,10 +187,19 @@ const top = {
   ending: z.strictObject({ hold: z.number().nonnegative() }).optional(),
 }
 
+export const hex: z.ZodString = z.string().regex(/^#[0-9a-f]{6}$/i)
+export const coverSize: z.ZodNumber = z.number().int().min(32).max(200)
+
 const scene = z.strictObject({
   title: z.string().min(1),
   cover: z
-    .strictObject({ subtitle: z.string().optional(), hold: z.number().positive().optional() })
+    .strictObject({
+      subtitle: z.string().optional(),
+      hold: z.number().positive().optional(),
+      colour: hex.optional(),
+      background: hex.optional(),
+      size: coverSize.optional(),
+    })
     .optional(),
   steps: z.array(stepSchema).min(1),
 })

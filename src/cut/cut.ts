@@ -44,13 +44,7 @@ export async function prepare(footageDir: string): Promise<{
   const recorded = muteQuietSteps(film, read)
   const edits = filmEdits(film, recorded)
   const scenes = coversOf(film, recorded)
-  const holds = scenes.map(({ at, hold, scene, title, subtitle }) => ({
-    at,
-    hold,
-    scene,
-    title,
-    ...(subtitle ? { subtitle } : {}),
-  }))
+  const holds: ShownCover[] = scenes
   const footage = retime(recorded, edits, holds)
   const stale = staleTake(film, recorded)
   const length = toVideo(edits, videoLength(recorded), holds)
@@ -81,8 +75,8 @@ export function coversOf(film: Film, footage: Footage): Cover[] {
       )
     }
     const at = scene.from === 0 ? 0 : (step?.at ?? start) - start
-    const { subtitle, hold = 2.5 } = scene.cover
-    return [{ at, hold, scene: i, title: scene.title, subtitle }]
+    const { hold = 2.5, ...rest } = scene.cover
+    return [{ ...rest, at, hold, scene: i, title: scene.title }]
   })
 }
 

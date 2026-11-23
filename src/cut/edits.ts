@@ -1,6 +1,14 @@
 import { z } from 'zod'
 import { soundOn, type Sound } from '../config.ts'
-import { changeScene, changeSteps, type Film, type Part, type Step } from '../film.ts'
+import {
+  changeScene,
+  changeSteps,
+  coverSize,
+  hex,
+  type Film,
+  type Part,
+  type Step,
+} from '../film.ts'
 import type { Footage } from '../perform.ts'
 import type {
   CoverRequest,
@@ -230,27 +238,29 @@ export function writeClickSound(filmFile: string, film: Film, raw: unknown): Pro
   })
 }
 
-const coverRequest: z.ZodType<CoverRequest> = z.union([
-  z.strictObject({ scene: stepIndex, remove: z.literal(true) }),
-  z.strictObject({
-    scene: stepIndex,
-    title: z.string().trim().min(1).optional(),
-    subtitle: z.string().trim().optional(),
-    hold: z.number().min(0.5).max(10).optional(),
-  }),
-])
+const coverRequest: z.ZodType<CoverRequest> = z.strictObject({
+  scene: stepIndex,
+  title: z.string().trim().min(1).optional(),
+  subtitle: z.string().trim().optional(),
+  colour: hex.optional(),
+  background: hex.nullable().optional(),
+  size: coverSize.optional(),
+})
 
 export function writeCover(filmFile: string, film: Film, raw: unknown): Promise<string> {
   const request = coverRequest.parse(raw)
   if (!film.scenes?.[request.scene]?.cover)
     throw new Refused(`Scene ${request.scene + 1} has no cover.`)
   return changeScene(filmFile, request.scene, (scene) => {
-    if ('remove' in request) return void delete scene.cover
     const cover = { ...(scene.cover as Record<string, unknown>) }
-    if (request.title) scene.title = request.title
-    if (request.subtitle) cover.subtitle = request.subtitle
-    else if (request.subtitle === '') delete cover.subtitle
-    if (request.hold !== undefined) cover.hold = request.hold
+    const { title, subtitle, colour, background, size } = request
+    if (title) scene.title = title
+    if (subtitle) cover.subtitle = subtitle
+    else if (subtitle === '') delete cover.subtitle
+    if (colour) cover.colour = colour
+    if (background) cover.background = background
+    else if (background === null) delete cover.background
+    if (size) cover.size = size
     scene.cover = cover
   })
 }

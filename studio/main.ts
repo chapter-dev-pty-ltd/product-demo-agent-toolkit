@@ -1,6 +1,7 @@
 import type { StudioEvent, StudioState } from './api.ts'
 import { createMixer } from './audio.ts'
 import { createChat } from './chat.ts'
+import { createCoverPanel } from './cover.ts'
 import { createDrag } from './drag.ts'
 import { createExport } from './export.ts'
 import { createPlayer } from './player.ts'
@@ -17,7 +18,13 @@ $('title').title = state.title
 
 const mixer = createMixer(state, () => settings.look.music)
 const player = createPlayer(state, mixer, Math.max(0, Number(query.get('t')) || 0))
-const timeline = createTimeline(player, state, (music) => settings.setMusic(music))
+const cover = createCoverPanel(state)
+const timeline = createTimeline(
+  player,
+  state,
+  (music) => settings.setMusic(music),
+  (scene) => cover.open(scene),
+)
 const settings = createSettings(state, player, timeline)
 const exporter = createExport(state, () => settings.look)
 const chat = createChat(state, player)
@@ -31,6 +38,7 @@ for (const tab of tabs) {
     const from = document.querySelector('.panel:not([hidden])')
     const swap = () => {
       from?.classList.remove('leaving')
+      cover.close()
       for (const name of ['settings', 'chat']) $(name).hidden = tab.dataset.tab !== name
     }
     if (!from || matchMedia('(prefers-reduced-motion: reduce)').matches) return swap()
@@ -50,6 +58,7 @@ new EventSource('/studio/events').onmessage = (e) => {
   }
   if (event.type === 'stage') {
     timeline.update(event.timeline)
+    cover.update(event.timeline)
     mixer.reloadSounds(event.stems, event.hold)
     return player.reload(true)
   }
