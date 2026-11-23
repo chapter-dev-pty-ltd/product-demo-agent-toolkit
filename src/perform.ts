@@ -30,7 +30,8 @@ export interface Footage {
   pointer: { at: number; x: number; y: number }[]
   // muted: the step it's in has its sound turned off in the film.
   clicks: { at: number; x: number; y: number; muted?: boolean }[]
-  keys: { at: number; key: string; muted?: boolean }[]
+  // speed: how much faster the speed-up it's in plays, once the take is retimed.
+  keys: { at: number; key: string; muted?: boolean; speed?: number }[]
   addresses: { at: number; url: string }[]
   lines: { at: number; file: string; text: string }[]
   highlights: { step: number; at: number; until: number; box: number[] }[]

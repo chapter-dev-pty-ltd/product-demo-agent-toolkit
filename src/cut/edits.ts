@@ -72,8 +72,13 @@ export function filmEdits(film: Film, footage: Footage): Edit[] {
 export function retime(footage: Footage, edits: Edit[], holds: Hold[] = []): Footage {
   if (!edits.length && !holds.length) return footage
   const start = footage.frames[0]?.at ?? 0
-  const kept = (item: { at: number }) =>
-    !edits.some((e) => e.speed === 'cut' && item.at - start >= e.from && item.at - start < e.to)
+  const within = (item: { at: number }) =>
+    edits.find((e) => item.at - start >= e.from && item.at - start < e.to)?.speed
+  const kept = (item: { at: number }) => within(item) !== 'cut'
+  const spedUp = (key: { at: number }) => {
+    const speed = within(key)
+    return typeof speed === 'number' && speed > 1 ? { speed } : {}
+  }
   const map = (at: number) => start + toVideo(edits, at - start, holds)
   const moved = <T extends { at: number }>(item: T): T => ({ ...item, at: map(item.at) })
   // A cover at the very start moves the first frame too; the stage times everything from it.
@@ -84,7 +89,7 @@ export function retime(footage: Footage, edits: Edit[], holds: Hold[] = []): Foo
     pointer: footage.pointer.map(moved),
     addresses: (footage.addresses ?? []).map(moved),
     clicks: footage.clicks.filter(kept).map(moved),
-    keys: (footage.keys ?? []).filter(kept).map(moved),
+    keys: (footage.keys ?? []).filter(kept).map((k) => ({ ...moved(k), ...spedUp(k) })),
     lines: (footage.lines ?? []).filter(kept).map(moved),
     highlights: footage.highlights
       .map((h) => ({ ...h, at: map(h.at), until: map(h.until) }))
