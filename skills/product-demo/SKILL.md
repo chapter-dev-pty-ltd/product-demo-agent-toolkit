@@ -107,6 +107,53 @@ product-demo-agent-toolkit cut <id>     # cuts the latest take into the video's 
 
 Give the user the video from there, or pass `--out` to `cut`. A reshoot is a new take; the video keeps its last few. Lines starting `Check:` are things it chose or waited on that you should look at. To check the video itself before handing it over, use the `product-demo-review` skill.
 
+### Cuts and speed-ups
+
+Cutting a part out or speeding one up is part of the film: a step can be `"cut": true` or `"speed": 4` (2 to 16), or only part of it, in seconds from the step's start: `"cut": { "from": 1.5 }`, `"speed": { "by": 4, "to": 3 }`. A step is cut or sped up, not both. The camera still films every step as it is, so these only need another `cut`, and they carry over to a reshoot. When the user names a part by the video's clock (as the studio shows it, and as a studio message's `at` gives it), let the command work out the steps:
+
+```bash
+product-demo-agent-toolkit edit <id> cut 0:12-0:18       # cut out 0:12 to 0:18
+product-demo-agent-toolkit edit <id> speed 4 0:20-0:31   # play 0:20 to 0:31 four times as fast
+product-demo-agent-toolkit edit <id>                     # list them by step; --clear takes them all away
+```
+
+It writes them into the film, and the studio shows them straight away. A take shot before this version doesn't know when its steps started: shoot it again before cutting it.
+
+For example, the studio brings you:
+
+```text
+The user says (at 0:12.0 in the video): speed this bit up, it's just loading
+```
+
+If the message doesn't say where the part ends, ask, or end it where the next step begins. Then:
+
+```bash
+product-demo-agent-toolkit edit <id> speed 4 0:12-0:20
+```
+
+```text
+  Steps 4–5: 4× from 0:12.0 to 0:14.0 (8.0s of the take)
+Take 2 of "Search Wikipedia" runs 21.4s. The studio shows changes as they're made; cut it again for the video.
+```
+
+The part spanned two steps, so the film now holds a speed-up on each, which you can also write or change by hand:
+
+```json
+{ "wait": { "text": "Results" }, "speed": { "by": 4, "from": 0.6 } },
+{ "click": { "role": "link", "name": "Doc Watson" }, "speed": { "by": 4, "to": 1.2 } }
+```
+
+- A step holds one cut or speed-up. A part that runs into a step that already has one is refused: change or remove that one first (`edit <id>` lists them).
+- The ending's hold is part of the last step, so an edit over all of that step also shortens the ending.
+
+To silence one step's sounds, give it `"sound": false`, or `"sound": { "click": false }` for its clicks alone, as when the user asks to lose one noisy click:
+
+```json
+{ "click": { "role": "button", "name": "Search" }, "sound": { "click": false } }
+```
+
+`"sound"` in the look turns them off for the whole video instead.
+
 ## 6. The studio: change it with the user
 
 ```bash
@@ -116,7 +163,7 @@ product-demo-agent-toolkit studio <id> --session "<this session's name>" --agent
 When the user wants to see the video, change its look, or work on it with you, open its studio. It opens the video's latest take at a local address: give that to the user. Each video has its own studio and its own chat, so open the one for the video you're working on. The studio is a chat with you, so keep this loop going for as long as it's open:
 
 1. **Listen, in the background.** Run `studio <id>` with your session's name and your own as above. It waits for the user's next message in that video's studio, prints it and exits, and its exit is what brings the message to you. Run it in the background every time: in the foreground it blocks you until the user writes. When you come to a video fresh, it also prints the chat so far: read it, it's what was asked before.
-2. **Do what the message asks.** Edits to the video's `look.json` and `film.json` show in the studio as soon as you save them. For anything slow, like a reshoot, say so first (step 3), then do it.
+2. **Do what the message asks.** Edits to the video's `look.json` and `film.json`, and `edit` commands, show in the studio as soon as you save them. For anything slow, like a reshoot, say so first (step 3), then do it.
 3. **Reply, which also listens again.** `studio <id> --say "<what you did, in a line>"`, in the background. Reply to every message, even with nothing to change: a message counts as read only once you reply, so without one the next `studio` gives it to you again.
 
 If `studio` prints `The studio closed.`, it was closed (`studio <id> --stop`, or a reshoot moving it to the new take): only start it again if the user still wants it. After a reshoot, the next `studio <id>` opens the new take. If you aren't woken when a background command ends, run `studio <id>` whenever the user says they've written in the studio: it returns their messages straight away.

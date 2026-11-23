@@ -1,3 +1,5 @@
+import type { Span } from './time.ts'
+
 export interface PageSettings {
   backdrop: string
   display: string
@@ -29,6 +31,38 @@ export type Stem = 'click' | 'typing' | 'voice'
 
 export type ExportFormat = 'mp4' | 'webm' | 'gif'
 
+// In the take's own time, which the studio's timeline is drawn in.
+export interface ShownEdit extends Span {
+  steps: number[]
+}
+
+// What the timeline draws, in the take's own time: the cuts and speed-ups are laid over it.
+export interface TimelineData {
+  length: number
+  addresses: { at: number; label: string }[]
+  // step: the film step the click is in, when the take recorded steps' times.
+  clicks: { at: number; step?: number; muted: boolean }[]
+  highlights: Highlighted[]
+  edits: ShownEdit[]
+}
+
+export type EditRequest =
+  | { from: number; to: number; cut: true }
+  | { from: number; to: number; speed: number }
+  | { steps: number[]; remove: true }
+  | { steps: number[]; cut: true }
+  | { steps: number[]; speed: number }
+  | { steps: number[]; from: number; to: number }
+  | { steps: number[]; by: number }
+
+export interface SoundRequest {
+  step: number
+  click: boolean
+}
+
+export type HighlightRequest =
+  { step: number; style: Highlighted['style'] } | { step: number; remove: true }
+
 export interface StudioState {
   title: string
   video: string
@@ -43,6 +77,7 @@ export interface StudioState {
   stemGain: number
   limit: number
   canvas: { width: number; height: number }
+  timeline: TimelineData
 }
 
 export type StudioEvent =
@@ -50,8 +85,10 @@ export type StudioEvent =
   | { type: 'chat'; chat: StudioMessage[] }
   | { type: 'agent'; agent: AgentStatus | null }
   | { type: 'config' }
+  | { type: 'stage'; timeline: TimelineData; stems: Stem[]; hold: number }
 
 export interface Highlighted {
+  step: number
   at: number
   until: number
   box: number[]

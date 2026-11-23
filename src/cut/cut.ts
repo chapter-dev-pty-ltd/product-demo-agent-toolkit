@@ -1,13 +1,15 @@
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { readFile, rename } from 'node:fs/promises'
+import { readdir, readFile, rename, rm } from 'node:fs/promises'
 import { once } from 'node:events'
 import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { soundOn, type Config, type Music, type Sound } from '../config.ts'
-import { readFilm } from '../film.ts'
+import { readFilm, type Film } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
+import { filmEdits, muteQuietSteps, retime, staleTake, toVideo, type Edit } from './edits.ts'
 import { openStage, type Highlighted } from './stage.ts'
 import type { Stem } from '../../studio/api.ts'
 
@@ -23,20 +25,44 @@ export function videoLength(footage: Footage): number {
 
 export async function prepare(footageDir: string): Promise<{
   footage: Footage
+  recorded: Footage
+  film: Film
+  edits: Edit[]
+  warnings: string[]
   highlights: Highlighted[]
   length: number
+  // How long the ending holds in the video, once edits that reach into it are applied.
+  ending: number
   title: string
 }> {
-  const footage = await readFootage(footageDir)
-  if (footage.frames.length === 0) throw new Error(`${footageDir} has no frames.`)
-  const film = existsSync(footage.source) ? await readFilm(footage.source) : footage.film
-  const length = videoLength(footage)
-  const title = film.notes?.split(/(?<=\.)\s/)[0] ?? ''
-  const highlights = footage.highlights.flatMap((held) => {
+  const read = await readFootage(footageDir)
+  if (read.frames.length === 0) throw new Error(`${footageDir} has no frames.`)
+  const film = existsSync(read.source) ? await readFilm(read.source) : read.film
+  const recorded = muteQuietSteps(film, read)
+  const edits = filmEdits(film, recorded)
+  const footage = retime(recorded, edits)
+  const stale = staleTake(film, recorded)
+  const length = toVideo(edits, videoLength(recorded))
+  return {
+    footage,
+    recorded,
+    film,
+    edits,
+    warnings: stale ? [stale] : [],
+    highlights: highlightsOf(film, footage),
+    length,
+    ending: length - toVideo(edits, recorded.end - (recorded.frames[0]?.at ?? 0)),
+    title: film.notes?.split(/(?<=\.)\s/)[0] ?? '',
+  }
+}
+
+export function highlightsOf(film: Film, footage: Footage): Highlighted[] {
+  return footage.highlights.flatMap((held) => {
     const now = film.steps[held.step]?.highlight
     if (!now) return []
     return [
       {
+        step: held.step,
         at: held.at,
         until: held.until,
         box: now.box ?? held.box,
@@ -46,8 +72,6 @@ export async function prepare(footageDir: string): Promise<{
       },
     ]
   })
-
-  return { footage, highlights, length, title }
 }
 
 export async function cut(
@@ -56,7 +80,7 @@ export async function cut(
   config: Config,
   extra = '',
 ): Promise<number> {
-  const { footage, highlights, length, title } = await prepare(footageDir)
+  const { footage, highlights, length, ending, title } = await prepare(footageDir)
   const browser = await launchBrowser()
   try {
     const page = await openStage(
@@ -75,7 +99,7 @@ export async function cut(
     const sound = soundArgs(
       Object.values(soundTracks(footage, config.sound)).flat(),
       length,
-      music && { ...music, fade: Math.max(1, footage.film.ending?.hold ?? 2) },
+      music && { ...music, fade: Math.max(1, ending) },
     )
     const encoder = spawn(
       ffmpeg,
@@ -132,14 +156,18 @@ function soundTracks(footage: Footage, sound: Sound): Record<Stem, Track[]> {
     click: [
       {
         files: CLICKS,
-        times: soundOn('click', sound) ? footage.clicks.map((c) => c.at - start) : [],
+        times: soundOn('click', sound)
+          ? footage.clicks.filter((c) => !c.muted).map((c) => c.at - start)
+          : [],
         volume: 1,
       },
     ],
     typing: Object.entries(KEYS).map(([kind, files]) => ({
       files,
       times: soundOn('typing', sound)
-        ? (footage.keys ?? []).filter((k) => keyKind(k.key) === kind).map((k) => k.at - start)
+        ? (footage.keys ?? [])
+            .filter((k) => !k.muted && keyKind(k.key) === kind)
+            .map((k) => k.at - start)
         : [],
       volume: 0.7,
     })),
@@ -163,16 +191,30 @@ export function stemsOf(footage: Footage): Stem[] {
 export const STEM_GAIN = 0.5
 export const LIMIT = 0.89
 
+// A sound file is named after the edits and mutes it was made with, so a change makes a new one.
+function soundKey(footage: Footage, edits: Edit[]): string {
+  const muted = [...footage.clicks, ...(footage.keys ?? [])].flatMap((c, i) => (c.muted ? [i] : []))
+  if (!edits.length && !muted.length) return ''
+  return (
+    '-' +
+    createHash('sha1')
+      .update(JSON.stringify([edits, muted]))
+      .digest('hex')
+      .slice(0, 8)
+  )
+}
+
 export async function stems(
   footageDir: string,
   footage: Footage,
   length: number,
+  edits: Edit[] = [],
 ): Promise<Partial<Record<Stem, string>>> {
   const ffmpeg = await findFfmpeg()
   const tracks = soundTracks(footage, true)
   const made = await Promise.all(
     stemsOf(footage).map(async (stem) => {
-      const out = join(footageDir, `sound-${stem}.m4a`)
+      const out = join(footageDir, `sound-${stem}${soundKey(footage, edits)}.m4a`)
       if (existsSync(out)) return [stem, out] as const
       const part = `${out}.part`
       const args = soundArgs(tracks[stem], length, undefined, true)
@@ -189,6 +231,18 @@ export async function stems(
     }),
   )
   return Object.fromEntries(made.filter(([, out]) => out)) as Partial<Record<Stem, string>>
+}
+
+export async function clearOldSounds(
+  footageDir: string,
+  keep: Partial<Record<Stem, string>>,
+): Promise<void> {
+  const kept = new Set(Object.values(keep))
+  for (const name of await readdir(footageDir)) {
+    const file = join(footageDir, name)
+    if (/^sound-(click|typing|voice)(-[\w.]+)?\.m4a$/.test(name) && !kept.has(file))
+      await rm(file, { force: true })
+  }
 }
 
 function pick(t: number, of: number): number {

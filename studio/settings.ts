@@ -15,6 +15,7 @@ type Patch = Partial<Omit<PageSettings, 'cursor'>> & { cursor?: Partial<PageSett
 export interface Settings {
   readonly look: PageSettings
   place(x: number | null, y: number | null): void
+  setMusic(music: PageSettings['music']): void
 }
 
 export function createSettings(state: StudioState, player: Player, timeline: Timeline): Settings {
@@ -205,5 +206,6 @@ export function createSettings(state: StudioState, player: Player, timeline: Tim
       return look
     },
     place: (x, y) => change({ x, y }),
+    setMusic: (music) => change({ music }),
   }
 }

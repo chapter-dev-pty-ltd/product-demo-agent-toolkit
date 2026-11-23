@@ -1,6 +1,9 @@
-import type { Highlighted, PageSettings, StageData } from './api.ts'
+import type { Highlighted, PageSettings, ShownEdit, StudioState, TimelineData } from './api.ts'
 import { musicSrc } from './audio.ts'
 import type { Player } from './player.ts'
+import { stepsName } from './steps.ts'
+import { createSelection } from './selection.ts'
+import { toTake } from './time.ts'
 import { $, clock, fileName, pretty } from './ui.ts'
 
 const GLOBE =
@@ -13,18 +16,52 @@ const NOTE =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12V3.5l7-1.5V10.5"/><circle cx="4.5" cy="12" r="1.5"/><circle cx="11.5" cy="10.5" r="1.5"/></svg>'
 const LENS =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4 14 14M5 7h4M7 5v4"/></svg>'
+const SCISSORS =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="4" r="2"/><circle cx="4" cy="12" r="2"/><path d="M5.6 5.2 14 12M5.6 10.8 14 4"/></svg>'
 const STYLES: Record<Highlighted['style'], string> = { magnify: LENS, box: SPARK, cursor: POINTER }
 
 export interface Timeline {
   music(m: PageSettings['music']): void
+  update(next: TimelineData): void
 }
 
-export function createTimeline(player: Player, ownedMusic: string | null): Timeline {
+// The timeline is drawn in the take's own time, so a cut keeps its length; the player runs on the video's.
+export interface View {
+  readonly el: HTMLElement
+  readonly length: number
+  readonly data: TimelineData
+  pct(s: number): string
+  timeAt(e: PointerEvent): number
+}
+
+export function createTimeline(
+  player: Player,
+  state: StudioState,
+  setMusic: (music: PageSettings['music']) => void,
+): Timeline {
+  const ownedMusic = state.owned.music
   const el = document.querySelector<HTMLElement>('.timeline')!
   let length = 0
+  let data = state.timeline
   let musicClip: HTMLElement | undefined
   let music: PageSettings['music'] = false
   const pct = (s: number) => (s / length) * 100 + '%'
+  const timeAt = (e: PointerEvent) => {
+    const lane = $('ruler').getBoundingClientRect()
+    return Math.min(length, Math.max(0, ((e.clientX - lane.left) / lane.width) * length))
+  }
+  const view: View = {
+    el,
+    get length() {
+      return length
+    },
+    get data() {
+      return data
+    },
+    pct,
+    timeAt,
+  }
+  const selection = createSelection(view, player, state, { get: () => music, set: setMusic })
 
   const track = (name: string, sub: string, icon: string) => {
     const row = document.createElement('div')
@@ -48,7 +85,7 @@ export function createTimeline(player: Player, ownedMusic: string | null): Timel
     }
   }
 
-  const pages = (data: StageData) => {
+  const pages = (data: TimelineData) => {
     const lane = track('Page', '', GLOBE)
     const addresses = (
       data.addresses.length ? data.addresses : [{ at: 0, label: 'Screen' }]
@@ -82,22 +119,28 @@ export function createTimeline(player: Player, ownedMusic: string | null): Timel
     })
   }
 
-  const clicks = (data: StageData) => {
+  const clicks = (data: TimelineData) => {
     const lane = track('Clicks', String(data.clicks.length), POINTER)
-    for (const c of data.clicks) {
+    for (const [i, c] of data.clicks.entries()) {
       const mark = document.createElement('div')
-      mark.className = 'mark'
+      mark.className = 'mark' + (c.muted ? ' muted' : '')
+      if (c.step !== undefined) {
+        mark.dataset.key = `click:${i}`
+        mark.title = `Step ${c.step + 1} click${c.muted ? ', muted' : ''}`
+      }
       mark.style.left = pct(c.at)
       lane.appendChild(mark)
     }
   }
 
-  const highlights = (data: StageData) => {
+  const highlights = (data: TimelineData) => {
     const lane = track('Highlights', '', SPARK)
     if (!data.highlights.length) lane.innerHTML = '<span class="empty">None in this take</span>'
     for (const h of data.highlights) {
       const clip = document.createElement('div')
       clip.className = 'clip highlight'
+      clip.dataset.key = `highlight:${h.step}`
+      clip.title = `Step ${h.step + 1}: ${pretty(h.style)}`
       clip.style.left = pct(h.at)
       clip.style.width = pct(h.until - h.at)
       clip.innerHTML = STYLES[h.style]
@@ -105,6 +148,38 @@ export function createTimeline(player: Player, ownedMusic: string | null): Timel
       name.textContent = pretty(h.style)
       clip.appendChild(name)
       lane.appendChild(clip)
+    }
+  }
+
+  const edits = (list: ShownEdit[]) => {
+    const lane = track('Edits', '', SCISSORS)
+    if (!list.length)
+      lane.innerHTML =
+        '<span class="empty">Shift-drag across the timeline to cut or speed up a part</span>'
+    for (const e of list) {
+      const cut = e.speed === 'cut'
+      const clip = document.createElement('div')
+      clip.className = cut ? 'clip cut' : 'clip speed'
+      clip.dataset.key = `edit:${e.steps.join(',')}`
+      clip.title = `${stepsName(e.steps)}, ${cut ? 'cut' : `${e.speed}×`}: ${(e.to - e.from).toFixed(1)}s of the take. Drag to move, or drag an end to change it.`
+      clip.style.left = pct(e.from)
+      clip.style.width = pct(e.to - e.from)
+      clip.innerHTML = `<i class="handle" data-end="from"></i>${cut ? SCISSORS : ''}<span>${cut ? 'Cut' : `${e.speed}×`}</span><i class="handle" data-end="to"></i>`
+      clip.onpointerdown = (down) => selection.drag(down, clip, e)
+      lane.appendChild(clip)
+    }
+  }
+  // What a cut removes stays on the timeline, faded in every lane, so it's clear what goes.
+  const shadeCuts = () => {
+    for (const lane of $('tracks').querySelectorAll<HTMLElement>('.lane')) {
+      for (const e of data.edits) {
+        if (e.speed !== 'cut') continue
+        const shade = document.createElement('div')
+        shade.className = 'shade'
+        shade.style.left = pct(e.from)
+        shade.style.width = pct(e.to - e.from)
+        lane.appendChild(shade)
+      }
     }
   }
 
@@ -153,19 +228,27 @@ export function createTimeline(player: Player, ownedMusic: string | null): Timel
     void wave(musicClip, m ? musicSrc(m) : null)
   }
 
-  player.onLoad((data) => {
+  player.onLoad(() => {
+    const reselect = selection.keep()
     length = data.length
+    $('ruler').replaceChildren()
+    $('tracks').replaceChildren()
     ruler()
     pages(data)
     clicks(data)
     musicClip = document.createElement('div')
     musicClip.className = 'clip music'
+    musicClip.dataset.key = 'music'
+    musicClip.title = 'Music'
     musicClip.style.left = '1px'
     musicClip.style.width = 'calc(100% - 2px)'
     musicClip.innerHTML = '<span></span>'
     track('Music', '', NOTE).appendChild(musicClip)
     highlights(data)
+    shadeCuts()
+    edits(data.edits)
     showMusic()
+    reselect()
   })
 
   player.onShow(() => {
@@ -173,25 +256,16 @@ export function createTimeline(player: Player, ownedMusic: string | null): Timel
     const lane = $('ruler').getBoundingClientRect()
     const box = el.getBoundingClientRect()
     if (length)
-      $('playhead').style.left = lane.left - box.left + (player.t / length) * lane.width + 'px'
+      $('playhead').style.left =
+        lane.left - box.left + (toTake(data.edits, player.t) / length) * lane.width + 'px'
   })
-
-  const scrubTo = (e: PointerEvent) => {
-    const lane = $('ruler').getBoundingClientRect()
-    void player.seek(((e.clientX - lane.left) / lane.width) * length)
-  }
-  el.addEventListener('pointerdown', (e) => {
-    if (e.clientX < $('ruler').getBoundingClientRect().left) return
-    el.setPointerCapture(e.pointerId)
-    scrubTo(e)
-    el.onpointermove = scrubTo
-  })
-  el.addEventListener('pointerup', () => (el.onpointermove = null))
 
   return {
     music: (m) => {
       music = m
       showMusic()
+      selection.musicChanged()
     },
+    update: (next) => void (data = next),
   }
 }
