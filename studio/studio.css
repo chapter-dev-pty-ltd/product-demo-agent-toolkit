@@ -76,8 +76,6 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
 .clip.cut > svg { width: 12px; height: 12px; }
 .clip.cut .handle::after { background: #b91c1c; }
 .clip.speed:hover, .clip.cut:hover { filter: brightness(.96); }
-.hold { position: absolute; top: 4px; bottom: 4px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; overflow: hidden;
-  background: repeating-linear-gradient(-45deg, #f4f4f5 0 6px, #ebebed 6px 12px); color: var(--dim); font-size: 11px; white-space: nowrap; }
 .shade { position: absolute; top: 0; bottom: 0; z-index: 1; pointer-events: none;
   background: repeating-linear-gradient(-45deg, rgb(220 38 38 / .07) 0 6px, transparent 6px 12px), rgb(255 255 255 / .6); }
 .clip .handle { position: absolute; z-index: 1; top: -2px; bottom: -2px; width: 10px; cursor: ew-resize; }

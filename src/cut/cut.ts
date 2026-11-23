@@ -8,7 +8,7 @@ import { soundOn, type Config, type Music, type Sound } from '../config.ts'
 import { readFilm, type Film } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
-import { editsKey, filmEdits, retime, staleTake, stepAt, type Edit } from './edits.ts'
+import { editsKey, filmEdits, retime, staleTake, stepAt, toVideo, type Edit } from './edits.ts'
 import { openStage, type Highlighted } from './stage.ts'
 import type { Stem } from '../../studio/api.ts'
 
@@ -49,7 +49,7 @@ export async function prepare(footageDir: string): Promise<{
   const edits = filmEdits(film, recorded)
   const footage = retime(recorded, edits)
   const stale = staleTake(film, recorded)
-  const length = videoLength(footage)
+  const length = toVideo(edits, videoLength(recorded))
   const title = film.notes?.split(/(?<=\.)\s/)[0] ?? ''
   const highlightsOf = (of: Footage): Highlighted[] =>
     of.highlights.flatMap((held) => {

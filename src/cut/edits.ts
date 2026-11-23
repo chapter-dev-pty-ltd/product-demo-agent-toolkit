@@ -19,11 +19,13 @@ export class Refused extends Error {}
 const SAME = 1e-3
 const ms = (seconds: number) => Math.round(seconds * 1000) / 1000
 
+// The ending's hold is the tail of the last step, so edits can reach the end of the video.
 function spans(footage: Footage): { from: number; to: number }[] | undefined {
   const start = footage.frames[0]?.at ?? 0
+  const end = footage.end + (footage.film.ending?.hold ?? 2)
   return footage.steps?.map((s, i) => ({
     from: Math.max(0, s.at - start),
-    to: (footage.steps?.[i + 1]?.at ?? footage.end) - start,
+    to: (footage.steps?.[i + 1]?.at ?? end) - start,
   }))
 }
 

@@ -155,7 +155,6 @@ export async function studio(
     const start = recorded.frames[0]?.at ?? 0
     return {
       length: videoLength(recorded),
-      stepsEnd: recorded.end - start,
       addresses: (recorded.addresses ?? []).map((a) => ({ at: a.at - start, label: label(a.url) })),
       clicks: recorded.clicks.map((c) => {
         const step = stepAt(recorded, c.at)

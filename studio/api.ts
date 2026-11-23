@@ -38,8 +38,6 @@ export interface ShownEdit extends Span {
 // What the timeline draws, in the take's own time: the cuts and speed-ups are laid over it.
 export interface TimelineData {
   length: number
-  // Where the steps end; the ending's hold after them can't be cut or sped up.
-  stepsEnd: number
   addresses: { at: number; label: string }[]
   // step: the film step the click is in, when the take recorded steps' times.
   clicks: { at: number; step?: number; muted: boolean }[]

@@ -150,16 +150,6 @@ export function createTimeline(player: Player, state: StudioState, control: Look
     if (!list.length)
       lane.innerHTML =
         '<span class="empty">Shift-drag across the timeline to cut or speed up a part</span>'
-    // The ending holds the last frame after the steps; it isn't a step, so it can't be edited.
-    if (data.length - data.stepsEnd > 0.05) {
-      const hold = document.createElement('div')
-      hold.className = 'hold'
-      hold.style.left = `calc(${pct(data.stepsEnd)} + 1px)`
-      hold.style.width = `calc(${pct(data.length - data.stepsEnd)} - 1px)`
-      hold.title = `The ending holds the last frame for ${(data.length - data.stepsEnd).toFixed(1)}s. Cuts and speed-ups stop before it; set how long it holds with "ending" in the film.`
-      hold.textContent = 'End'
-      lane.appendChild(hold)
-    }
     for (const e of list) {
       const cut = e.speed === 'cut'
       const el = document.createElement('div')
@@ -342,8 +332,8 @@ export function createTimeline(player: Player, state: StudioState, control: Look
       by = (move.clientX - down.clientX) / perSecond
       if (Math.abs(by * perSecond) >= 3) popover.hide()
       if (end === 'from') by = fit(by, -e.from, e.to - e.from - 0.1)
-      else if (end === 'to') by = fit(by, e.from - e.to + 0.1, data.stepsEnd - e.to)
-      else by = fit(by, -e.from, data.stepsEnd - e.to)
+      else if (end === 'to') by = fit(by, e.from - e.to + 0.1, length - e.to)
+      else by = fit(by, -e.from, length - e.to)
       const from = end === 'to' ? e.from : e.from + by
       clip.style.left = pct(from)
       clip.style.width = pct((end === 'from' ? e.to : e.to + by) - from)
