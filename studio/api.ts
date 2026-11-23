@@ -27,6 +27,19 @@ export type Stem = 'click' | 'typing' | 'voice'
 
 export type ExportFormat = 'mp4' | 'webm' | 'gif'
 
+export interface ShownEdit {
+  step: number
+  from: number
+  to: number
+  speed: number | 'cut'
+  taken: number
+}
+
+export type EditRequest =
+  | { remove: number }
+  | { from: number; to: number; cut: true }
+  | { from: number; to: number; speed: number }
+
 export interface StudioState {
   title: string
   video: string
@@ -41,6 +54,7 @@ export interface StudioState {
   stemGain: number
   limit: number
   canvas: { width: number; height: number }
+  edits: ShownEdit[]
 }
 
 export type StudioEvent =

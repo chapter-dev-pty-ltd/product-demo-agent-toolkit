@@ -1,4 +1,11 @@
-import type { Highlighted, PageSettings, StageData } from './api.ts'
+import type {
+  EditRequest,
+  Highlighted,
+  PageSettings,
+  ShownEdit,
+  StageData,
+  StudioState,
+} from './api.ts'
 import { musicSrc } from './audio.ts'
 import type { Player } from './player.ts'
 import { $, clock, fileName, pretty } from './ui.ts'
@@ -13,13 +20,16 @@ const NOTE =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12V3.5l7-1.5V10.5"/><circle cx="4.5" cy="12" r="1.5"/><circle cx="11.5" cy="10.5" r="1.5"/></svg>'
 const LENS =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4 14 14M5 7h4M7 5v4"/></svg>'
+const SCISSORS =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="4" r="2"/><circle cx="4" cy="12" r="2"/><path d="M5.6 5.2 14 12M5.6 10.8 14 4"/></svg>'
 const STYLES: Record<Highlighted['style'], string> = { magnify: LENS, box: SPARK, cursor: POINTER }
 
 export interface Timeline {
   music(m: PageSettings['music']): void
 }
 
-export function createTimeline(player: Player, ownedMusic: string | null): Timeline {
+export function createTimeline(player: Player, state: StudioState): Timeline {
+  const ownedMusic = state.owned.music
   const el = document.querySelector<HTMLElement>('.timeline')!
   let length = 0
   let musicClip: HTMLElement | undefined
@@ -108,6 +118,29 @@ export function createTimeline(player: Player, ownedMusic: string | null): Timel
     }
   }
 
+  const cuts = (list: ShownEdit[]) => {
+    const lane = track('Edits', '', SCISSORS)
+    if (!list.length)
+      lane.innerHTML =
+        '<span class="empty">Shift-drag across the timeline to cut or speed up a part</span>'
+    for (const e of list) {
+      const el = document.createElement('div')
+      el.dataset.edit = String(e.step)
+      el.title = `Step ${e.step + 1}, ${e.speed === 'cut' ? 'cut' : `${e.speed}×`}: ${e.taken.toFixed(1)}s of the take. Click to take it back.`
+      el.style.left = pct(e.from)
+      if (e.speed === 'cut') {
+        el.className = 'mark cut'
+        el.innerHTML = SCISSORS
+      } else {
+        el.className = 'clip speed'
+        el.style.width = pct(e.to - e.from)
+        el.innerHTML = `<span>${e.speed}×</span>`
+      }
+      el.onclick = () => void edit({ remove: e.step })
+      lane.appendChild(el)
+    }
+  }
+
   const wave = async (clip: HTMLElement, src: string | null) => {
     if (clip.dataset.wave === (src ?? '')) return
     clip.dataset.wave = src ?? ''
@@ -165,6 +198,7 @@ export function createTimeline(player: Player, ownedMusic: string | null): Timel
     musicClip.innerHTML = '<span></span>'
     track('Music', '', NOTE).appendChild(musicClip)
     highlights(data)
+    cuts(state.edits)
     showMusic()
   })
 
@@ -176,13 +210,68 @@ export function createTimeline(player: Player, ownedMusic: string | null): Timel
       $('playhead').style.left = lane.left - box.left + (player.t / length) * lane.width + 'px'
   })
 
-  const scrubTo = (e: PointerEvent) => {
+  const timeAt = (e: PointerEvent) => {
     const lane = $('ruler').getBoundingClientRect()
-    void player.seek(((e.clientX - lane.left) / lane.width) * length)
+    return Math.min(length, Math.max(0, ((e.clientX - lane.left) / lane.width) * length))
   }
+  const scrubTo = (e: PointerEvent) => void player.seek(timeAt(e))
+
+  let selection: { a: number; b: number } | null = null
+  const selected = () =>
+    selection && Math.abs(selection.b - selection.a) > 0.05
+      ? { from: Math.min(selection.a, selection.b), to: Math.max(selection.a, selection.b) }
+      : null
+  const showSelection = () => {
+    const range = selected()
+    $('selection').hidden = $('edit-bar').hidden = !range
+    if (!range) return
+    const lane = $('ruler').getBoundingClientRect()
+    const box = el.getBoundingClientRect()
+    $('selection').style.left = lane.left - box.left + (range.from / length) * lane.width + 'px'
+    $('selection').style.width = ((range.to - range.from) / length) * lane.width + 'px'
+    $('edit-range').textContent = `${clock(range.from)} – ${clock(range.to)}`
+  }
+  const select = (next: typeof selection) => {
+    selection = next
+    showSelection()
+  }
+  window.addEventListener('resize', showSelection)
+
+  const edit = async (request: EditRequest) => {
+    select(null)
+    const res = await fetch('/studio/edits', { method: 'POST', body: JSON.stringify(request) })
+    if (!res.ok) $('export-status').textContent = await res.text()
+  }
+  const editSelected = (change: { cut: true } | { speed: number }) => {
+    const range = selected()
+    if (!range) return
+    void player.seek(range.from)
+    void edit({ ...range, ...change })
+  }
+  $('edit-bar').onclick = (e) => {
+    const button = (e.target as HTMLElement).closest<HTMLElement>('button')
+    if (!button) return
+    if ('clear' in button.dataset) return select(null)
+    editSelected('cut' in button.dataset ? { cut: true } : { speed: Number(button.dataset.speed) })
+  }
+  document.addEventListener('keydown', (e) => {
+    const target = e.target as HTMLElement
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || !selected()) return
+    if (e.code === 'Escape') select(null)
+    if (e.code === 'Backspace' || e.code === 'Delete') editSelected({ cut: true })
+  })
+
   el.addEventListener('pointerdown', (e) => {
-    if (e.clientX < $('ruler').getBoundingClientRect().left) return
+    const target = e.target as HTMLElement
+    if (e.clientX < $('ruler').getBoundingClientRect().left || target.closest('[data-edit]')) return
     el.setPointerCapture(e.pointerId)
+    if (e.shiftKey) {
+      const at = timeAt(e)
+      select({ a: at, b: at })
+      el.onpointermove = (m) => select({ a: at, b: timeAt(m) })
+      return
+    }
+    select(null)
     scrubTo(e)
     el.onpointermove = scrubTo
   })

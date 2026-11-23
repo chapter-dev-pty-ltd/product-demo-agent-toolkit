@@ -24,6 +24,7 @@ import {
   type ProjectFile,
 } from './config.ts'
 import { cut, LIMIT, prepare, STEM_GAIN, stems, stemsOf, type Stem } from './cut/cut.ts'
+import { planEdit, shownEdits, writePlan } from './cut/edits.ts'
 import { convertExport } from './cut/export.ts'
 import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
 import type {
@@ -112,11 +113,13 @@ export async function studio(
   const places = placesOf(video)
   const lookFile = filesOf(video).look
   const config = await readConfig(lookFile)
-  const { footage, highlights, length, title } = await prepare(footageDir)
+  let { footage, recorded, film, edits, highlights, length, title } = await prepare(footageDir)
   const hold = Math.max(1, footage.film.ending?.hold ?? 2)
-  const sounds = stems(footageDir, footage, length).catch(
-    (error: Error): Partial<Record<Stem, string>> => (console.log(error.message), {}),
-  )
+  const soundsNow = () =>
+    stems(footageDir, footage, length, edits).catch(
+      (error: Error): Partial<Record<Stem, string>> => (console.log(error.message), {}),
+    )
+  let sounds = soundsNow()
   let { settings, mine, extras } = fromConfig(config, hold)
   let saving = Promise.resolve()
   let writing: NodeJS.Timeout | undefined
@@ -129,11 +132,14 @@ export async function studio(
     return saving
   }
   let exporting = false
-  const staged = (lit: typeof highlights) =>
-    stageFiles(footageDir, footage, lit, () => settings, length, title)
-  let stage = staged(highlights)
+  const staged = () => stageFiles(footageDir, footage, highlights, () => settings, length, title)
+  let stage = staged()
   let filmText = await readFile(footage.source, 'utf8').catch(() => '')
-  const restage = async () => void (stage = staged((await prepare(footageDir)).highlights))
+  const restage = async () => {
+    ;({ footage, recorded, film, edits, highlights, length, title } = await prepare(footageDir))
+    stage = staged()
+    sounds = soundsNow()
+  }
   const library = (path: string) => new URL(`../library/${path}`, import.meta.url)
 
   const boot = Date.now().toString(36)
@@ -226,6 +232,7 @@ export async function studio(
           stemGain: STEM_GAIN,
           limit: LIMIT,
           canvas: CANVAS,
+          edits: shownEdits(edits),
         }
         return send(200, 'application/json', JSON.stringify(state))
       }
@@ -315,6 +322,13 @@ export async function studio(
         writing = setTimeout(flush, 150)
         return send(200, 'application/json', JSON.stringify(toPage(settings)))
       }
+      if (path === '/studio/edits' && req.method === 'POST') {
+        const plan = planEdit(film, recorded, JSON.parse(await body(req)))
+        filmText = await writePlan(footage.source, plan)
+        await restage()
+        emit({ type: 'config' })
+        return send(200, 'application/json', '{}')
+      }
       if (path === '/studio/export' && req.method === 'POST') {
         const { format = 'mp4', ...look }: { format?: unknown } = JSON.parse(await body(req))
         if (format !== 'mp4' && format !== 'webm' && format !== 'gif') {
@@ -332,7 +346,8 @@ export async function studio(
         try {
           const snapshot = fromPage(look, settings, mine)
           await flush()
-          await cut(footageDir, temporary, { ...(await readConfig(lookFile)), ...snapshot })
+          const config = { ...(await readConfig(lookFile)), ...snapshot }
+          await cut(footageDir, temporary, config)
           if (format !== 'mp4') await convertExport(temporary, converted, format)
           await rename(temporary, filesOf(video).cut)
           const output = join(video.dir, `video.${format}`)

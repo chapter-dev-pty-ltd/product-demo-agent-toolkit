@@ -90,7 +90,7 @@ export function createChat(state: StudioState, player: Player): Chat {
     const list = $('messages')
     list.innerHTML = chat.length
       ? ''
-      : '<div class="empty">Messages go to your agent, with the moment in the take you were at.</div>'
+      : '<div class="empty">Messages go to your agent, with the moment in the video you were at.</div>'
     for (const m of chat) {
       let el: HTMLElement
       let box: HTMLElement

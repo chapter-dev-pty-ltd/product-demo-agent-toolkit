@@ -5,9 +5,10 @@ import { once } from 'node:events'
 import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { soundOn, type Config, type Music, type Sound } from '../config.ts'
-import { readFilm } from '../film.ts'
+import { readFilm, type Film } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
+import { editsKey, filmEdits, retime, staleTake, type Edit } from './edits.ts'
 import { openStage, type Highlighted } from './stage.ts'
 import type { Stem } from '../../studio/api.ts'
 
@@ -23,13 +24,20 @@ export function videoLength(footage: Footage): number {
 
 export async function prepare(footageDir: string): Promise<{
   footage: Footage
+  recorded: Footage
+  film: Film
+  edits: Edit[]
+  warnings: string[]
   highlights: Highlighted[]
   length: number
   title: string
 }> {
-  const footage = await readFootage(footageDir)
-  if (footage.frames.length === 0) throw new Error(`${footageDir} has no frames.`)
-  const film = existsSync(footage.source) ? await readFilm(footage.source) : footage.film
+  const recorded = await readFootage(footageDir)
+  if (recorded.frames.length === 0) throw new Error(`${footageDir} has no frames.`)
+  const film = existsSync(recorded.source) ? await readFilm(recorded.source) : recorded.film
+  const edits = filmEdits(film, recorded)
+  const footage = retime(recorded, edits)
+  const stale = staleTake(film, recorded)
   const length = videoLength(footage)
   const title = film.notes?.split(/(?<=\.)\s/)[0] ?? ''
   const highlights = footage.highlights.flatMap((held) => {
@@ -47,7 +55,16 @@ export async function prepare(footageDir: string): Promise<{
     ]
   })
 
-  return { footage, highlights, length, title }
+  return {
+    footage,
+    recorded,
+    film,
+    edits,
+    warnings: stale ? [stale] : [],
+    highlights,
+    length,
+    title,
+  }
 }
 
 export async function cut(
@@ -55,8 +72,8 @@ export async function cut(
   out: string,
   config: Config,
   extra = '',
-): Promise<number> {
-  const { footage, highlights, length, title } = await prepare(footageDir)
+): Promise<{ length: number; warnings: string[] }> {
+  const { footage, highlights, length, title, warnings } = await prepare(footageDir)
   const browser = await launchBrowser()
   try {
     const page = await openStage(
@@ -104,7 +121,7 @@ export async function cut(
   } finally {
     await browser.close()
   }
-  return length
+  return { length, warnings }
 }
 
 const CLICKS = ['click-1.wav', 'click-2.wav']
@@ -167,12 +184,14 @@ export async function stems(
   footageDir: string,
   footage: Footage,
   length: number,
+  edits: Edit[] = [],
 ): Promise<Partial<Record<Stem, string>>> {
   const ffmpeg = await findFfmpeg()
   const tracks = soundTracks(footage, true)
   const made = await Promise.all(
     stemsOf(footage).map(async (stem) => {
-      const out = join(footageDir, `sound-${stem}.m4a`)
+      const key = editsKey(edits)
+      const out = join(footageDir, `sound-${stem}${key && `-${key}`}.m4a`)
       if (existsSync(out)) return [stem, out] as const
       const part = `${out}.part`
       const args = soundArgs(tracks[stem], length, undefined, true)

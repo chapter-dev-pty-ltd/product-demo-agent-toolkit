@@ -16,7 +16,7 @@ $('title').title = state.title
 
 const mixer = createMixer(state, () => settings.look.music)
 const player = createPlayer(state, mixer, Math.max(0, Number(query.get('t')) || 0))
-const timeline = createTimeline(player, state.owned.music)
+const timeline = createTimeline(player, state)
 const settings = createSettings(state, player, timeline)
 const exporter = createExport(state, () => settings.look)
 const chat = createChat(state, player)

@@ -5,6 +5,11 @@ import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import {
   cut,
+  clearPlan,
+  planEdit,
+  prepare,
+  shownEdits,
+  writePlan,
   explore,
   init,
   copySkills,
@@ -12,11 +17,9 @@ import {
   installedSkills,
   setup,
   loadKeys,
-  readFootage,
   readSecret,
   saveKey,
   review,
-  videoLength,
   NeedsDecision,
   CONFIG_FILE,
   readConfig,
@@ -84,6 +87,9 @@ const USAGE = `product-demo-agent-toolkit ${version}
 4. Shoot it, cut it, and work on it with the user in the studio:
   product-demo-agent-toolkit shoot <video>          A new take
   product-demo-agent-toolkit cut <video> [--out video.mp4]  Cut the latest take into the video's video.mp4
+  product-demo-agent-toolkit edit <video> cut <from>-<to>         Cut out a part, by the video's own clock (as the studio shows it: 12.5 or 0:12.5)
+  product-demo-agent-toolkit edit <video> speed <2-16> <from>-<to>  Speed up a part
+  product-demo-agent-toolkit edit <video> [--clear]              List its cuts and speed-ups (kept on the film's steps), or take them all away
   product-demo-agent-toolkit review <video | video.mp4>     An image of frames from across the video, to check it by
   product-demo-agent-toolkit studio <video> [--session name] [--agent name] [--say "reply"]
                                                     Open the video in the studio, then wait for the user's next message there and print it
@@ -137,6 +143,7 @@ const parsed = (() => {
         agent: { type: 'string' },
         say: { type: 'string' },
         stop: { type: 'boolean' },
+        clear: { type: 'boolean' },
         serve: { type: 'boolean' },
       },
     })
@@ -160,6 +167,15 @@ const videoNamed = async (ref: string | undefined): Promise<Video> => {
   return findVideo(ref)
 }
 const configOf = (video: Video) => readConfig(filesOf(video).look)
+const clockTime = (text: string): number => {
+  const [m, s] = text.includes(':') ? text.split(':') : ['0', text]
+  const seconds = Number(m) * 60 + Number(s)
+  if (!Number.isFinite(seconds) || seconds < 0)
+    throw new Error(`"${text}" isn't a time, like 12.5 or 0:12.5.`)
+  return seconds
+}
+const clock = (seconds: number) =>
+  `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, '0')}`
 
 const oldProjectFolder = () => {
   if (!existsSync(join('.product-demo', 'config.json'))) return
@@ -248,13 +264,46 @@ try {
     const config = await configOf(video)
     const take = await latestTake(video)
     const out = join(take.dir, 'video.mp4')
-    const seconds = await cut(take.dir, out, config)
+    const { length: seconds, warnings } = await cut(take.dir, out, config)
+    warn(warnings)
     await writeFile(join(take.dir, 'look.json'), `${JSON.stringify(lookToRaw(config), null, 2)}\n`)
     await copyFile(out, filesOf(video).cut)
     if (values.out) await copyFile(out, values.out)
     const where = values.out ?? filesOf(video).cut
     console.log(`Cut take ${take.n} of "${video.title}" into ${where} (${seconds.toFixed(1)}s)`)
     if (config.review) console.log(`Review it: ${await review(out, seconds)}`)
+  } else if (command === 'edit') {
+    const video = await videoNamed(input)
+    const take = await latestTake(video)
+    const { recorded, film } = await prepare(take.dir)
+    const [kind, ...rest] = args.slice(1)
+    if (values.clear) await writePlan(recorded.source, clearPlan(film))
+    else if (kind) {
+      const speed = kind === 'speed' ? Number(rest.shift()) : undefined
+      if (kind !== 'cut' && kind !== 'speed')
+        throw new Error(`Edit with cut or speed, not ${kind}.`)
+      if (speed !== undefined && !(speed > 1 && speed <= 16))
+        throw new Error('Speed it up by more than 1 and at most 16, like: speed 4 0:12-0:20')
+      const [from, to] = (rest[0] ?? '').split('-')
+      if (!from || !to) throw new Error('Give the part as <from>-<to>, like 0:12-0:20.')
+      const change = speed === undefined ? ({ cut: true } as const) : { speed }
+      const range = { from: clockTime(from), to: clockTime(to), ...change }
+      await writePlan(recorded.source, planEdit(film, recorded, range))
+    }
+    const { edits, length, warnings } = await prepare(take.dir)
+    warn(warnings)
+    for (const e of shownEdits(edits)) {
+      const step = `Step ${e.step + 1}`
+      const taken = `${e.taken.toFixed(1)}s of the take`
+      console.log(
+        e.speed === 'cut'
+          ? `  ${step}: cut at ${clock(e.from)} (${taken})`
+          : `  ${step}: ${e.speed}× from ${clock(e.from)} to ${clock(e.to)} (${taken})`,
+      )
+    }
+    console.log(
+      `${edits.length ? '' : 'No edits. '}Take ${take.n} of "${video.title}" runs ${length.toFixed(1)}s. The studio shows changes as they're made; cut it again for the video.`,
+    )
   } else if (command === 'studio' && values.stop) {
     const video = await videoNamed(input)
     console.log((await stopStudio(video)) ? 'Closed its studio.' : "Its studio isn't open.")
@@ -288,7 +337,7 @@ try {
       const messages = await waitForStudio(video, { session: values.session, agent: values.agent })
       if (!messages.length) console.log('The studio closed.')
       for (const m of messages) {
-        const at = m.at === undefined ? '' : ` (at ${m.at.toFixed(1)}s in the take)`
+        const at = m.at === undefined ? '' : ` (at ${clock(m.at)} in the video)`
         console.log(`The user says${at}: ${m.text}`)
       }
       if (messages.length)
@@ -351,7 +400,7 @@ try {
           `Take ${take.n} hasn't been cut yet: product-demo-agent-toolkit cut ${video.id}. If it was cut to another file, review that: product-demo-agent-toolkit review <video.mp4>`,
         )
       }
-      console.log(await review(file, videoLength(await readFootage(take.dir))))
+      console.log(await review(file, (await prepare(take.dir)).length))
     }
   } else {
     console.log(USAGE)

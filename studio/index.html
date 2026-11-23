@@ -59,6 +59,12 @@
           </button>
           <div id="time"></div>
         </div>
+        <div id="edit-bar" hidden>
+          <span id="edit-range"></span><button data-cut>Cut</button
+          ><button data-speed="2">2×</button><button data-speed="4">4×</button
+          ><button data-speed="8">8×</button
+          ><button data-clear title="Clear the selection (Esc)">✕</button>
+        </div>
         <button class="icon" id="sound" title="Sound on" aria-pressed="true">
           <svg
             viewBox="0 0 16 16"
@@ -79,6 +85,7 @@
           <div class="lane" id="ruler"></div>
         </div>
         <div id="tracks"></div>
+        <div id="selection" hidden></div>
         <div id="playhead"><span id="playhead-time"></span></div>
       </div>
     </section>

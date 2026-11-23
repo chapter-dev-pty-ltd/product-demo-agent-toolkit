@@ -70,6 +70,17 @@ body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh
   background: var(--pink); border: 2px solid #fff; box-shadow: 0 1px 3px rgb(236 72 153 / .4); }
 .lane .empty { position: absolute; left: 8px; top: 0; line-height: 36px; color: var(--faint); font-size: 11px; }
 #lanes { position: relative; cursor: text; }
+.clip.speed { cursor: pointer; background: repeating-linear-gradient(-45deg, #fef3c7 0 6px, #fde68a 6px 12px); color: #78350f; }
+.mark.cut { cursor: pointer; width: 18px; height: 18px; margin: -9px 0 0 -9px; display: grid; place-items: center; background: var(--amber); box-shadow: 0 1px 3px rgb(245 158 11 / .4); color: #fff; }
+.mark.cut svg { width: 10px; height: 10px; }
+.clip.speed:hover, .mark.cut:hover { filter: brightness(.94); }
+#selection { position: absolute; top: 28px; bottom: 10px; z-index: 1; pointer-events: none; background: rgb(245 158 11 / .14);
+  border-left: 1px solid var(--amber); border-right: 1px solid var(--amber); }
+#selection[hidden], #edit-bar[hidden] { display: none; }
+#edit-bar { display: flex; align-items: center; gap: 4px; font: 500 12px var(--mono); color: var(--dim); }
+#edit-bar span { padding-right: 6px; }
+#edit-bar button { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); font: 500 12px Inter, sans-serif; color: var(--text); cursor: pointer; }
+#edit-bar button:hover { background: var(--muted); }
 #playhead { position: absolute; top: 0; bottom: 10px; width: 0; pointer-events: none; z-index: 2; }
 #playhead::before { content: ''; position: absolute; top: 0; bottom: 0; left: -0.5px; border-left: 1px solid var(--text); }
 #playhead span { position: absolute; top: 5px; left: 0; transform: translateX(-50%); height: 18px; padding: 0 6px; border-radius: 5px;
