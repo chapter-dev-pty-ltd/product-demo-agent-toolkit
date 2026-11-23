@@ -1,9 +1,12 @@
+import type { Span } from './time.ts'
+
 export interface PageSettings {
   backdrop: string
   display: string
   fill: number
   cursor: { style: string; size: number; label?: string | undefined; tip?: [number, number] }
   music: false | { track: string; volume: number }
+  sound: { click: boolean; typing: boolean }
 }
 
 export interface StudioMessage {
@@ -27,20 +30,39 @@ export type Stem = 'click' | 'typing' | 'voice'
 
 export type ExportFormat = 'mp4' | 'webm' | 'gif'
 
-export interface ShownEdit {
-  step: number
-  from: number
-  to: number
-  speed: number | 'cut'
-  taken: number
+// In the take's own time, which the studio's timeline is drawn in.
+export interface ShownEdit extends Span {
+  steps: number[]
+}
+
+// What the timeline draws, in the take's own time: the cuts and speed-ups are laid over it.
+export interface TimelineData {
+  length: number
+  // Where the steps end; the ending's hold after them can't be cut or sped up.
+  stepsEnd: number
+  addresses: { at: number; label: string }[]
+  // step: the film step the click is in, when the take recorded steps' times.
+  clicks: { at: number; step?: number; muted: boolean }[]
+  highlights: Highlighted[]
+  edits: ShownEdit[]
 }
 
 export type EditRequest =
-  | { remove: number }
   | { from: number; to: number; cut: true }
   | { from: number; to: number; speed: number }
-  | { step: number; cut: true }
-  | { step: number; speed: number }
+  | { steps: number[]; remove: true }
+  | { steps: number[]; cut: true }
+  | { steps: number[]; speed: number }
+  | { steps: number[]; from: number; to: number }
+  | { steps: number[]; by: number }
+
+export interface SoundRequest {
+  step: number
+  click: boolean
+}
+
+export type HighlightRequest =
+  { step: number; style: Highlighted['style'] } | { step: number; remove: true }
 
 export interface StudioState {
   title: string
@@ -56,7 +78,7 @@ export interface StudioState {
   stemGain: number
   limit: number
   canvas: { width: number; height: number }
-  edits: ShownEdit[]
+  timeline: TimelineData
 }
 
 export type StudioEvent =
@@ -64,8 +86,10 @@ export type StudioEvent =
   | { type: 'chat'; chat: StudioMessage[] }
   | { type: 'agent'; agent: AgentStatus | null }
   | { type: 'config' }
+  | { type: 'stage'; timeline: TimelineData }
 
 export interface Highlighted {
+  step: number
   at: number
   until: number
   box: number[]

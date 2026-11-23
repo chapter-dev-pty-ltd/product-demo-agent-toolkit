@@ -9,6 +9,8 @@ import {
   planEdit,
   prepare,
   shownEdits,
+  toTake,
+  toVideo,
   writePlan,
   explore,
   init,
@@ -275,7 +277,7 @@ try {
   } else if (command === 'edit') {
     const video = await videoNamed(input)
     const take = await latestTake(video)
-    const { recorded, film } = await prepare(take.dir)
+    const { recorded, film, edits: before } = await prepare(take.dir)
     const [kind, ...rest] = args.slice(1)
     if (values.clear) await writePlan(recorded.source, clearPlan(film))
     else if (kind) {
@@ -287,18 +289,25 @@ try {
       const [from, to] = (rest[0] ?? '').split('-')
       if (!from || !to) throw new Error('Give the part as <from>-<to>, like 0:12-0:20.')
       const change = speed === undefined ? ({ cut: true } as const) : { speed }
-      const range = { from: clockTime(from), to: clockTime(to), ...change }
+      // The user gives the video's own clock; the edits are kept on the take's.
+      const range = {
+        from: toTake(before, clockTime(from)),
+        to: toTake(before, clockTime(to), true),
+        ...change,
+      }
       await writePlan(recorded.source, planEdit(film, recorded, range))
     }
     const { edits, length, warnings } = await prepare(take.dir)
     warn(warnings)
     for (const e of shownEdits(edits)) {
-      const step = `Step ${e.step + 1}`
-      const taken = `${e.taken.toFixed(1)}s of the take`
+      const [first = 0, last = first] = [e.steps[0], e.steps.at(-1)]
+      const step = first === last ? `Step ${first + 1}` : `Steps ${first + 1}–${last + 1}`
+      const taken = `${(e.to - e.from).toFixed(1)}s of the take`
+      const [from, to] = [toVideo(edits, e.from), toVideo(edits, e.to)]
       console.log(
         e.speed === 'cut'
-          ? `  ${step}: cut at ${clock(e.from)} (${taken})`
-          : `  ${step}: ${e.speed}× from ${clock(e.from)} to ${clock(e.to)} (${taken})`,
+          ? `  ${step}: cut at ${clock(from)} (${taken})`
+          : `  ${step}: ${e.speed}× from ${clock(from)} to ${clock(to)} (${taken})`,
       )
     }
     console.log(

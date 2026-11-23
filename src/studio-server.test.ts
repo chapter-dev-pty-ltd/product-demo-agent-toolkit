@@ -31,6 +31,7 @@ describe('settings from the page', () => {
     window: { width: 1600, height: 900, fill: 0.9 },
     cursor: { style: 'black', size: 1, label: 'Doc' },
     music: false,
+    sound: true,
   } as const
   const mine = { cursor: { file: '/project/cursor.svg' }, tip: [2, 3] as [number, number] }
 

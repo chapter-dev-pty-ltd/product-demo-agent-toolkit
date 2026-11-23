@@ -1,5 +1,6 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
+import { soundSchema, type Sound } from './config.ts'
 import type { Fingerprint } from './similo.ts'
 
 export type Target =
@@ -41,6 +42,7 @@ export type Step = (
   on?: string | undefined
   cut?: true | Part | undefined
   speed?: number | (Part & { by: number }) | undefined
+  sound?: Sound | undefined
 }
 
 export interface Part {
@@ -125,10 +127,11 @@ const part = { from: z.number().min(0).optional(), to: z.number().positive().opt
 const by = z.number().gt(1).max(16)
 const cut = z.union([z.literal(true), z.strictObject(part)]).optional()
 const speed = z.union([by, z.strictObject({ by, ...part })]).optional()
+const sound = soundSchema.optional()
 
 export const stepSchema: z.ZodType<Step> = z
   .union([
-    z.strictObject({ visit: z.string(), note, highlight, say: line, on: word, cut, speed }),
+    z.strictObject({ visit: z.string(), note, highlight, say: line, on: word, cut, speed, sound }),
     z.strictObject({
       click: target,
       at: point,
@@ -141,6 +144,7 @@ export const stepSchema: z.ZodType<Step> = z
       on: word,
       cut,
       speed,
+      sound,
     }),
     z.strictObject({
       fill: target,
@@ -151,6 +155,7 @@ export const stepSchema: z.ZodType<Step> = z
       on: word,
       cut,
       speed,
+      sound,
     }),
     z.strictObject({
       select: target,
@@ -161,9 +166,10 @@ export const stepSchema: z.ZodType<Step> = z
       on: word,
       cut,
       speed,
+      sound,
     }),
-    z.strictObject({ type: z.string(), note, highlight, say: line, on: word, cut, speed }),
-    z.strictObject({ press: z.string(), note, highlight, say: line, on: word, cut, speed }),
+    z.strictObject({ type: z.string(), note, highlight, say: line, on: word, cut, speed, sound }),
+    z.strictObject({ press: z.string(), note, highlight, say: line, on: word, cut, speed, sound }),
     z.strictObject({
       hover: target,
       at: point,
@@ -174,6 +180,7 @@ export const stepSchema: z.ZodType<Step> = z
       on: word,
       cut,
       speed,
+      sound,
     }),
     z.strictObject({
       drag: target,
@@ -186,6 +193,7 @@ export const stepSchema: z.ZodType<Step> = z
       on: word,
       cut,
       speed,
+      sound,
     }),
     z.strictObject({
       scroll: z.enum(['up', 'down']),
@@ -197,6 +205,7 @@ export const stepSchema: z.ZodType<Step> = z
       on: word,
       cut,
       speed,
+      sound,
     }),
     z.strictObject({
       upload: z.string(),
@@ -207,6 +216,7 @@ export const stepSchema: z.ZodType<Step> = z
       on: word,
       cut,
       speed,
+      sound,
     }),
     z.strictObject({
       wait: z.union([
@@ -219,6 +229,7 @@ export const stepSchema: z.ZodType<Step> = z
       on: word,
       cut,
       speed,
+      sound,
     }),
   ])
   .refine((step) => !(step.cut && step.speed), 'A step is either cut or sped up, not both.')
@@ -242,6 +253,18 @@ export async function readJson(path: string): Promise<unknown> {
 }
 
 const LOOK = ['backdrop', 'display', 'window', 'cursor', 'sound', 'music', 'voice']
+
+// Changed in the film's own JSON, not a parsed copy, so the rest of the file stays as written.
+export async function changeFilm(
+  path: string,
+  change: (steps: Record<string, unknown>[]) => void,
+): Promise<string> {
+  const json = JSON.parse(await readFile(path, 'utf8'))
+  change(json.steps)
+  const text = `${JSON.stringify(json, null, 2)}\n`
+  await writeFile(path, text)
+  return text
+}
 
 export async function readFilm(path: string): Promise<Film> {
   const json = await readJson(path)

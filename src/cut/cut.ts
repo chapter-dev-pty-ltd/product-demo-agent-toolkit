@@ -8,7 +8,7 @@ import { soundOn, type Config, type Music, type Sound } from '../config.ts'
 import { readFilm, type Film } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { findFfmpeg, launchBrowser } from '../tools.ts'
-import { editsKey, filmEdits, retime, staleTake, type Edit } from './edits.ts'
+import { editsKey, filmEdits, retime, staleTake, stepAt, type Edit } from './edits.ts'
 import { openStage, type Highlighted } from './stage.ts'
 import type { Stem } from '../../studio/api.ts'
 
@@ -29,31 +29,44 @@ export async function prepare(footageDir: string): Promise<{
   edits: Edit[]
   warnings: string[]
   highlights: Highlighted[]
+  recordedHighlights: Highlighted[]
   length: number
   title: string
 }> {
-  const recorded = await readFootage(footageDir)
-  if (recorded.frames.length === 0) throw new Error(`${footageDir} has no frames.`)
-  const film = existsSync(recorded.source) ? await readFilm(recorded.source) : recorded.film
+  const read = await readFootage(footageDir)
+  if (read.frames.length === 0) throw new Error(`${footageDir} has no frames.`)
+  const film = existsSync(read.source) ? await readFilm(read.source) : read.film
+  const quiet = (kind: 'click' | 'typing') => (at: number) => {
+    const step = stepAt(read, at)
+    const sound = step === undefined ? undefined : film.steps[step]?.sound
+    return sound !== undefined && !soundOn(kind, sound)
+  }
+  const recorded: Footage = {
+    ...read,
+    clicks: read.clicks.map((c) => ({ ...c, muted: quiet('click')(c.at) })),
+    keys: (read.keys ?? []).map((k) => ({ ...k, muted: quiet('typing')(k.at) })),
+  }
   const edits = filmEdits(film, recorded)
   const footage = retime(recorded, edits)
   const stale = staleTake(film, recorded)
   const length = videoLength(footage)
   const title = film.notes?.split(/(?<=\.)\s/)[0] ?? ''
-  const highlights = footage.highlights.flatMap((held) => {
-    const now = film.steps[held.step]?.highlight
-    if (!now) return []
-    return [
-      {
-        at: held.at,
-        until: held.until,
-        box: now.box ?? held.box,
-        zoom: now.zoom ?? 0,
-        style: now.style ?? 'box',
-        colour: now.colour ?? '#ff3b30',
-      },
-    ]
-  })
+  const highlightsOf = (of: Footage): Highlighted[] =>
+    of.highlights.flatMap((held) => {
+      const now = film.steps[held.step]?.highlight
+      if (!now) return []
+      return [
+        {
+          step: held.step,
+          at: held.at,
+          until: held.until,
+          box: now.box ?? held.box,
+          zoom: now.zoom ?? 0,
+          style: now.style ?? 'box',
+          colour: now.colour ?? '#ff3b30',
+        },
+      ]
+    })
 
   return {
     footage,
@@ -61,7 +74,8 @@ export async function prepare(footageDir: string): Promise<{
     film,
     edits,
     warnings: stale ? [stale] : [],
-    highlights,
+    highlights: highlightsOf(footage),
+    recordedHighlights: highlightsOf(recorded),
     length,
     title,
   }
@@ -149,14 +163,18 @@ function soundTracks(footage: Footage, sound: Sound): Record<Stem, Track[]> {
     click: [
       {
         files: CLICKS,
-        times: soundOn('click', sound) ? footage.clicks.map((c) => c.at - start) : [],
+        times: soundOn('click', sound)
+          ? footage.clicks.filter((c) => !c.muted).map((c) => c.at - start)
+          : [],
         volume: 1,
       },
     ],
     typing: Object.entries(KEYS).map(([kind, files]) => ({
       files,
       times: soundOn('typing', sound)
-        ? (footage.keys ?? []).filter((k) => keyKind(k.key) === kind).map((k) => k.at - start)
+        ? (footage.keys ?? [])
+            .filter((k) => !k.muted && keyKind(k.key) === kind)
+            .map((k) => k.at - start)
         : [],
       volume: 0.7,
     })),
@@ -190,7 +208,10 @@ export async function stems(
   const tracks = soundTracks(footage, true)
   const made = await Promise.all(
     stemsOf(footage).map(async (stem) => {
-      const key = editsKey(edits)
+      const muted = [...footage.clicks, ...(footage.keys ?? [])].flatMap((c, i) =>
+        c.muted ? [i] : [],
+      )
+      const key = editsKey(edits) + (muted.length ? `m${muted.join('.')}` : '')
       const out = join(footageDir, `sound-${stem}${key && `-${key}`}.m4a`)
       if (existsSync(out)) return [stem, out] as const
       const part = `${out}.part`

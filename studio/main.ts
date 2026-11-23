@@ -14,9 +14,12 @@ document.title = `${state.title} · Studio`
 $('title').textContent = state.title
 $('title').title = state.title
 
-const mixer = createMixer(state, () => settings.look.music)
+const mixer = createMixer(state, () => settings.look)
 const player = createPlayer(state, mixer, Math.max(0, Number(query.get('t')) || 0))
-const timeline = createTimeline(player, state)
+const timeline = createTimeline(player, state, {
+  look: () => settings.look,
+  change: (patch) => settings.change(patch),
+})
 const settings = createSettings(state, player, timeline)
 const exporter = createExport(state, () => settings.look)
 const chat = createChat(state, player)
@@ -45,6 +48,11 @@ new EventSource('/studio/events').onmessage = (e) => {
   const event: StudioEvent = JSON.parse(e.data)
   if ((event.type === 'hello' && event.boot !== state.boot) || event.type === 'config') {
     return exporter.whenIdle(refresh)
+  }
+  if (event.type === 'stage') {
+    timeline.update(event.timeline)
+    mixer.reloadSounds()
+    return player.reload(true)
   }
   chat.update(event)
 }

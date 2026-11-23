@@ -28,8 +28,9 @@ export interface Footage {
   source: string
   frames: { file: string; at: number }[]
   pointer: { at: number; x: number; y: number }[]
-  clicks: { at: number; x: number; y: number }[]
-  keys: { at: number; key: string }[]
+  // muted: the step it's in has its sound turned off in the film.
+  clicks: { at: number; x: number; y: number; muted?: boolean }[]
+  keys: { at: number; key: string; muted?: boolean }[]
   addresses: { at: number; url: string }[]
   lines: { at: number; file: string; text: string }[]
   highlights: { step: number; at: number; until: number; box: number[] }[]

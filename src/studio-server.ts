@@ -22,12 +22,26 @@ import {
   type Config,
   type Music,
   type ProjectFile,
+  type Sound,
 } from './config.ts'
-import { cut, LIMIT, prepare, STEM_GAIN, stems, stemsOf, type Stem } from './cut/cut.ts'
-import { planEdit, shownEdits, writePlan } from './cut/edits.ts'
+import {
+  cut,
+  LIMIT,
+  prepare,
+  STEM_GAIN,
+  stems,
+  stemsOf,
+  videoLength,
+  type Stem,
+} from './cut/cut.ts'
+import { planEdit, Refused, shownEdits, stepAt, writePlan } from './cut/edits.ts'
+import { changeFilm } from './film.ts'
 import { convertExport } from './cut/export.ts'
-import { CANVAS, stageFiles, type Look } from './cut/stage.ts'
+import { CANVAS, label, stageFiles, type Look } from './cut/stage.ts'
 import type {
+  SoundRequest,
+  HighlightRequest,
+  TimelineData,
   Agent,
   AgentStatus,
   PageSettings,
@@ -53,6 +67,7 @@ const PORTS = Array.from({ length: 100 }, (_, i) => 4000 + i)
 
 interface Settings extends Look {
   music: Music | false
+  sound: Sound
 }
 
 export type { StudioMessage }
@@ -73,6 +88,7 @@ function fromConfig(config: Config, hold: number, was: Own = {}) {
     display: config.display,
     window: config.window,
     music: config.music,
+    sound: config.sound,
   }
   const mine: Own = {
     backdrop: own(config.backdrop) ? config.backdrop : was.backdrop,
@@ -88,7 +104,6 @@ function fromConfig(config: Config, hold: number, was: Own = {}) {
     },
     tracks: MUSIC,
     hold,
-    sound: config.sound,
   }
   return { settings, mine, extras }
 }
@@ -113,7 +128,8 @@ export async function studio(
   const places = placesOf(video)
   const lookFile = filesOf(video).look
   const config = await readConfig(lookFile)
-  let { footage, recorded, film, edits, highlights, length, title } = await prepare(footageDir)
+  let { footage, recorded, film, edits, highlights, recordedHighlights, length, title } =
+    await prepare(footageDir)
   const hold = Math.max(1, footage.film.ending?.hold ?? 2)
   const soundsNow = () =>
     stems(footageDir, footage, length, edits).catch(
@@ -135,8 +151,27 @@ export async function studio(
   const staged = () => stageFiles(footageDir, footage, highlights, () => settings, length, title)
   let stage = staged()
   let filmText = await readFile(footage.source, 'utf8').catch(() => '')
+  const timelineNow = (): TimelineData => {
+    const start = recorded.frames[0]?.at ?? 0
+    return {
+      length: videoLength(recorded),
+      stepsEnd: recorded.end - start,
+      addresses: (recorded.addresses ?? []).map((a) => ({ at: a.at - start, label: label(a.url) })),
+      clicks: recorded.clicks.map((c) => {
+        const step = stepAt(recorded, c.at)
+        return { at: c.at - start, ...(step === undefined ? {} : { step }), muted: !!c.muted }
+      }),
+      highlights: recordedHighlights.map((h) => ({
+        ...h,
+        at: h.at - start,
+        until: h.until - start,
+      })),
+      edits: shownEdits(edits),
+    }
+  }
   const restage = async () => {
-    ;({ footage, recorded, film, edits, highlights, length, title } = await prepare(footageDir))
+    ;({ footage, recorded, film, edits, highlights, recordedHighlights, length, title } =
+      await prepare(footageDir))
     stage = staged()
     sounds = soundsNow()
   }
@@ -190,8 +225,11 @@ export async function studio(
       const text = await readFile(footage.source, 'utf8').catch(() => filmText)
       if (text === filmText) return
       filmText = text
+      const before = film
       await restage().catch((error: Error) => void console.log(error.message))
-      emit({ type: 'config' })
+      // The title and the ending are drawn from the film outside the stage, so only a reload shows them.
+      const same = before.notes === film.notes && before.ending?.hold === film.ending?.hold
+      emit(same ? { type: 'stage', timeline: timelineNow() } : { type: 'config' })
     }, 150)
   })
 
@@ -228,11 +266,11 @@ export async function studio(
           owned: extras.owned,
           tracks: extras.tracks,
           hold: extras.hold,
-          stems: stemsOf(footage).filter((stem) => stem === 'voice' || soundOn(stem, extras.sound)),
+          stems: stemsOf(footage),
           stemGain: STEM_GAIN,
           limit: LIMIT,
           canvas: CANVAS,
-          edits: shownEdits(edits),
+          timeline: timelineNow(),
         }
         return send(200, 'application/json', JSON.stringify(state))
       }
@@ -326,7 +364,37 @@ export async function studio(
         const plan = planEdit(film, recorded, JSON.parse(await body(req)))
         filmText = await writePlan(footage.source, plan)
         await restage()
-        emit({ type: 'config' })
+        emit({ type: 'stage', timeline: timelineNow() })
+        return send(200, 'application/json', '{}')
+      }
+      if (path === '/studio/sound' && req.method === 'POST') {
+        const request = soundRequest.parse(JSON.parse(await body(req)))
+        if (!film.steps[request.step]) return send(400, 'text/plain', 'There is no such step.')
+        filmText = await changeFilm(footage.source, (steps) => {
+          const step = steps[request.step]
+          if (!step) return
+          const typing = soundOn('typing', (step.sound as Sound | undefined) ?? true)
+          const click = request.click
+          if (click && typing) delete step.sound
+          else step.sound = click === typing ? click : { click, typing }
+        })
+        await restage()
+        emit({ type: 'stage', timeline: timelineNow() })
+        return send(200, 'application/json', '{}')
+      }
+      if (path === '/studio/highlight' && req.method === 'POST') {
+        const request = highlightRequest.parse(JSON.parse(await body(req)))
+        if (!film.steps[request.step]?.highlight) {
+          return send(400, 'text/plain', `Step ${request.step + 1} has no highlight.`)
+        }
+        filmText = await changeFilm(footage.source, (steps) => {
+          const step = steps[request.step]
+          if (!step) return
+          if ('remove' in request) delete step.highlight
+          else step.highlight = { ...(step.highlight as object), style: request.style }
+        })
+        await restage()
+        emit({ type: 'stage', timeline: timelineNow() })
         return send(200, 'application/json', '{}')
       }
       if (path === '/studio/export' && req.method === 'POST') {
@@ -392,6 +460,8 @@ export async function studio(
       if (error instanceof z.ZodError && !res.headersSent) {
         return send(400, 'text/plain', z.prettifyError(error))
       }
+      if (error instanceof Refused && !res.headersSent)
+        return send(400, 'text/plain', error.message)
       console.log(error)
       if (!res.headersSent) send(400, 'text/plain', `That didn't work. See ${places.log}`)
     }
@@ -587,8 +657,19 @@ function toPage(settings: Settings): PageSettings {
       ...(own(cursor.style) && cursor.tip ? { tip: cursor.tip } : {}),
     },
     music: music && { track: own(music.track) ? 'own' : music.track, volume: music.volume },
+    sound: { click: soundOn('click', settings.sound), typing: soundOn('typing', settings.sound) },
   }
 }
+
+const soundRequest: z.ZodType<SoundRequest> = z.strictObject({
+  step: z.number().int().min(0),
+  click: z.boolean(),
+})
+
+const highlightRequest: z.ZodType<HighlightRequest> = z.union([
+  z.strictObject({ step: z.number().int().min(0), style: z.enum(['box', 'magnify', 'cursor']) }),
+  z.strictObject({ step: z.number().int().min(0), remove: z.literal(true) }),
+])
 
 const HEX = { is: isHex, hint: 'a hex colour like "#8fd3ff"' }
 
@@ -639,6 +720,7 @@ function pageSchema(mine: Own) {
             .nullable(),
         )
         .transform((music) => music ?? false),
+      sound: z.strictObject({ click: z.boolean(), typing: z.boolean() }).partial(),
     })
     .partial()
 }
@@ -659,7 +741,17 @@ export function fromPage(raw: unknown, was: Settings, mine: Own): Settings {
       ...(own(style) && mine.tip ? { tip: mine.tip } : {}),
     },
     music: page.music ?? was.music,
+    sound: soundFrom(page.sound, was.sound),
   }
+}
+
+function soundFrom(
+  page: { click?: boolean | undefined; typing?: boolean | undefined } | undefined,
+  was: Sound,
+): Sound {
+  const click = page?.click ?? soundOn('click', was)
+  const typing = page?.typing ?? soundOn('typing', was)
+  return click === typing ? click : { click, typing }
 }
 
 async function saveLook(lookFile: string, settings: Settings): Promise<void> {

@@ -8,12 +8,14 @@ export interface Mixer {
   now(): number
   update(): void
   setHeard(on: boolean): void
+  reloadSounds(): void
 }
 
 export const musicSrc = (m: Exclude<Music, false>): string =>
   m.track === 'own' ? '/studio/own/music' : '/studio/music/' + m.track
 
-export function createMixer(state: StudioState, music: () => Music): Mixer {
+export function createMixer(state: StudioState, look: () => PageSettings): Mixer {
+  const music = (): Music => look().music
   const mixer = new AudioContext()
   const master = mixer.createGain()
   master.connect(mixer.destination)
@@ -29,13 +31,24 @@ export function createMixer(state: StudioState, music: () => Music): Mixer {
   restore.connect(limiter)
   const musicLevel = mixer.createGain()
   musicLevel.connect(limiter)
+  const stemLevels = state.stems.map((stem) => {
+    const gain = mixer.createGain()
+    gain.connect(restore)
+    return { stem, gain }
+  })
+  const heard = () => {
+    const { sound } = look()
+    for (const { stem, gain } of stemLevels)
+      gain.gain.value = stem === 'voice' || sound[stem] ? 1 : 0
+  }
 
   const decode = (url: string): Promise<AudioBuffer | null> =>
     fetch(url)
       .then((r) => r.arrayBuffer())
       .then((b) => mixer.decodeAudioData(b))
       .catch(() => null)
-  const stemBuffers = Promise.all(state.stems.map((stem) => decode('/studio/sound/' + stem)))
+  const sounds = () => Promise.all(state.stems.map((stem) => decode('/studio/sound/' + stem)))
+  let stemBuffers = sounds()
   const musicBuffers: Record<string, Promise<AudioBuffer | null>> = {}
   const musicKey = () => {
     const m = music()
@@ -87,7 +100,11 @@ export function createMixer(state: StudioState, music: () => Music): Mixer {
     if (go !== generation) return
     const when = mixer.currentTime
     const at = now()
-    for (const b of stems) if (b && at < b.duration) begin(b, restore, when, at)
+    heard()
+    for (const [i, b] of stems.entries()) {
+      const level = stemLevels[i]
+      if (b && level && at < b.duration) begin(b, level.gain, when, at)
+    }
     if (tune) begin(tune, musicLevel, when, at % tune.duration).loop = true
     playingMusic = key
     level()
@@ -96,8 +113,13 @@ export function createMixer(state: StudioState, music: () => Music): Mixer {
   return {
     start,
     stop,
+    reloadSounds: () => void (stemBuffers = sounds()),
     now,
-    update: () => (playingMusic !== musicKey() ? void start(now(), length) : level()),
+    update: () => {
+      heard()
+      if (playingMusic !== musicKey()) void start(now(), length)
+      else level()
+    },
     setHeard: (on) => void (master.gain.value = on ? 1 : 0),
   }
 }

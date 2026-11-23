@@ -3,7 +3,7 @@ import type { Film } from '../film.ts'
 import type { Footage } from '../perform.ts'
 import { filmEdits, planEdit, retime, toTake, toVideo, type Edit } from './edits.ts'
 
-const cut: Edit = { from: 10, to: 15, step: 0, cut: true }
+const cut: Edit = { from: 10, to: 15, step: 0, speed: 'cut' }
 const fast: Edit = { from: 20, to: 30, step: 1, speed: 4 }
 
 const footage: Footage = {
@@ -64,4 +64,21 @@ test('a part of the video becomes edits on the steps it spans, read back to the 
     [12, 14],
   ])
   expect(toVideo(edits, 14)).toBe(3)
+})
+
+test('moving an edit keeps how much of the take it covers, and stops short of another edit', () => {
+  const film: Film = {
+    app: 'http://localhost',
+    steps: [
+      { wait: 1, speed: { by: 4, from: 1, to: 3 } },
+      { wait: 1 },
+      { wait: 1, cut: true },
+      { wait: 1 },
+    ],
+  }
+  expect([...planEdit(film, footage, { steps: [0], by: 5 })]).toEqual([
+    [0, undefined],
+    [1, { speed: { by: 4, from: 1, to: 3 } }],
+  ])
+  expect(() => planEdit(film, footage, { steps: [0], by: 10 })).toThrow(/Step 3 already has/)
 })

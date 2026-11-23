@@ -201,7 +201,7 @@ export async function openStage(
   return page
 }
 
-function label(url: string): string {
+export function label(url: string): string {
   return url.replace(/^[a-z]+:\/\//, '').replace(/[/#]+$/, '')
 }
 
