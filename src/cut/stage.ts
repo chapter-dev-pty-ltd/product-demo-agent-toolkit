@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { extname, resolve, sep } from 'node:path'
 import type { Browser, Page } from 'playwright-core'
-import { isHex, type Config, type CURSORS } from '../config.ts'
+import { isHex, type Config, type CURSORS, type ProjectFile } from '../config.ts'
 import type { Footage } from '../perform.ts'
 import type { Highlighted, StageData } from '../../studio/api.ts'
 
@@ -109,7 +109,7 @@ function cursorLook(style: Exclude<Config['cursor']['style'], object>): CursorLo
 
 export type { Highlighted }
 
-export type Look = Pick<Config, 'backdrop' | 'cursor' | 'display' | 'window'>
+export type Look = Pick<Config, 'backdrop' | 'cursor' | 'display' | 'window' | 'cover'>
 
 export type StageFiles = (
   path: string,
@@ -159,7 +159,14 @@ export function stageFiles(
       const cursor = await cursorFor(now.cursor)
       return {
         contentType: 'text/html',
-        body: html(data, cursor, background, now, extra + coversHtml(covers, background), view),
+        body: html(
+          data,
+          cursor,
+          background,
+          now,
+          extra + (await coversHtml(covers, background, now.cover)),
+          view,
+        ),
       }
     }
     const { style } = now.cursor
@@ -220,27 +227,32 @@ export interface Cover {
   subtitle?: string | undefined
 }
 
-// The covers, over everything: the backdrop with the scene's title rising in, then fading out
-// to the scene. One after the video has begun fades in too.
-function coversHtml(covers: Cover[], background: string): string {
+// The covers, over everything: the backdrop with the look's cover (or the library's) on it,
+// its {{title}} and {{subtitle}} the scene's, fading out to the scene. One after the video has
+// begun fades in too.
+async function coversHtml(
+  covers: Cover[],
+  background: string,
+  design: ProjectFile | undefined,
+): Promise<string> {
   if (covers.length === 0) return ''
-  const text = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  const template = await readFile(design?.file ?? library('covers/default.html'), 'utf8')
+  const text = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  const fill = (c: Cover) =>
+    template
+      .replaceAll('{{title}}', text(c.title))
+      .replaceAll('{{subtitle}}', text(c.subtitle ?? ''))
   const cards = covers.map(
-    (
-      c,
-    ) => `<div class="cover" data-at="${c.at}" data-for="${c.hold}" style="animation-delay:${Math.max(0, c.hold - 0.45)}s">
-<div class="cover-in${c.at > 0 ? ' fade' : ''}"><div class="cover-text"><h1>${text(c.title)}</h1>${c.subtitle ? `<p>${text(c.subtitle)}</p>` : ''}</div></div></div>`,
+    (c) =>
+      `<div class="cover" data-at="${c.at}" data-for="${c.hold}" style="animation-delay:${Math.max(0, c.hold - 0.45)}s"><div class="cover-in${c.at > 0 ? ' fade' : ''}">${fill(c)}</div></div>`,
   )
   return `<style>
 .cover { position: absolute; inset: 0; z-index: 10; visibility: hidden; animation: cover-out 0.45s ease-in both; }
-.cover-in { position: absolute; inset: 0; background: ${background}; display: flex; align-items: center; justify-content: center; }
+.cover-in { position: absolute; inset: 0; overflow: hidden; background: ${background}; }
 .cover-in.fade { animation: cover-fade 0.35s ease-out both; }
-.cover-text { text-align: center; color: #15151f; animation: cover-rise 0.7s cubic-bezier(.2,.7,.2,1) 0.1s both; }
-.cover h1 { margin: 0; font: 700 88px/1.05 Inter, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.035em; }
-.cover p { margin: 22px 0 0; font: 500 34px/1.3 Inter, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.01em; opacity: 0.6; }
 @keyframes cover-out { from { opacity: 1; } to { opacity: 0; } }
 @keyframes cover-fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes cover-rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 </style>
 ${cards.join('\n')}`
 }
