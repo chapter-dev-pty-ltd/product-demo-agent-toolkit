@@ -265,7 +265,16 @@ try {
       console.log(`Studio for ${video.id}: ${await studio(video, take.dir)}`)
     } else {
       const self = [process.execPath, ...process.execArgv, process.argv[1] ?? '']
-      const address = await openStudio(video, [...self, 'studio', video.id, '--serve'])
+      const [node = process.execPath, ...rest] = self
+      const serve = [
+        node,
+        '--disable-warning=ExperimentalWarning',
+        ...rest,
+        'studio',
+        video.id,
+        '--serve',
+      ]
+      const address = await openStudio(video, serve)
       console.log(`Studio for "${video.title}" (${video.id}): ${address}`)
       if (!values.say) {
         const recent = await recentChat(video, 6)
